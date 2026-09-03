@@ -5,9 +5,12 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import { collectionRoutes } from "./api/collections.js";
+import { folderRoutes } from "./api/folders.js";
 import { mediaItemRoutes } from "./api/mediaItems.js";
 import { mediaRoutes } from "./api/media.js";
 import { scanRoutes } from "./api/scan.js";
+import { tagRoutes } from "./api/tags.js";
 import { checkDbConnection, runMigrations } from "./db/client.js";
 import { seed } from "./db/seed.js";
 
@@ -53,6 +56,9 @@ app.get(
 await app.register(scanRoutes);
 await app.register(mediaItemRoutes);
 await app.register(mediaRoutes);
+await app.register(tagRoutes);
+await app.register(collectionRoutes);
+await app.register(folderRoutes);
 
 // In the production Docker image the built frontend is copied to ../web-dist
 // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

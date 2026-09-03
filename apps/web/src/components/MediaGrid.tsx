@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Film, Image as ImageIcon } from "lucide-react";
+import { Film, Folder, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MediaViewer } from "./MediaViewer";
+
+export type GridSource =
+  | { type: "library"; tag: string | null; parentId: number | null }
+  | { type: "collection"; id: number };
 
 type MediaItem = {
   id: number;
@@ -19,11 +23,19 @@ type MediaItemsResponse = {
   pageSize: number;
 };
 
-async function fetchMediaItems(): Promise<MediaItemsResponse> {
-  const res = await fetch("/api/media-items");
-  if (!res.ok) {
-    throw new Error(`Failed to load media items: ${res.status}`);
+async function fetchMediaItems(source: GridSource): Promise<MediaItemsResponse> {
+  if (source.type === "collection") {
+    const res = await fetch(`/api/collections/${source.id}/items`);
+    if (!res.ok) throw new Error(`Failed to load collection: ${res.status}`);
+    return res.json();
   }
+
+  const params = new URLSearchParams();
+  if (source.tag) params.set("tag", source.tag);
+  if (source.parentId !== null) params.set("parentId", String(source.parentId));
+
+  const res = await fetch(`/api/media-items?${params}`);
+  if (!res.ok) throw new Error(`Failed to load media items: ${res.status}`);
   return res.json();
 }
 
@@ -36,6 +48,10 @@ function formatDuration(seconds: number | null): string | null {
 
 function MediaThumbnail({ item }: { item: MediaItem }) {
   const [failed, setFailed] = useState(false);
+
+  if (item.itemType === "folder") {
+    return <Folder className="size-8 text-muted-foreground" />;
+  }
 
   if (failed) {
     return item.itemType === "video" ? (
@@ -55,25 +71,36 @@ function MediaThumbnail({ item }: { item: MediaItem }) {
   );
 }
 
-export function MediaGrid() {
-  const [selected, setSelected] = useState<MediaItem | null>(null);
+export function MediaGrid({
+  source,
+  onOpenFolder,
+}: {
+  source: GridSource;
+  onOpenFolder: (id: number, title: string) => void;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const { data, error, isLoading } = useQuery({
-    queryKey: ["media-items"],
-    queryFn: fetchMediaItems,
+    queryKey:
+      source.type === "collection"
+        ? ["collection-items", source.id]
+        : ["media-items", source.tag, source.parentId],
+    queryFn: () => fetchMediaItems(source),
   });
 
   if (isLoading) {
-    return <p className="text-muted-foreground">Loading library…</p>;
+    return <p className="text-muted-foreground">Loading…</p>;
   }
 
   if (error) {
-    return <p className="text-destructive">Could not load the library.</p>;
+    return <p className="text-destructive">Could not load this view.</p>;
   }
 
   if (!data || data.items.length === 0) {
     return (
       <p className="text-muted-foreground">
-        No media found yet. Run a scan to pick up files from your library.
+        {source.type === "collection"
+          ? "This collection is empty."
+          : "Nothing here yet."}
       </p>
     );
   }
@@ -85,7 +112,9 @@ export function MediaGrid() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setSelected(item)}
+            onClick={() =>
+              item.itemType === "folder" ? onOpenFolder(item.id, item.title) : setSelectedId(item.id)
+            }
             className={cn(
               "flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center hover:bg-accent",
               item.missingSince && "opacity-50"
@@ -103,7 +132,9 @@ export function MediaGrid() {
         ))}
       </div>
 
-      {selected && <MediaViewer item={selected} onClose={() => setSelected(null)} />}
+      {selectedId !== null && (
+        <MediaViewer itemId={selectedId} onClose={() => setSelectedId(null)} />
+      )}
     </>
   );
 }

@@ -1,20 +1,8 @@
-import { and, eq, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
-import { mediaItems, mediaItemTypes } from "../db/schema.js";
+import { mediaItemTags, mediaItems, mediaItemTypes, tags } from "../db/schema.js";
 import { playbackWarningFor } from "../media/compatibility.js";
-
-function withPlaybackWarning<T extends { itemType: string; extraMetadata: unknown }>(
-  item: T
-): T & { playbackWarning: string | null } {
-  return {
-    ...item,
-    playbackWarning: playbackWarningFor(
-      item.itemType,
-      item.extraMetadata as Record<string, unknown> | null
-    ),
-  };
-}
 
 const PAGE_SIZE = 50;
 
@@ -33,11 +21,50 @@ const itemColumns = {
   updatedAt: mediaItems.updatedAt,
 };
 
+async function fetchTagsByItemIds(
+  itemIds: number[]
+): Promise<Map<number, { id: number; name: string; color: string | null }[]>> {
+  if (itemIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      mediaItemId: mediaItemTags.mediaItemId,
+      id: tags.id,
+      name: tags.name,
+      color: tags.color,
+    })
+    .from(mediaItemTags)
+    .innerJoin(tags, eq(tags.id, mediaItemTags.tagId))
+    .where(inArray(mediaItemTags.mediaItemId, itemIds));
+
+  const map = new Map<number, { id: number; name: string; color: string | null }[]>();
+  for (const row of rows) {
+    const list = map.get(row.mediaItemId) ?? [];
+    list.push({ id: row.id, name: row.name, color: row.color });
+    map.set(row.mediaItemId, list);
+  }
+  return map;
+}
+
+function withComputedFields<T extends { id: number; itemType: string; extraMetadata: unknown }>(
+  item: T,
+  tagsByItemId: Map<number, { id: number; name: string; color: string | null }[]>
+) {
+  return {
+    ...item,
+    playbackWarning: playbackWarningFor(
+      item.itemType,
+      item.extraMetadata as Record<string, unknown> | null
+    ),
+    tags: tagsByItemId.get(item.id) ?? [],
+  };
+}
+
 export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { libraryId?: string; type?: string; page?: string } }>(
-    "/api/media-items",
-    async (request) => {
-      const { libraryId, type, page } = request.query;
+  app.get<{
+    Querystring: { libraryId?: string; type?: string; tag?: string; parentId?: string; page?: string };
+  }>("/api/media-items", async (request) => {
+      const { libraryId, type, tag, parentId, page } = request.query;
       const pageNum = Math.max(1, Number(page) || 1);
 
       const conditions: SQL[] = [];
@@ -46,6 +73,21 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       }
       if (type) {
         conditions.push(eq(mediaItemTypes.name, type));
+      }
+      if (tag) {
+        const matchingItemIds = db
+          .select({ id: mediaItemTags.mediaItemId })
+          .from(mediaItemTags)
+          .innerJoin(tags, eq(tags.id, mediaItemTags.tagId))
+          .where(eq(tags.name, tag));
+        conditions.push(inArray(mediaItems.id, matchingItemIds));
+      } else {
+        // With no tag filter, default to the current folder level (root when
+        // parentId is omitted) so nested items don't leak into the top view.
+        // A tag search deliberately ignores folder nesting — tags are the
+        // global organizing mechanism, you shouldn't have to drill into
+        // folders to find a tagged item.
+        conditions.push(parentId ? eq(mediaItems.parentId, Number(parentId)) : isNull(mediaItems.parentId));
       }
 
       const query = db
@@ -57,7 +99,13 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         .limit(PAGE_SIZE)
         .offset((pageNum - 1) * PAGE_SIZE);
 
-      return { items: rows.map(withPlaybackWarning), page: pageNum, pageSize: PAGE_SIZE };
+      const tagsByItemId = await fetchTagsByItemIds(rows.map((r) => r.id));
+
+      return {
+        items: rows.map((r) => withComputedFields(r, tagsByItemId)),
+        page: pageNum,
+        pageSize: PAGE_SIZE,
+      };
     }
   );
 
@@ -72,6 +120,34 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       reply.code(404);
       return { error: "Not found" };
     }
-    return withPlaybackWarning(item);
+    const tagsByItemId = await fetchTagsByItemIds([id]);
+    return withComputedFields(item, tagsByItemId);
   });
+
+  // Scoped to just parentId for now — moving an item into/out of a folder.
+  // Title/description editing is Phase 6's "metadata editing polish".
+  app.patch<{ Params: { id: string }; Body: { parentId: number | null } }>(
+    "/api/media-items/:id",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const { parentId } = request.body;
+
+      if (parentId === id) {
+        reply.code(400);
+        return { error: "An item cannot be its own parent" };
+      }
+
+      const updated = await db
+        .update(mediaItems)
+        .set({ parentId, updatedAt: new Date() })
+        .where(eq(mediaItems.id, id))
+        .returning();
+
+      if (updated.length === 0) {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+      return { ok: true };
+    }
+  );
 }

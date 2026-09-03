@@ -1,0 +1,42 @@
+# Dev-mode override: runs the server and web dev servers (tsx watch, Vite)
+# inside containers with source bind-mounted, instead of the baked-in
+# production build — edits on the host reflect immediately, no rebuild.
+#
+# node_modules is backed by a named volume rather than the bind mount so the
+# host's node_modules (built for the host OS/arch, e.g. sharp's native
+# binary) never shadows the Linux-native modules installed in the image.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# First run builds the `deps` stage (full npm ci, including devDependencies)
+# instead of the slim production image.
+
+services:
+  app:
+    build:
+      target: deps
+    command: npm run dev --workspace apps/server
+    volumes:
+      - ..:/repo
+      - node_modules:/repo/node_modules
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+      target: deps
+    working_dir: /repo
+    command: npm run dev --workspace apps/web
+    environment:
+      PROXY_TARGET: http://app:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ..:/repo
+      - node_modules:/repo/node_modules
+    depends_on:
+      - app
+
+volumes:
+  node_modules:

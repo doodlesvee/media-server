@@ -3,6 +3,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -70,3 +71,49 @@ export const scanJobs = pgTable("scan_jobs", {
   finishedAt: timestamp("finished_at"),
   error: text("error"),
 });
+
+export const tags = pgTable("tags", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  color: text("color"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const mediaItemTags = pgTable(
+  "media_item_tags",
+  {
+    mediaItemId: integer("media_item_id")
+      .notNull()
+      .references(() => mediaItems.id),
+    tagId: integer("tag_id")
+      .notNull()
+      .references(() => tags.id),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.mediaItemId, table.tagId] })]
+);
+
+export const collections = pgTable("collections", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").notNull(), // 'manual' | 'smart'
+  smartRule: jsonb("smart_rule"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const collectionItems = pgTable(
+  "collection_items",
+  {
+    collectionId: integer("collection_id")
+      .notNull()
+      .references(() => collections.id),
+    mediaItemId: integer("media_item_id")
+      .notNull()
+      .references(() => mediaItems.id),
+    position: integer("position"),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.collectionId, table.mediaItemId] })]
+);

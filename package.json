@@ -8,6 +8,7 @@
     "dev:server": "npm run dev --workspace apps/server",
     "dev:web": "npm run dev --workspace apps/web",
     "build:server": "npm run build --workspace apps/server",
-    "build:web": "npm run build --workspace apps/web"
+    "build:web": "npm run build --workspace apps/web",
+    "dev:docker": "docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build"
   }
 }
