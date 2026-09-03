@@ -5,3 +5,5 @@ build/
 *.log
 .DS_Store
 app-data/
+# TypeScript incremental-compile cache — machine-local, rewritten on every build
+*.tsbuildinfo
