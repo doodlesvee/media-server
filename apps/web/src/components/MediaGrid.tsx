@@ -1,25 +1,21 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, Film, Folder, Image as ImageIcon, Square } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { BulkActionBar } from "./BulkActionBar";
-import { MediaViewer } from "./MediaViewer";
+import { MediaCard, type MediaCardItem } from "./MediaCard";
+import { MediaDetailModal } from "./MediaDetailModal";
 
 export type GridSource =
-  | { type: "library"; tag: string | null; parentId: number | null }
+  | {
+      type: "library";
+      tag: string | null;
+      performer: string | null;
+      q: string | null;
+      parentId: number | null;
+    }
   | { type: "collection"; id: number };
 
-type MediaItem = {
-  id: number;
-  itemType: "video" | "photo" | "folder";
-  title: string;
-  durationSeconds: number | null;
-  missingSince: string | null;
-  playbackWarning: string | null;
-};
-
 type MediaItemsResponse = {
-  items: MediaItem[];
+  items: MediaCardItem[];
   page: number;
   pageSize: number;
 };
@@ -33,43 +29,13 @@ async function fetchMediaItems(source: GridSource): Promise<MediaItemsResponse> 
 
   const params = new URLSearchParams();
   if (source.tag) params.set("tag", source.tag);
+  if (source.performer) params.set("performer", source.performer);
+  if (source.q) params.set("q", source.q);
   if (source.parentId !== null) params.set("parentId", String(source.parentId));
 
   const res = await fetch(`/api/media-items?${params}`);
   if (!res.ok) throw new Error(`Failed to load media items: ${res.status}`);
   return res.json();
-}
-
-function formatDuration(seconds: number | null): string | null {
-  if (seconds === null) return null;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
-function MediaThumbnail({ item }: { item: MediaItem }) {
-  const [failed, setFailed] = useState(false);
-
-  if (item.itemType === "folder") {
-    return <Folder className="size-8 text-muted-foreground" />;
-  }
-
-  if (failed) {
-    return item.itemType === "video" ? (
-      <Film className="size-8 text-muted-foreground" />
-    ) : (
-      <ImageIcon className="size-8 text-muted-foreground" />
-    );
-  }
-
-  return (
-    <img
-      src={`/api/media-items/${item.id}/thumbnail`}
-      alt=""
-      onError={() => setFailed(true)}
-      className="aspect-video w-full rounded object-cover"
-    />
-  );
 }
 
 export function MediaGrid({
@@ -79,7 +45,7 @@ export function MediaGrid({
   source: GridSource;
   onOpenFolder: (id: number, title: string) => void;
 }) {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
@@ -87,7 +53,7 @@ export function MediaGrid({
     queryKey:
       source.type === "collection"
         ? ["collection-items", source.id]
-        : ["media-items", source.tag, source.parentId],
+        : ["media-items", source.tag, source.performer, source.q, source.parentId],
     queryFn: () => fetchMediaItems(source),
   });
 
@@ -105,7 +71,7 @@ export function MediaGrid({
     });
   }
 
-  function handleCardClick(item: MediaItem) {
+  function handleCardClick(item: MediaCardItem) {
     if (selectionMode) {
       toggleSelected(item.id);
       return;
@@ -113,12 +79,21 @@ export function MediaGrid({
     if (item.itemType === "folder") {
       onOpenFolder(item.id, item.title);
     } else {
-      setSelectedId(item.id);
+      setOpenItemId(item.id);
     }
   }
 
   if (isLoading) {
-    return <p className="text-muted-foreground">Loading…</p>;
+    return (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="animate-pulse space-y-1.5">
+            <div className="aspect-video rounded-md bg-secondary" />
+            <div className="h-3 w-3/4 rounded bg-secondary" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (error) {
@@ -149,41 +124,20 @@ export function MediaGrid({
         <BulkActionBar selectedIds={[...selectedIds]} onDone={exitSelectionMode} />
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {data.items.map((item) => (
-          <button
+          <MediaCard
             key={item.id}
-            type="button"
+            item={item}
             onClick={() => handleCardClick(item)}
-            className={cn(
-              "relative flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center hover:bg-accent",
-              item.missingSince && "opacity-50",
-              selectionMode && selectedIds.has(item.id) && "border-primary bg-accent"
-            )}
-          >
-            {selectionMode && (
-              <span className="absolute right-2 top-2">
-                {selectedIds.has(item.id) ? (
-                  <CheckSquare className="size-4 text-primary" />
-                ) : (
-                  <Square className="size-4 text-muted-foreground" />
-                )}
-              </span>
-            )}
-            <MediaThumbnail item={item} />
-            <span className="line-clamp-2 text-sm">{item.title}</span>
-            {item.durationSeconds !== null && (
-              <span className="font-mono text-xs text-muted-foreground">
-                {formatDuration(item.durationSeconds)}
-              </span>
-            )}
-            {item.missingSince && <span className="text-xs text-destructive">missing</span>}
-          </button>
+            selectable={selectionMode}
+            selected={selectedIds.has(item.id)}
+          />
         ))}
       </div>
 
-      {selectedId !== null && (
-        <MediaViewer itemId={selectedId} onClose={() => setSelectedId(null)} />
+      {openItemId !== null && (
+        <MediaDetailModal itemId={openItemId} onClose={() => setOpenItemId(null)} />
       )}
     </>
   );

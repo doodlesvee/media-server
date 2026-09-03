@@ -3,21 +3,33 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { collectionRoutes } from "./api/collections.js";
 import { folderRoutes } from "./api/folders.js";
 import { mediaItemRoutes } from "./api/mediaItems.js";
 import { mediaRoutes } from "./api/media.js";
+import { playbackRoutes } from "./api/playback.js";
 import { scanRoutes } from "./api/scan.js";
+import { statsRoutes } from "./api/stats.js";
+import { performerRoutes } from "./api/performers.js";
 import { tagRoutes } from "./api/tags.js";
 import { checkDbConnection, runMigrations } from "./db/client.js";
+import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
 import { seed } from "./db/seed.js";
 
 const app = Fastify({ logger: true });
 
 await runMigrations();
 await seed();
+
+// Performer artwork uploads. The size cap is enforced here rather than in
+// the route so an oversized body is rejected while streaming, before it can
+// be buffered into memory.
+await app.register(multipart, {
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+});
 
 await app.register(swagger, {
   openapi: {
@@ -57,8 +69,11 @@ await app.register(scanRoutes);
 await app.register(mediaItemRoutes);
 await app.register(mediaRoutes);
 await app.register(tagRoutes);
+await app.register(performerRoutes);
 await app.register(collectionRoutes);
 await app.register(folderRoutes);
+await app.register(playbackRoutes);
+await app.register(statsRoutes);
 
 // In the production Docker image the built frontend is copied to ../web-dist
 // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

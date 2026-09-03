@@ -1,0 +1,1 @@
+ALTER TABLE "performers" ADD COLUMN "banner_position_y" integer DEFAULT 50 NOT NULL;

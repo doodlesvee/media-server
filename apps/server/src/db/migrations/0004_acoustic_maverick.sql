@@ -1,0 +1,1 @@
+ALTER TABLE "media_items" ADD COLUMN "title_source" text DEFAULT 'filename' NOT NULL;

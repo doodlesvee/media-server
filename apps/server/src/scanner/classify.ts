@@ -7,6 +7,18 @@ const VIDEO_MIME_TYPES: Record<string, string> = {
   mov: "video/quicktime",
   webm: "video/webm",
   m4v: "video/x-m4v",
+  // F4V is ISO-BMFF — the same container as MP4, just Adobe's extension for
+  // it (ffprobe reports its format as "mov,mp4,m4a,3gp,3g2,mj2"). Serving it
+  // as video/mp4 rather than its own type is deliberate: browsers decode it
+  // with the MP4 demuxer, but some refuse on an unrecognised MIME type.
+  f4v: "video/mp4",
+  // WMV is ASF, typically holding VC-1 video and WMA audio — none of which
+  // any current browser can decode. Scanning, metadata, poster frames and
+  // preview clips all work regardless (ffmpeg decodes it fine, and previews
+  // are re-encoded to H.264), so these files are worth cataloguing; the
+  // codec allow-list in media/compatibility.ts is what warns that direct
+  // play won't work until there's a transcoding fallback.
+  wmv: "video/x-ms-wmv",
 };
 
 const PHOTO_MIME_TYPES: Record<string, string> = {

@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { libraryRoots, mediaFiles, mediaItems, mediaItemTypes } from "../db/schema.js";
 import { streamFile } from "../media/streamer.js";
+import { previewPathFor } from "../media/preview.js";
 import { getOrCreatePhotoThumbnail, getPosterPath } from "../media/thumbnails.js";
 
 type ResolvedFile = {
@@ -90,6 +91,29 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
       true
     );
   });
+
+  // Short, low-res clip cut at scan time. Unlike seeking into the full file,
+  // this starts instantly and its first frame is the poster image, so the
+  // still-to-motion hand-off is invisible.
+  app.get<{ Params: { id: string } }>(
+    "/api/media-items/:id/preview",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const file = await resolveItemFile(id);
+      if (!file || file.itemType !== "video") {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+
+      await streamFile(
+        reply,
+        previewPathFor(id, file.contentHash),
+        "video/mp4",
+        request.headers.range,
+        false
+      );
+    }
+  );
 
   app.get<{ Params: { id: string } }>(
     "/api/media-items/:id/thumbnail",

@@ -3,6 +3,13 @@
 FROM node:22-bookworm-slim AS base
 WORKDIR /repo
 
+# ffprobe/ffmpeg (scan-time metadata + poster frames) must exist in *every*
+# stage that can run the server — including `deps`, which is what the dev
+# compose override runs from. Installing it only in the runtime stage meant
+# posters and video metadata silently no-op'd under `npm run dev:docker`.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 # ---- deps: install workspace dependencies once, shared by later stages ----
 FROM base AS deps
 COPY package.json package-lock.json tsconfig.base.json ./
@@ -31,8 +38,8 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# ffprobe (bundled with ffmpeg) is used at scan time to read video duration/
-# resolution/codec — no transcoding happens in v1, just inspection.
+# Runtime starts from a clean base rather than `base`, so it needs its own
+# copy — see the note there about why every server-running stage needs this.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
