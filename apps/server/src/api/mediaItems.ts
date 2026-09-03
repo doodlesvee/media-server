@@ -124,30 +124,37 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     return withComputedFields(item, tagsByItemId);
   });
 
-  // Scoped to just parentId for now — moving an item into/out of a folder.
-  // Title/description editing is Phase 6's "metadata editing polish".
-  app.patch<{ Params: { id: string }; Body: { parentId: number | null } }>(
-    "/api/media-items/:id",
-    async (request, reply) => {
-      const id = Number(request.params.id);
-      const { parentId } = request.body;
+  app.patch<{
+    Params: { id: string };
+    Body: { parentId?: number | null; title?: string; description?: string | null };
+  }>("/api/media-items/:id", async (request, reply) => {
+    const id = Number(request.params.id);
+    const { parentId, title, description } = request.body;
 
-      if (parentId === id) {
-        reply.code(400);
-        return { error: "An item cannot be its own parent" };
-      }
-
-      const updated = await db
-        .update(mediaItems)
-        .set({ parentId, updatedAt: new Date() })
-        .where(eq(mediaItems.id, id))
-        .returning();
-
-      if (updated.length === 0) {
-        reply.code(404);
-        return { error: "Not found" };
-      }
-      return { ok: true };
+    if (parentId === id) {
+      reply.code(400);
+      return { error: "An item cannot be its own parent" };
     }
-  );
+    if (title !== undefined && !title.trim()) {
+      reply.code(400);
+      return { error: "title cannot be empty" };
+    }
+
+    const patch: Partial<typeof mediaItems.$inferInsert> = { updatedAt: new Date() };
+    if (parentId !== undefined) patch.parentId = parentId;
+    if (title !== undefined) patch.title = title.trim();
+    if (description !== undefined) patch.description = description;
+
+    const updated = await db
+      .update(mediaItems)
+      .set(patch)
+      .where(eq(mediaItems.id, id))
+      .returning();
+
+    if (updated.length === 0) {
+      reply.code(404);
+      return { error: "Not found" };
+    }
+    return { ok: true };
+  });
 }

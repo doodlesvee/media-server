@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Film, Folder, Image as ImageIcon } from "lucide-react";
+import { CheckSquare, Film, Folder, Image as ImageIcon, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BulkActionBar } from "./BulkActionBar";
 import { MediaViewer } from "./MediaViewer";
 
 export type GridSource =
@@ -79,6 +80,9 @@ export function MediaGrid({
   onOpenFolder: (id: number, title: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
   const { data, error, isLoading } = useQuery({
     queryKey:
       source.type === "collection"
@@ -86,6 +90,32 @@ export function MediaGrid({
         : ["media-items", source.tag, source.parentId],
     queryFn: () => fetchMediaItems(source),
   });
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleCardClick(item: MediaItem) {
+    if (selectionMode) {
+      toggleSelected(item.id);
+      return;
+    }
+    if (item.itemType === "folder") {
+      onOpenFolder(item.id, item.title);
+    } else {
+      setSelectedId(item.id);
+    }
+  }
 
   if (isLoading) {
     return <p className="text-muted-foreground">Loading…</p>;
@@ -98,28 +128,48 @@ export function MediaGrid({
   if (!data || data.items.length === 0) {
     return (
       <p className="text-muted-foreground">
-        {source.type === "collection"
-          ? "This collection is empty."
-          : "Nothing here yet."}
+        {source.type === "collection" ? "This collection is empty." : "Nothing here yet."}
       </p>
     );
   }
 
   return (
     <>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          {selectionMode ? "Done selecting" : "Select"}
+        </button>
+      </div>
+
+      {selectionMode && selectedIds.size > 0 && (
+        <BulkActionBar selectedIds={[...selectedIds]} onDone={exitSelectionMode} />
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {data.items.map((item) => (
           <button
             key={item.id}
             type="button"
-            onClick={() =>
-              item.itemType === "folder" ? onOpenFolder(item.id, item.title) : setSelectedId(item.id)
-            }
+            onClick={() => handleCardClick(item)}
             className={cn(
-              "flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center hover:bg-accent",
-              item.missingSince && "opacity-50"
+              "relative flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center hover:bg-accent",
+              item.missingSince && "opacity-50",
+              selectionMode && selectedIds.has(item.id) && "border-primary bg-accent"
             )}
           >
+            {selectionMode && (
+              <span className="absolute right-2 top-2">
+                {selectedIds.has(item.id) ? (
+                  <CheckSquare className="size-4 text-primary" />
+                ) : (
+                  <Square className="size-4 text-muted-foreground" />
+                )}
+              </span>
+            )}
             <MediaThumbnail item={item} />
             <span className="line-clamp-2 text-sm">{item.title}</span>
             {item.durationSeconds !== null && (
