@@ -31,6 +31,11 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
+# ffprobe (bundled with ffmpeg) is used at scan time to read video duration/
+# resolution/codec — no transcoding happens in v1, just inspection.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY apps/server/package.json ./package.json
 COPY --from=prod-deps /repo/node_modules ./node_modules
 COPY --from=build-server /repo/apps/server/dist ./dist

@@ -9,6 +9,7 @@ services:
       DATABASE_URL: postgres://media:media@postgres:5432/media
       PORT: "3000"
       MEDIA_ROOT: /media
+      APP_DATA_DIR: /app/app-data
     volumes:
       - ${MEDIA_ROOT:-./media-placeholder}:/media:ro
       - app-data:/app/app-data

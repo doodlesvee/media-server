@@ -5,9 +5,16 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import { checkDbConnection } from "./db/client.js";
+import { mediaItemRoutes } from "./api/mediaItems.js";
+import { mediaRoutes } from "./api/media.js";
+import { scanRoutes } from "./api/scan.js";
+import { checkDbConnection, runMigrations } from "./db/client.js";
+import { seed } from "./db/seed.js";
 
 const app = Fastify({ logger: true });
+
+await runMigrations();
+await seed();
 
 await app.register(swagger, {
   openapi: {
@@ -42,6 +49,10 @@ app.get(
     return { status: "ok", db: dbOk };
   }
 );
+
+await app.register(scanRoutes);
+await app.register(mediaItemRoutes);
+await app.register(mediaRoutes);
 
 // In the production Docker image the built frontend is copied to ../web-dist
 // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

@@ -1,4 +1,6 @@
+import path from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import * as schema from "./schema.js";
 
@@ -15,4 +17,9 @@ export async function checkDbConnection(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function runMigrations(): Promise<void> {
+  const migrationsFolder = path.resolve(import.meta.dirname, "migrations");
+  await migrate(db, { migrationsFolder });
 }
