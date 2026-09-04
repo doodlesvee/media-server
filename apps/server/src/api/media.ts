@@ -3,6 +3,11 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { libraryRoots, mediaFiles, mediaItems, mediaItemTypes } from "../db/schema.js";
+import {
+  deleteItemThumbnail,
+  itemThumbnailPath,
+  saveItemThumbnail,
+} from "../media/itemThumbnails.js";
 import { streamFile } from "../media/streamer.js";
 import { previewPathFor } from "../media/preview.js";
 import { getOrCreatePhotoThumbnail, getPosterPath } from "../media/thumbnails.js";
@@ -115,6 +120,72 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
+  app.post<{ Params: { id: string } }>(
+    "/api/media-items/:id/thumbnail",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, id));
+      if (!item) {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+
+      const upload = await request.file();
+      if (!upload) {
+        reply.code(400);
+        return { error: "No file uploaded" };
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = await upload.toBuffer();
+      } catch {
+        reply.code(413);
+        return { error: "Image is too large" };
+      }
+
+      let fileName: string;
+      try {
+        fileName = await saveItemThumbnail(buffer, id);
+      } catch {
+        reply.code(400);
+        return { error: "That file could not be read as an image" };
+      }
+
+      const previous = item.thumbnailFile;
+      await db
+        .update(mediaItems)
+        .set({ thumbnailFile: fileName, updatedAt: new Date() })
+        .where(eq(mediaItems.id, id));
+      // Only after the row points at the new file, so a failure here leaves a
+      // stray file rather than a broken reference.
+      await deleteItemThumbnail(previous);
+
+      return { ok: true, thumbnailFile: fileName };
+    }
+  );
+
+  // Reverts to the generated poster.
+  app.delete<{ Params: { id: string } }>(
+    "/api/media-items/:id/thumbnail",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, id));
+      if (!item) {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+
+      await db
+        .update(mediaItems)
+        .set({ thumbnailFile: null, updatedAt: new Date() })
+        .where(eq(mediaItems.id, id));
+      await deleteItemThumbnail(item.thumbnailFile);
+
+      return { ok: true };
+    }
+  );
+
   app.get<{ Params: { id: string } }>(
     "/api/media-items/:id/thumbnail",
     async (request, reply) => {
@@ -125,8 +196,15 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
         return { error: "Not found" };
       }
 
-      const thumbPath =
-        file.itemType === "video"
+      // An uploaded override wins over anything generated.
+      const [item] = await db
+        .select({ thumbnailFile: mediaItems.thumbnailFile })
+        .from(mediaItems)
+        .where(eq(mediaItems.id, id));
+
+      const thumbPath = item?.thumbnailFile
+        ? itemThumbnailPath(item.thumbnailFile)
+        : file.itemType === "video"
           ? await getPosterPath(id, file.contentHash)
           : await getOrCreatePhotoThumbnail(file.filePath, id, file.contentHash);
 

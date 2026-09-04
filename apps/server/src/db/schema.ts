@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -52,6 +53,18 @@ export const mediaItems = pgTable("media_items", {
   // the folder decides an item's performers until you touch them, then you
   // do — which is what makes "I removed this performer" survive a rescan.
   performersSource: text("performers_source").notNull().default("scanner"),
+  // A per-item flag rather than a well-known tag: "favourite" is a state you
+  // toggle, not a descriptive label, and keeping it off the tag list stops it
+  // polluting the sidebar and the tag rows.
+  isFavorite: boolean("is_favorite").notNull().default(false),
+  studioId: integer("studio_id").references((): AnyPgColumn => studios.id),
+  // Same scanner-owns-it-until-you-edit-it contract as titleSource and
+  // performersSource.
+  studioSource: text("studio_source").notNull().default("scanner"),
+  // Filename under APP_DATA_DIR/item-thumbnails of an uploaded override.
+  // Null means "use the generated poster". The random suffix in the name is
+  // what lets the served URL change when you replace the image.
+  thumbnailFile: text("thumbnail_file"),
   durationSeconds: integer("duration_seconds"),
   takenAt: timestamp("taken_at"),
   extraMetadata: jsonb("extra_metadata"),
@@ -128,6 +141,18 @@ export const performers = pgTable(
   (table) => [uniqueIndex("performers_name_lower_idx").on(sql`lower(${table.name})`)]
 );
 
+export const studios = pgTable(
+  "studios",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  // Case-insensitive, same reasoning as performers: "[Vixen]" and a typed
+  // "vixen" are one studio, not two.
+  (table) => [uniqueIndex("studios_name_lower_idx").on(sql`lower(${table.name})`)]
+);
+
 export const mediaItemPerformers = pgTable(
   "media_item_performers",
   {
@@ -166,6 +191,37 @@ export const collectionItems = pgTable(
   },
   (table) => [primaryKey({ columns: [table.collectionId, table.mediaItemId] })]
 );
+
+// Generic key/value so a new setting is a new key rather than a migration.
+// Values are jsonb because settings are shaped objects, not scalars.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  // scrypt, as "<salt-hex>:<derived-key-hex>". Node's crypto has it built in,
+  // so this needs no native dependency and no third-party hashing library.
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Server-side sessions rather than a self-contained token: a row can be
+// deleted, so "sign out everywhere" is a DELETE instead of a token-blocklist
+// scheme bolted on later.
+export const sessions = pgTable("sessions", {
+  // The cookie value itself — 32 random bytes, hex. Not sequential, so it
+  // can't be guessed from another session's id.
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // No user_id yet — single-user for now (per Section 2's future-proofing
 // note, this is exactly the kind of inherently-per-person table that gets a

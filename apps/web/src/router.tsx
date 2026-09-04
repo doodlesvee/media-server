@@ -1,7 +1,9 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { AccountPage } from "@/pages/AccountPage";
 import { BrowsePage } from "@/pages/BrowsePage";
 import { HomePage } from "@/pages/HomePage";
 import { PerformerPage } from "@/pages/PerformerPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 const rootRoute = createRootRoute();
 
@@ -32,7 +34,25 @@ const performerRoute = createRoute({
   component: PerformerPage,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, browseRoute, performerRoute]);
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account",
+  component: AccountPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  homeRoute,
+  browseRoute,
+  performerRoute,
+  settingsRoute,
+  accountRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

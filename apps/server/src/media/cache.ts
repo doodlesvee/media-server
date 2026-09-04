@@ -9,12 +9,14 @@ export const PREVIEWS_DIR = path.resolve(appDataDir, "previews");
 // Unlike the others this holds user-uploaded originals, not derived artwork —
 // deleting it loses data that can't be regenerated from the media files.
 export const PERFORMER_IMAGES_DIR = path.resolve(appDataDir, "performer-images");
+export const ITEM_THUMBNAILS_DIR = path.resolve(appDataDir, "item-thumbnails");
 
 export async function ensureCacheDirs(): Promise<void> {
   await mkdir(THUMBNAILS_DIR, { recursive: true });
   await mkdir(POSTERS_DIR, { recursive: true });
   await mkdir(PREVIEWS_DIR, { recursive: true });
   await mkdir(PERFORMER_IMAGES_DIR, { recursive: true });
+  await mkdir(ITEM_THUMBNAILS_DIR, { recursive: true });
 }
 
 export function cacheFilename(

@@ -8,12 +8,15 @@ import {
   mediaItemTypes,
   performers,
   playbackStates,
+  studios,
   tags,
 } from "../db/schema.js";
 import { playbackWarningFor } from "../media/compatibility.js";
+import { getHeroSettings } from "./settings.js";
 
 const PAGE_SIZE = 50;
 const RELATED_LIMIT = 8;
+const HERO_LIMIT = 5;
 
 const itemColumns = {
   id: mediaItems.id,
@@ -24,6 +27,10 @@ const itemColumns = {
   titleSource: mediaItems.titleSource,
   description: mediaItems.description,
   performersSource: mediaItems.performersSource,
+  isFavorite: mediaItems.isFavorite,
+  studio: studios.name,
+  studioSource: mediaItems.studioSource,
+  thumbnailFile: mediaItems.thumbnailFile,
   durationSeconds: mediaItems.durationSeconds,
   takenAt: mediaItems.takenAt,
   extraMetadata: mediaItems.extraMetadata,
@@ -115,19 +122,60 @@ function withComputedFields<T extends { id: number; itemType: string; extraMetad
   };
 }
 
+/** Conflict-tolerant so concurrent saves of a new studio name can't collide. */
+async function ensureStudioId(rawName: string): Promise<number> {
+  const name = rawName.normalize("NFC").replace(/\s+/g, " ").trim();
+
+  const findId = async (): Promise<number | null> => {
+    const [row] = await db
+      .select({ id: studios.id })
+      .from(studios)
+      .where(sql`lower(${studios.name}) = lower(${name})`);
+    return row?.id ?? null;
+  };
+
+  const existing = await findId();
+  if (existing !== null) return existing;
+
+  const [created] = await db.insert(studios).values({ name }).onConflictDoNothing().returning();
+  if (created) return created.id;
+
+  const raced = await findId();
+  if (raced === null) throw new Error(`Could not resolve studio "${name}"`);
+  return raced;
+}
+
 export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/api/studios", async () => {
+    const rows = await db
+      .select({
+        id: studios.id,
+        name: studios.name,
+        // count(<column>) not count(*): a LEFT JOIN with no match would
+        // otherwise report 1 for a studio with nothing attached.
+        videoCount: sql<number>`count(${mediaItems.id})::int`,
+      })
+      .from(studios)
+      .leftJoin(mediaItems, eq(mediaItems.studioId, studios.id))
+      .groupBy(studios.id, studios.name)
+      .orderBy(sql`lower(${studios.name})`);
+    return { studios: rows };
+  });
+
   app.get<{
     Querystring: {
       libraryId?: string;
       type?: string;
       tag?: string;
       performer?: string;
+      favorite?: string;
+      studio?: string;
       parentId?: string;
       q?: string;
       page?: string;
     };
   }>("/api/media-items", async (request) => {
-    const { libraryId, type, tag, performer, parentId, q, page } = request.query;
+    const { libraryId, type, tag, performer, favorite, studio, parentId, q, page } = request.query;
     const pageNum = Math.max(1, Number(page) || 1);
     const search = q?.trim();
 
@@ -164,11 +212,18 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         .where(sql`lower(${performers.name}) = lower(${performer})`);
       conditions.push(inArray(mediaItems.id, matchingItemIds));
     }
+    if (studio) {
+      conditions.push(sql`lower(${studios.name}) = lower(${studio})`);
+    }
+    const favoritesOnly = favorite === "true";
+    if (favoritesOnly) {
+      conditions.push(eq(mediaItems.isFavorite, true));
+    }
     // With no global filter, default to the current folder level (root when
     // parentId is omitted) so nested items don't leak into the top view. Tag,
     // performer and search all deliberately ignore folder nesting — they're
     // global lookups, you shouldn't have to drill into folders to hit them.
-    if (!tag && !performer && !search) {
+    if (!tag && !performer && !search && !favoritesOnly && !studio) {
       conditions.push(
         parentId ? eq(mediaItems.parentId, Number(parentId)) : isNull(mediaItems.parentId)
       );
@@ -178,6 +233,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .select({ ...itemColumns, lastPositionSeconds: playbackStates.positionSeconds })
       .from(mediaItems)
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId))
       .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id));
 
     const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
@@ -197,6 +253,48 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // Resolves the hero setting into actual items, so the homepage doesn't have
+  // to know how the setting is shaped.
+  app.get("/api/hero-items", async () => {
+    const hero = await getHeroSettings();
+
+    const base = db
+      .select({ ...itemColumns, lastPositionSeconds: playbackStates.positionSeconds })
+      .from(mediaItems)
+      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId))
+      .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id));
+
+    let rows;
+    if (hero.source === "manual") {
+      if (hero.itemIds.length === 0) return { items: [] };
+      const found = await base.where(
+        and(eq(mediaItemTypes.name, "video"), inArray(mediaItems.id, hero.itemIds))
+      );
+      // Preserve the order you arranged them in, which SQL wouldn't.
+      const byId = new Map(found.map((r) => [r.id, r]));
+      rows = hero.itemIds.map((id) => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
+    } else if (hero.source === "favorites") {
+      rows = await base
+        .where(and(eq(mediaItemTypes.name, "video"), eq(mediaItems.isFavorite, true)))
+        .orderBy(desc(mediaItems.createdAt))
+        .limit(HERO_LIMIT);
+    } else {
+      rows = await base
+        .where(and(eq(mediaItemTypes.name, "video"), isNull(mediaItems.missingSince)))
+        .orderBy(desc(mediaItems.createdAt))
+        .limit(HERO_LIMIT);
+    }
+
+    const related = await fetchRelated(rows.map((r) => r.id));
+    return {
+      items: rows.map((r) => ({
+        ...withComputedFields(r, related),
+        lastPositionSeconds: r.lastPositionSeconds ?? 0,
+      })),
+    };
+  });
+
   // Backs the "Continue Watching" row — anything with real progress that
   // isn't essentially finished, most recently watched first.
   app.get("/api/continue-watching", async () => {
@@ -205,6 +303,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .from(playbackStates)
       .innerJoin(mediaItems, eq(mediaItems.id, playbackStates.mediaItemId))
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId))
       .where(gt(playbackStates.positionSeconds, 15))
       .orderBy(desc(playbackStates.updatedAt))
       .limit(RELATED_LIMIT);
@@ -224,6 +323,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .select({ ...itemColumns, lastPositionSeconds: playbackStates.positionSeconds })
       .from(mediaItems)
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId))
       .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id))
       .where(eq(mediaItems.id, id));
     if (!item) {
@@ -256,7 +356,8 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     const baseQuery = db
       .select(itemColumns)
       .from(mediaItems)
-      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id));
+      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId));
 
     let rows: Awaited<ReturnType<typeof baseQuery.where>> = [];
 
@@ -299,10 +400,12 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       parentId?: number | null;
       title?: string;
       description?: string | null;
+      isFavorite?: boolean;
+      studio?: string | null;
     };
   }>("/api/media-items/:id", async (request, reply) => {
     const id = Number(request.params.id);
-    const { parentId, title, description } = request.body;
+    const { parentId, title, description, isFavorite, studio } = request.body;
 
     if (parentId === id) {
       reply.code(400);
@@ -321,6 +424,13 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       patch.titleSource = "user";
     }
     if (description !== undefined) patch.description = description;
+    if (isFavorite !== undefined) patch.isFavorite = isFavorite;
+    if (studio !== undefined) {
+      const name = studio?.trim();
+      patch.studioId = name ? await ensureStudioId(name) : null;
+      // From here the filename brackets stop deciding this item's studio.
+      patch.studioSource = "user";
+    }
 
     const updated = await db
       .update(mediaItems)

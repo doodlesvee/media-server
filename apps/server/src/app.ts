@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -12,9 +13,13 @@ import { mediaItemRoutes } from "./api/mediaItems.js";
 import { mediaRoutes } from "./api/media.js";
 import { playbackRoutes } from "./api/playback.js";
 import { scanRoutes } from "./api/scan.js";
+import { settingsRoutes } from "./api/settings.js";
 import { statsRoutes } from "./api/stats.js";
 import { performerRoutes } from "./api/performers.js";
 import { tagRoutes } from "./api/tags.js";
+import { authRoutes } from "./api/auth.js";
+import { registerAuthGuard } from "./auth/guard.js";
+import { purgeExpiredSessions } from "./auth/sessions.js";
 import { checkDbConnection, runMigrations } from "./db/client.js";
 import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
 import { seed } from "./db/seed.js";
@@ -23,6 +28,13 @@ const app = Fastify({ logger: true });
 
 await runMigrations();
 await seed();
+await purgeExpiredSessions();
+
+await app.register(cookie);
+
+// Registered before any route so the guard sees every /api request. Routes
+// added later are protected automatically — deny-by-default.
+registerAuthGuard(app);
 
 // Performer artwork uploads. The size cap is enforced here rather than in
 // the route so an oversized body is rejected while streaming, before it can
@@ -65,6 +77,7 @@ app.get(
   }
 );
 
+await app.register(authRoutes);
 await app.register(scanRoutes);
 await app.register(mediaItemRoutes);
 await app.register(mediaRoutes);
@@ -74,6 +87,7 @@ await app.register(collectionRoutes);
 await app.register(folderRoutes);
 await app.register(playbackRoutes);
 await app.register(statsRoutes);
+await app.register(settingsRoutes);
 
 // In the production Docker image the built frontend is copied to ../web-dist
 // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

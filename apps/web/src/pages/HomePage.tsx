@@ -85,6 +85,14 @@ export function HomePage() {
     queryKey: ["media-items", "recent"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/media-items"),
   });
+  const { data: heroData } = useQuery({
+    queryKey: ["hero-items"],
+    queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/hero-items"),
+  });
+  const { data: favorites } = useQuery({
+    queryKey: ["media-items", "favorites"],
+    queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/media-items?favorite=true"),
+  });
   const { data: continueWatching } = useQuery({
     queryKey: ["continue-watching"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/continue-watching"),
@@ -99,8 +107,8 @@ export function HomePage() {
   });
 
   const recentItems = withoutFolders(recent?.items ?? []);
-  // Rotate the hero through the newest few rather than pinning one item.
-  const heroItems = recentItems.filter((i) => i.itemType === "video").slice(0, 5);
+  // Chosen by the hero setting, resolved server-side.
+  const heroItems = heroData?.items ?? [];
 
   function openItem(id: number, autoPlay: boolean) {
     setOpen({ id, autoPlay });
@@ -124,6 +132,14 @@ export function HomePage() {
           onPlayItem={(id) => openItem(id, true)}
           onOpenFolder={noopOpenFolder}
         />
+        <MediaRow
+          title="Favourites"
+          items={withoutFolders(favorites?.items ?? [])}
+          onSelectItem={(id) => openItem(id, false)}
+          onPlayItem={(id) => openItem(id, true)}
+          onOpenFolder={noopOpenFolder}
+        />
+
         {/* Above Recently Added: with a library organised by performer
             folders, this is the primary way you'd actually browse it. */}
         <PerformerRow />

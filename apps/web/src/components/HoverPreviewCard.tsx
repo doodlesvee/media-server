@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Check, Play, Plus } from "lucide-react";
 import { addToMyList } from "@/lib/myList";
+import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
 
@@ -146,7 +147,7 @@ export function HoverPreviewCard({
         // poster attribute too and leave a blank panel.
         <div className="relative aspect-video w-full cursor-pointer">
           <img
-            src={`/api/media-items/${item.id}/thumbnail`}
+            src={thumbnailUrl(item)}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           />
@@ -167,7 +168,7 @@ export function HoverPreviewCard({
         </div>
       ) : (
         <img
-          src={`/api/media-items/${item.id}/thumbnail`}
+          src={thumbnailUrl(item)}
           alt=""
           className="aspect-video w-full cursor-pointer object-cover"
         />
@@ -212,6 +213,10 @@ export function HoverPreviewCard({
           </button>
         </div>
 
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+          {item.title}
+        </p>
+
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {duration && <span className="font-medium text-foreground/80">{duration}</span>}
           {badge && (
@@ -219,14 +224,17 @@ export function HoverPreviewCard({
               {badge}
             </span>
           )}
+          {item.studio && <span>{item.studio}</span>}
           {item.missingSince && <span className="text-destructive">missing</span>}
         </div>
 
-        <p className="line-clamp-1 text-xs text-muted-foreground">
-          {item.tags && item.tags.length > 0
-            ? item.tags.map((t) => t.name).join("  •  ")
-            : item.title}
-        </p>
+        {(item.performers?.length || item.tags?.length) && (
+          <p className="line-clamp-1 text-xs text-muted-foreground/80">
+            {item.performers && item.performers.length > 0
+              ? item.performers.map((p) => p.name).join("  •  ")
+              : item.tags!.map((t) => t.name).join("  •  ")}
+          </p>
+        )}
       </div>
     </div>,
     document.body

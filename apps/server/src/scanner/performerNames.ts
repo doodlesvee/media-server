@@ -74,3 +74,22 @@ export function hasWordBoundaryMatch(haystack: string, needle: string): boolean 
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(haystack);
 }
+
+/**
+ * The studio named in a filename's first `[Brackets]` group, if any.
+ *
+ * This is delimiter extraction, not filename parsing: the brackets are an
+ * explicit marker, so there's no guessing at where a name starts or ends.
+ * A file without brackets simply has no studio, rather than something being
+ * inferred from the surrounding words.
+ */
+export function studioNameFromFilename(filePath: string): string | null {
+  const base = filePath.split("/").pop() ?? filePath;
+  const match = /\[([^\]]+)\]/.exec(base.replace(/\.[^./]+$/, ""));
+  if (!match) return null;
+
+  const name = normalizeName(match[1]);
+  // A bracketed resolution or year is a fact about the file, not a studio.
+  if (!name || /^\d{3,4}p?$/i.test(name)) return null;
+  return name;
+}

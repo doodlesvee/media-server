@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Play, Plus, RotateCcw, Volume2, VolumeX, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Heart, Pencil, Play, Plus, RotateCcw, Volume2, VolumeX, X } from "lucide-react";
 import { PerformerEditor } from "./PerformerEditor";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { FolderPicker } from "./FolderPicker";
 import { RelatedItems } from "./RelatedItems";
+import { StudioEditor } from "./StudioEditor";
 import { TagEditor } from "./TagEditor";
+import { ThumbnailPicker } from "./ThumbnailPicker";
 import { TechnicalInfoPanel } from "./TechnicalInfoPanel";
-import { fetchItem, savePlaybackPosition } from "@/lib/mediaItemApi";
+import { fetchItem, savePlaybackPosition, updateItem } from "@/lib/mediaItemApi";
+import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { addToMyList } from "@/lib/myList";
+import { cn } from "@/lib/utils";
 
 // Only offer "Continue Watching" for meaningful progress: not basically the
 // start (nothing to resume) or basically the end (same as starting over).
@@ -49,6 +53,18 @@ export function MediaDetailModal({
   const [seeked, setSeeked] = useState(false);
   const queryClient = useQueryClient();
   const [muted, setMuted] = useState(true);
+  // Metadata is read-only until you ask to edit it. Showing every editor by
+  // default filled the panel with empty "Add tag…" style inputs, which read
+  // as unfinished rather than as a record of the video.
+  const [editing, setEditing] = useState(false);
+
+  const toggleFavorite = useMutation({
+    mutationFn: (next: boolean) => updateItem(viewingId, { isFavorite: next }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
+      queryClient.invalidateQueries({ queryKey: ["media-items"] });
+    },
+  });
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const startPosition = useRef(0);
@@ -143,6 +159,7 @@ export function MediaDetailModal({
     // Reset back to the muted preview for the newly-shown item rather than
     // inheriting the previous one's playing state.
     setMode("preview");
+    setEditing(false);
     setMuted(true);
     setAddedToList(false);
     setSeeked(false);
@@ -170,7 +187,7 @@ export function MediaDetailModal({
         <div className="relative aspect-video w-full bg-black">
           {item?.itemType === "video" && (
             <img
-              src={`/api/media-items/${item.id}/thumbnail`}
+              src={thumbnailUrl(item)}
               alt=""
               className="absolute inset-0 h-full w-full object-cover"
             />
@@ -187,7 +204,7 @@ export function MediaDetailModal({
                   ? `/api/stream/${item.id}`
                   : `/api/media-items/${item.id}/preview`
               }
-              poster={`/api/media-items/${item.id}/thumbnail`}
+              poster={thumbnailUrl(item)}
               onLoadedMetadata={handleLoadedMetadata}
               onSeeked={() => setSeeked(true)}
               onTimeUpdate={handleTimeUpdate}
@@ -242,6 +259,22 @@ export function MediaDetailModal({
                     )}
                     <button
                       type="button"
+                      onClick={() => toggleFavorite.mutate(!item.isFavorite)}
+                      disabled={toggleFavorite.isPending}
+                      aria-pressed={item.isFavorite}
+                      aria-label={item.isFavorite ? "Remove from favourites" : "Mark as favourite"}
+                      title={item.isFavorite ? "Favourited" : "Mark as favourite"}
+                      className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                    >
+                      <Heart
+                        className={cn(
+                          "size-5 transition-colors",
+                          item.isFavorite && "fill-red-500 text-red-500"
+                        )}
+                      />
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleAddToList}
                       aria-label="Add to My List"
                       className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
@@ -287,14 +320,55 @@ export function MediaDetailModal({
                     <span>{formatDuration(item.durationSeconds)}</span>
                   </>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setEditing((e) => !e)}
+                  aria-pressed={editing}
+                  aria-label={editing ? "Finish editing details" : "Edit details"}
+                  title={editing ? "Done editing" : "Edit details"}
+                  className={cn(
+                    "ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
+                    editing
+                      ? "bg-white text-black hover:bg-white/90"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
+                  {editing ? "Done" : "Edit"}
+                </button>
               </div>
 
-              <EditableTitle
-                itemId={item.id}
-                title={item.title}
-                className="cursor-text text-lg font-bold hover:underline"
-              />
-              <DescriptionEditor itemId={item.id} description={item.description} />
+              {editing ? (
+                <>
+                  <EditableTitle
+                    itemId={item.id}
+                    title={item.title}
+                    className="cursor-text text-lg font-bold hover:underline"
+                  />
+                  <DescriptionEditor itemId={item.id} description={item.description} />
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-bold">{item.title}</h2>
+                  {item.description && (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {item.description}
+                    </p>
+                  )}
+                </>
+              )}
+
+              <div className="space-y-1.5 pt-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Performers
+                </span>
+                <PerformerEditor
+                  itemId={item.id}
+                  performers={item.performers}
+                  source={item.performersSource}
+                  readOnly={!editing}
+                />
+              </div>
 
               {item.playbackWarning && (
                 <p className="rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-500">
@@ -304,22 +378,27 @@ export function MediaDetailModal({
             </div>
 
             <div className="space-y-4">
+              {editing && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Thumbnail
+                  </span>
+                  <ThumbnailPicker itemId={item.id} hasCustom={item.thumbnailFile !== null} />
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Performers
+                  Studio
                 </span>
-                <PerformerEditor
-                  itemId={item.id}
-                  performers={item.performers}
-                  source={item.performersSource}
-                />
+                <StudioEditor itemId={item.id} studio={item.studio} readOnly={!editing} />
               </div>
 
               <div className="space-y-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Tags
                 </span>
-                <TagEditor itemId={item.id} tags={item.tags} />
+                <TagEditor itemId={item.id} tags={item.tags} readOnly={!editing} />
               </div>
 
               <div className="space-y-1.5">
@@ -329,7 +408,7 @@ export function MediaDetailModal({
                 <TechnicalInfoPanel item={item} />
               </div>
 
-              <FolderPicker itemId={item.id} parentId={item.parentId} />
+              {editing && <FolderPicker itemId={item.id} parentId={item.parentId} />}
             </div>
           </div>
         )}

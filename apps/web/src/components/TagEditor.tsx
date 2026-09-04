@@ -3,7 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { saveTags, type Tag } from "@/lib/mediaItemApi";
 
-export function TagEditor({ itemId, tags }: { itemId: number; tags: Tag[] }) {
+export function TagEditor({
+  itemId,
+  tags,
+  readOnly = false,
+}: {
+  itemId: number;
+  tags: Tag[];
+  /** Display only — chips without remove buttons, and no add input. */
+  readOnly?: boolean;
+}) {
   const [pending, setPending] = useState<string[]>(tags.map((t) => t.name));
   const [input, setInput] = useState("");
   const queryClient = useQueryClient();
@@ -40,15 +49,21 @@ export function TagEditor({ itemId, tags }: { itemId: number; tags: Tag[] }) {
           className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary"
         >
           {name}
-          <button
-            type="button"
-            onClick={() => setPending(pending.filter((n) => n !== name))}
-            aria-label={`Remove tag ${name}`}
-          >
-            <X className="size-3" />
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => setPending(pending.filter((n) => n !== name))}
+              aria-label={`Remove tag ${name}`}
+            >
+              <X className="size-3" />
+            </button>
+          )}
         </span>
       ))}
+      {readOnly && pending.length === 0 && (
+        <span className="text-xs text-muted-foreground/60">—</span>
+      )}
+      {!readOnly && (
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
@@ -61,7 +76,8 @@ export function TagEditor({ itemId, tags }: { itemId: number; tags: Tag[] }) {
         placeholder="Add tag…"
         className="w-24 border-b border-border bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
       />
-      {dirty && (
+      )}
+      {!readOnly && dirty && (
         <button
           type="button"
           onClick={() => mutation.mutate(pending)}

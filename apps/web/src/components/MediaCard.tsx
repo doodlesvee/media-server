@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Circle, Film, Folder, Image as ImageIcon } from "lucide-react";
+import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 
@@ -10,21 +11,17 @@ export type MediaCardItem = {
   durationSeconds: number | null;
   missingSince: string | null;
   lastPositionSeconds?: number;
+  thumbnailFile?: string | null;
   description?: string | null;
   tags?: { id: number; name: string }[];
+  performers?: { id: number; name: string }[];
+  studio?: string | null;
   extraMetadata?: { width?: number; height?: number; codec?: string } | null;
 };
 
 // Dwell time before the expanded hover card appears, so sweeping the mouse
 // across a row doesn't pop a card open (and start a stream) for every item.
 const HOVER_DELAY_MS = 450;
-
-function formatDuration(seconds: number | null): string | null {
-  if (seconds === null) return null;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
 
 export function MediaCard({
   item,
@@ -117,7 +114,7 @@ export function MediaCard({
         >
           {showImage ? (
             <img
-              src={`/api/media-items/${item.id}/thumbnail`}
+              src={thumbnailUrl(item)}
               alt=""
               onError={() => setThumbFailed(true)}
               className="h-full w-full object-cover"
@@ -132,12 +129,6 @@ export function MediaCard({
                 <ImageIcon className="size-8 text-muted-foreground" />
               )}
             </div>
-          )}
-
-          {item.durationSeconds !== null && (
-            <span className="absolute bottom-1.5 right-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white">
-              {formatDuration(item.durationSeconds)}
-            </span>
           )}
 
           {item.missingSince && (
@@ -163,9 +154,6 @@ export function MediaCard({
           )}
         </div>
 
-        <span className="mt-2 block truncate text-sm font-medium tracking-tight text-foreground/90">
-          {item.title}
-        </span>
       </button>
 
       {anchorRect && (

@@ -20,6 +20,10 @@ export type MediaItemDetail = {
   title: string;
   description: string | null;
   performers: Performer[];
+  isFavorite: boolean;
+  thumbnailFile: string | null;
+  studio: string | null;
+  studioSource: "scanner" | "user";
   performersSource: "scanner" | "user";
   parentId: number | null;
   durationSeconds: number | null;
@@ -31,6 +35,34 @@ export type MediaItemDetail = {
   lastPositionSeconds: number;
 };
 
+/**
+ * Thumbnail URL for an item, carrying a version token.
+ *
+ * The endpoint is served `immutable` for a year, so without a token that
+ * changes, replacing a thumbnail would leave every browser showing the old
+ * one indefinitely. The uploaded filename carries a random suffix, which
+ * makes the new URL distinct from the old.
+ */
+export function thumbnailUrl(item: { id: number; thumbnailFile?: string | null }): string {
+  const version = item.thumbnailFile ?? "auto";
+  return `/api/media-items/${item.id}/thumbnail?v=${version}`;
+}
+
+export async function uploadThumbnail(id: number, file: File): Promise<void> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await fetch(`/api/media-items/${id}/thumbnail`, { method: "POST", body });
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(detail?.error ?? `Upload failed: ${res.status}`);
+  }
+}
+
+export async function resetThumbnail(id: number): Promise<void> {
+  const res = await fetch(`/api/media-items/${id}/thumbnail`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to reset thumbnail: ${res.status}`);
+}
+
 export async function fetchItem(id: number): Promise<MediaItemDetail> {
   const res = await fetch(`/api/media-items/${id}`);
   if (!res.ok) throw new Error(`Failed to load item: ${res.status}`);
@@ -39,7 +71,12 @@ export async function fetchItem(id: number): Promise<MediaItemDetail> {
 
 export async function updateItem(
   id: number,
-  patch: { title?: string; description?: string | null }
+  patch: {
+    title?: string;
+    description?: string | null;
+    isFavorite?: boolean;
+    studio?: string | null;
+  }
 ) {
   const res = await fetch(`/api/media-items/${id}`, {
     method: "PATCH",

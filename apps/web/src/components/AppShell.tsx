@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { AppFooter } from "./AppFooter";
 import { RescanButton } from "./RescanButton";
 import { Sidebar } from "./Sidebar";
+import { UserMenu } from "./UserMenu";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
@@ -76,6 +77,7 @@ export function AppShell({
           <div className="ml-auto flex items-center gap-3">
             {actions}
             <RescanButton />
+            <UserMenu />
           </div>
         </header>
 

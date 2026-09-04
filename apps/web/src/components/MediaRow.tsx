@@ -17,7 +17,7 @@ export function MediaRow({
   return (
     <ScrollRow title={title} itemCount={items.length}>
       {items.map((item) => (
-        <div key={item.id} className="w-36 shrink-0 sm:w-44 md:w-52">
+        <div key={item.id} className="w-52 shrink-0 sm:w-64 md:w-72">
           <MediaCard
             item={item}
             onClick={() =>

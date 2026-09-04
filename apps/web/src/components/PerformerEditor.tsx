@@ -16,10 +16,13 @@ export function PerformerEditor({
   itemId,
   performers,
   source,
+  readOnly = false,
 }: {
   itemId: number;
   performers: Performer[];
   source: "scanner" | "user";
+  /** Display only — no remove buttons, no input, no provenance hint. */
+  readOnly?: boolean;
 }) {
   const [pending, setPending] = useState<string[]>(performers.map((p) => p.name));
   const [input, setInput] = useState("");
@@ -67,9 +70,12 @@ export function PerformerEditor({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {pending.map((name) => (
-          <div key={name} className="group relative w-16">
+          <div
+            key={name}
+            className="group flex max-w-full items-center gap-2 rounded-full bg-secondary/60 py-1 pl-1 pr-3"
+          >
             <PerformerAvatar
               name={name}
               // A name you've just typed has no performer record yet, so it
@@ -78,28 +84,34 @@ export function PerformerEditor({
                 const summary = summaryByName.get(name.toLowerCase());
                 return summary ? performerPortraitUrl(summary) : null;
               })()}
-              className="aspect-square w-16"
-              fallbackClassName="text-lg"
+              className="size-9 shrink-0"
+              fallbackClassName="text-sm"
             />
-            <button
-              type="button"
-              onClick={() => setPending(pending.filter((n) => n !== name))}
-              aria-label={`Remove performer ${name}`}
-              className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-black/80 text-white opacity-0 ring-1 ring-white/30 transition-opacity hover:bg-black focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <X className="size-3" />
-            </button>
-            <span className="mt-1.5 block truncate text-center text-[11px]" title={name}>
+            <span className="truncate text-xs font-medium" title={name}>
               {name}
             </span>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setPending(pending.filter((n) => n !== name))}
+                aria-label={`Remove performer ${name}`}
+                className="shrink-0 rounded-full p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
           </div>
         ))}
 
-        {pending.length === 0 && (
+        {pending.length === 0 && !readOnly && (
           <span className="text-xs text-muted-foreground">No performers yet</span>
+        )}
+        {pending.length === 0 && readOnly && (
+          <span className="text-xs text-muted-foreground/60">—</span>
         )}
       </div>
 
+      {!readOnly && (
       <div className="flex items-center gap-2">
         <input
           value={input}
@@ -124,12 +136,15 @@ export function PerformerEditor({
           </button>
         )}
       </div>
+      )}
 
-      <p className="text-[11px] text-muted-foreground/70">
-        {source === "scanner"
-          ? "From the folder name — saving takes over."
-          : "Set by you; the folder no longer updates this."}
-      </p>
+      {!readOnly && (
+        <p className="text-[11px] text-muted-foreground/70">
+          {source === "scanner"
+            ? "From the folder name — saving takes over."
+            : "Set by you; the folder no longer updates this."}
+        </p>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   mediaItems,
   performers,
   scanJobs,
+  studios,
 } from "../db/schema.js";
 import { probeVideo } from "../metadata/videoProbe.js";
 import { probePhoto } from "../metadata/photoExif.js";
@@ -23,6 +24,7 @@ import {
   matchKey,
   normalizeName,
   performerNameFromPath,
+  studioNameFromFilename,
 } from "./performerNames.js";
 import { partialContentHash } from "./hash.js";
 import { walk } from "./walk.js";
@@ -152,6 +154,7 @@ async function processFile(
     // Every already-known file takes this branch, so this is also what
     // backfills performers across a library that predates the feature.
     await syncPerformersWithPath(existingFile.mediaItemId, filePath, root.path);
+    await syncStudioWithFilename(existingFile.mediaItemId, filePath);
 
     if (kind === "video") {
       await ensureArtworkForItem(existingFile.mediaItemId, filePath, existingFile.contentHash);
@@ -189,6 +192,7 @@ async function processFile(
     // A file relocated into a different performer's folder follows it, in
     // exactly the way its title follows a rename.
     await syncPerformersWithPath(movedFile.mediaItemId, filePath, root.path);
+    await syncStudioWithFilename(movedFile.mediaItemId, filePath);
     return;
   }
 
@@ -233,6 +237,7 @@ async function processFile(
   });
 
   await syncPerformersWithPath(item.id, filePath, root.path);
+  await syncStudioWithFilename(item.id, filePath);
 
   if (kind === "video") {
     await generatePosterFrame(filePath, item.id, contentHash, durationSeconds);
@@ -276,6 +281,48 @@ async function ensurePerformerId(rawName: string): Promise<number> {
   const raced = await findId();
   if (raced === null) throw new Error(`Could not resolve performer "${name}"`);
   return raced;
+}
+
+async function ensureStudioId(rawName: string): Promise<number> {
+  const name = normalizeName(rawName);
+
+  const findId = async (): Promise<number | null> => {
+    const [row] = await db
+      .select({ id: studios.id })
+      .from(studios)
+      .where(sql`lower(${studios.name}) = lower(${name})`);
+    return row?.id ?? null;
+  };
+
+  const existing = await findId();
+  if (existing !== null) return existing;
+
+  const [created] = await db.insert(studios).values({ name }).onConflictDoNothing().returning();
+  if (created) return created.id;
+
+  const raced = await findId();
+  if (raced === null) throw new Error(`Could not resolve studio "${name}"`);
+  return raced;
+}
+
+/**
+ * Sets an item's studio from the `[Brackets]` in its filename, while the
+ * scanner still owns that field. Same contract as titles and performers.
+ */
+async function syncStudioWithFilename(mediaItemId: number, filePath: string): Promise<void> {
+  const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
+  if (!item || item.studioSource !== "scanner") return;
+
+  const name = studioNameFromFilename(filePath);
+  if (!name) return; // no brackets — leave whatever is there alone
+
+  const studioId = await ensureStudioId(name);
+  if (item.studioId === studioId) return; // already agrees; don't churn updatedAt
+
+  await db
+    .update(mediaItems)
+    .set({ studioId, updatedAt: new Date() })
+    .where(eq(mediaItems.id, mediaItemId));
 }
 
 /**

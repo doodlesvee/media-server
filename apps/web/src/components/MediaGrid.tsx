@@ -85,7 +85,7 @@ export function MediaGrid({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="animate-pulse space-y-1.5">
             <div className="aspect-video rounded-md bg-secondary" />
@@ -124,7 +124,7 @@ export function MediaGrid({
         <BulkActionBar selectedIds={[...selectedIds]} onDone={exitSelectionMode} />
       )}
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-3 lg:grid-cols-4">
         {data.items.map((item) => (
           <MediaCard
             key={item.id}

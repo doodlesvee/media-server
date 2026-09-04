@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Settings,
   Tag,
   Trash2,
 } from "lucide-react";
@@ -188,6 +189,18 @@ export function Sidebar({
           </>
         )}
       </nav>
+
+      <div className="border-t border-border p-2">
+        <Link
+          to="/settings"
+          className={navItemClass}
+          title={collapsed ? "Site settings" : undefined}
+          activeProps={{ className: "bg-accent text-foreground font-medium" }}
+        >
+          <Settings className="size-4 shrink-0" />
+          {!collapsed && "Site settings"}
+        </Link>
+      </div>
 
       {showCreate && <CreateCollectionModal onClose={() => setShowCreate(false)} />}
     </aside>
