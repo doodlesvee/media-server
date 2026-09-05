@@ -1,3 +1,5 @@
+import type React from "react";
+
 export type PerformerSummary = {
   id: number;
   name: string;
@@ -5,6 +7,10 @@ export type PerformerSummary = {
   hasBanner: boolean;
   videoCount: number;
   representativeItemId: number | null;
+  /** Portrait framing. Defaults are 50 / 0 / 100 — centred, top-aligned. */
+  imagePositionX: number;
+  imagePositionY: number;
+  imageScale: number;
 };
 
 export type PerformerDetail = PerformerSummary & {
@@ -60,6 +66,42 @@ export async function fetchPerformer(id: number): Promise<PerformerDetail> {
   const res = await fetch(`/api/performers/${id}`);
   if (!res.ok) throw new Error(`Failed to load performer: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Inline style applying a performer's portrait framing.
+ *
+ * Mirrors framingStyle for media thumbnails — the portrait appears on the
+ * performers page, the home-page row and the detail modal's avatar, and all
+ * three should crop it the same way.
+ */
+export function portraitStyle(performer: {
+  imagePositionX?: number;
+  imagePositionY?: number;
+  imageScale?: number;
+}): React.CSSProperties {
+  const x = performer.imagePositionX ?? 50;
+  // Top-aligned by default: faces are usually up there, which is why the
+  // cards used to hardcode `object-top`.
+  const y = performer.imagePositionY ?? 0;
+  const scale = performer.imageScale ?? 100;
+  return {
+    objectPosition: `${x}% ${y}%`,
+    transform: scale === 100 ? undefined : `scale(${scale / 100})`,
+    transformOrigin: `${x}% ${y}%`,
+  };
+}
+
+export async function savePortraitFraming(
+  id: number,
+  framing: { imagePositionX: number; imagePositionY: number; imageScale: number }
+): Promise<void> {
+  const res = await fetch(`/api/performers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(framing),
+  });
+  if (!res.ok) throw new Error(`Failed to save portrait framing: ${res.status}`);
 }
 
 export async function saveBannerPosition(id: number, bannerPositionY: number): Promise<void> {

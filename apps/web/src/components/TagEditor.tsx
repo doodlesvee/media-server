@@ -7,11 +7,14 @@ export function TagEditor({
   itemId,
   tags,
   readOnly = false,
+  accent,
 }: {
   itemId: number;
   tags: Tag[];
   /** Display only — chips without remove buttons, and no add input. */
   readOnly?: boolean;
+  /** Sampled from the item's artwork, so chips match the rest of the modal. */
+  accent?: string | null;
 }) {
   const [pending, setPending] = useState<string[]>(tags.map((t) => t.name));
   const [input, setInput] = useState("");
@@ -46,7 +49,11 @@ export function TagEditor({
       {pending.map((name) => (
         <span
           key={name}
-          className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary"
+          className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors duration-500"
+          style={{
+            backgroundColor: accent ? `color-mix(in oklab, ${accent} 18%, transparent)` : undefined,
+            color: accent ?? undefined,
+          }}
         >
           {name}
           {!readOnly && (

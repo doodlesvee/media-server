@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { HeroBanner } from "@/components/HeroBanner";
 import type { MediaCardItem } from "@/components/MediaCard";
 import { MediaDetailModal } from "@/components/MediaDetailModal";
+import { KindTiles } from "@/components/KindTiles";
 import { MediaRow } from "@/components/MediaRow";
 import { PerformerRow } from "@/components/PerformerRow";
 
@@ -124,7 +125,9 @@ export function HomePage() {
         />
       )}
 
-      <div className="space-y-9 px-6 py-8">
+      <div className="stagger space-y-9 px-6 py-8">
+        <KindTiles />
+
         <MediaRow
           title="Continue Watching"
           items={continueWatching?.items ?? []}

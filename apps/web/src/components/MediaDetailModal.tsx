@@ -1,17 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Heart, Pencil, Play, Plus, RotateCcw, Volume2, VolumeX, X } from "lucide-react";
+import {
+  Check,
+  Eye,
+  EyeOff,
+  Gauge,
+  Heart,
+  Maximize,
+  Move,
+  Pencil,
+  Play,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
 import { PerformerEditor } from "./PerformerEditor";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { FolderPicker } from "./FolderPicker";
+import { GalleryStrip } from "./GalleryStrip";
 import { RelatedItems } from "./RelatedItems";
 import { StudioEditor } from "./StudioEditor";
 import { TagEditor } from "./TagEditor";
-import { ThumbnailPicker } from "./ThumbnailPicker";
 import { TechnicalInfoPanel } from "./TechnicalInfoPanel";
-import { fetchItem, savePlaybackPosition, updateItem } from "@/lib/mediaItemApi";
-import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { ThumbnailPicker } from "./ThumbnailPicker";
+import { FramingEditor, type FramingValue } from "./FramingEditor";
+import { useAccentColor } from "@/lib/dominantColor";
+import { fetchCategories } from "@/lib/categoryApi";
+import { fetchItem, savePlaybackPosition, setWatched, updateItem } from "@/lib/mediaItemApi";
+import {
+  PLAYBACK_RATES,
+  readRate,
+  readVolume,
+  writeRate,
+  writeVolume,
+} from "@/lib/playerPrefs";
+import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { addToMyList } from "@/lib/myList";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +46,35 @@ import { cn } from "@/lib/utils";
 // start (nothing to resume) or basically the end (same as starting over).
 const MIN_RESUMABLE_SECONDS = 15;
 
+function FieldLabel({ children, accent }: { children: React.ReactNode; accent?: string | null }) {
+  return (
+    <span
+      className="block text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors duration-500"
+      style={{ color: accent ?? undefined }}
+    >
+      {children}
+    </span>
+  );
+}
+
 // Throttle for position saves — `timeupdate` fires several times a second.
 const SAVE_INTERVAL_MS = 8000;
+
+/** How far the arrow keys and the skip buttons jump. */
+const SKIP_SECONDS = 10;
+
+/**
+ * Whether a keystroke belongs to something the user is typing into.
+ *
+ * The header search box sits on the page behind the modal, and the title,
+ * description, tag, performer and studio editors all render inside it — so
+ * without this, typing a space into any of them would pause the video
+ * instead of typing a space.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.matches("input, textarea, select, [contenteditable], [contenteditable=true]");
+}
 
 function formatDuration(seconds: number | null): string | null {
   if (seconds === null) return null;
@@ -41,6 +95,15 @@ export function MediaDetailModal({
   // Clicking a "More Like This" card swaps the modal's content in place
   // rather than stacking modals or bouncing back to the grid.
   const [viewingId, setViewingId] = useState(itemId);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Without this, focus stays on the page behind: Tab walks the background
+  // instead of the dialog, and closing leaves focus nowhere useful.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => previouslyFocused?.focus?.();
+  }, []);
   useEffect(() => setViewingId(itemId), [itemId]);
 
   const { data: item } = useQuery({
@@ -53,10 +116,35 @@ export function MediaDetailModal({
   const [seeked, setSeeked] = useState(false);
   const queryClient = useQueryClient();
   const [muted, setMuted] = useState(true);
+  // Read once on mount rather than on every render — these are re-applied to
+  // the element imperatively, so React never needs to re-render for them.
+  const [rate, setRate] = useState(readRate);
+  const [showRates, setShowRates] = useState(false);
+  const [reframing, setReframing] = useState(false);
+  const volumeRef = useRef(readVolume());
   // Metadata is read-only until you ask to edit it. Showing every editor by
   // default filled the panel with empty "Add tag…" style inputs, which read
   // as unfinished rather than as a record of the video.
   const [editing, setEditing] = useState(false);
+
+  const { data: categoryData } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+  });
+  const categories = categoryData?.categories ?? [];
+  const accent = useAccentColor(item ? thumbnailUrl(item) : null);
+
+  const updateKind = useMutation({
+    mutationFn: (kind: string) => updateItem(viewingId, { kind }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
+      queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      // The home page tiles show per-category counts, and they read
+      // ["categories"] — invalidating ["kinds"] refreshed nothing, since no
+      // component has used that key since categories became editable data.
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
 
   const toggleFavorite = useMutation({
     mutationFn: (next: boolean) => updateItem(viewingId, { isFavorite: next }),
@@ -65,19 +153,138 @@ export function MediaDetailModal({
       queryClient.invalidateQueries({ queryKey: ["media-items"] });
     },
   });
+  const saveFraming = useMutation({
+    mutationFn: (next: FramingValue) =>
+      updateItem(viewingId, {
+        thumbnailPositionX: next.x,
+        thumbnailPositionY: next.y,
+        thumbnailScale: next.scale,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
+      // Every surface showing this thumbnail has to repaint, not just the modal.
+      queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      queryClient.invalidateQueries({ queryKey: ["hero-items"] });
+      queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
+      setReframing(false);
+    },
+  });
+
+  const toggleWatched = useMutation({
+    mutationFn: (next: boolean) => setWatched(viewingId, next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
+      queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      // Marking something watched is exactly what should drop it out of
+      // Continue Watching, so that row has to refetch.
+      queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
+    },
+  });
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const startPosition = useRef(0);
   const lastSavedAt = useRef(0);
   const autoPlayTriggered = useRef(false);
 
+  function skip(seconds: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    const limit = Number.isFinite(video.duration) ? video.duration : Infinity;
+    video.currentTime = Math.min(limit, Math.max(0, video.currentTime + seconds));
+  }
+
+  function togglePlay() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) void video.play().catch(() => {});
+    else video.pause();
+  }
+
+  function applyRate(next: number) {
+    setRate(next);
+    writeRate(next);
+    setShowRates(false);
+    if (videoRef.current) videoRef.current.playbackRate = next;
+  }
+
+  function nudgeVolume(delta: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    const next = Math.min(1, Math.max(0, video.volume + delta));
+    video.volume = next;
+    volumeRef.current = next;
+    writeVolume(next);
+    // Raising the volume on a muted video should actually be audible.
+    if (next > 0 && video.muted) {
+      video.muted = false;
+      setMuted(false);
+    }
+  }
+
+  function toggleFullscreen() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void video.requestFullscreen?.().catch(() => {});
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Escape closes even from inside an input — it's the way out of a
+      // field you opened by accident.
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (isTypingTarget(e.target)) return;
+      // Every shortcut below drives the video, so there's nothing to do
+      // while the muted preview is showing.
+      if (mode !== "playing") return;
+
+      // The browser's own controls already handle arrows and space once the
+      // video itself has focus. Handling them again here would seek twice
+      // per press.
+      if (e.target === videoRef.current && e.key !== "f" && e.key !== "m") return;
+
+      switch (e.key) {
+        case " ":
+        case "k":
+          // Space also scrolls this modal's overflow container and re-clicks
+          // whichever button was last focused — the modal is full of them.
+          e.preventDefault();
+          if (e.target instanceof HTMLElement) e.target.blur();
+          togglePlay();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          skip(-SKIP_SECONDS);
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          skip(SKIP_SECONDS);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          nudgeVolume(0.1);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          nudgeVolume(-0.1);
+          break;
+        case "f":
+          toggleFullscreen();
+          break;
+        case "m":
+          toggleMuted();
+          break;
+        default:
+          break;
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, mode]);
 
   function startPlaying(positionSeconds: number) {
     startPosition.current = positionSeconds;
@@ -104,6 +311,13 @@ export function MediaDetailModal({
     const video = videoRef.current;
     if (!video || !item) return;
 
+    // `key={mode}` mounts a brand-new element when the preview gives way to
+    // real playback, so anything set imperatively is gone by this point.
+    // Re-applying here is what makes volume and speed survive that swap —
+    // and carry over to the next video you open.
+    video.volume = volumeRef.current;
+    video.playbackRate = rate;
+
     // The preview clip already starts where it should, so only real playback
     // needs to seek (and stays hidden until that seek lands).
     if (mode === "playing") {
@@ -111,6 +325,18 @@ export function MediaDetailModal({
       return; // revealed by onSeeked
     }
     setSeeked(true);
+  }
+
+  // The native controls have their own volume slider, so the element is the
+  // source of truth — this just records what it settles on.
+  function handleVolumeChange() {
+    const video = videoRef.current;
+    if (!video || mode !== "playing") return;
+    if (video.volume !== volumeRef.current) {
+      volumeRef.current = video.volume;
+      writeVolume(video.volume);
+    }
+    setMuted(video.muted);
   }
 
   function handleTimeUpdate() {
@@ -135,8 +361,10 @@ export function MediaDetailModal({
 
   function handleEnded() {
     if (!item || mode !== "playing") return;
-    // Reset so a finished video doesn't linger as "Continue Watching".
-    void savePlaybackPosition(item.id, 0);
+    // Marking it watched both resets the position and takes it out of
+    // Continue Watching — which a bare position reset never did, since that
+    // row only ever filtered on having *some* progress.
+    toggleWatched.mutate(true);
   }
 
   async function handleAddToList() {
@@ -161,6 +389,7 @@ export function MediaDetailModal({
     setMode("preview");
     setEditing(false);
     setMuted(true);
+    setReframing(false);
     setAddedToList(false);
     setSeeked(false);
     lastSavedAt.current = 0;
@@ -180,15 +409,20 @@ export function MediaDetailModal({
       onClick={onClose}
     >
       <div
-        className="mx-auto w-full max-w-5xl overflow-hidden rounded-xl bg-card shadow-2xl"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        className="relative mx-auto w-full max-w-5xl animate-fade-up overflow-hidden rounded-xl bg-card shadow-2xl focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Backdrop / player area */}
-        <div className="relative aspect-video w-full bg-black">
+        <div className="relative aspect-video w-full overflow-hidden bg-black">
           {item?.itemType === "video" && (
             <img
               src={thumbnailUrl(item)}
               alt=""
+              style={framingStyle(item)}
               className="absolute inset-0 h-full w-full object-cover"
             />
           )}
@@ -210,13 +444,20 @@ export function MediaDetailModal({
               onTimeUpdate={handleTimeUpdate}
               onPause={handlePause}
               onEnded={handleEnded}
+              onVolumeChange={handleVolumeChange}
               muted={mode === "preview"}
               autoPlay
               loop={mode === "preview"}
               playsInline
               controls={mode === "playing"}
               style={{ opacity: seeked ? 1 : 0, transition: "opacity 300ms ease-out" }}
-              className="absolute inset-0 h-full w-full object-cover"
+              className={cn(
+                "absolute inset-0 h-full w-full",
+                // The preview is deliberately cropped to fill the frame, but
+                // cropping actual playback cuts the sides off anything that
+                // isn't 16:9 — letterbox it instead.
+                mode === "playing" ? "object-contain" : "object-cover"
+              )}
             />
           ) : item ? (
             <img
@@ -275,6 +516,21 @@ export function MediaDetailModal({
                     </button>
                     <button
                       type="button"
+                      onClick={() => toggleWatched.mutate(!item.watched)}
+                      disabled={toggleWatched.isPending}
+                      aria-pressed={item.watched}
+                      aria-label={item.watched ? "Mark as unwatched" : "Mark as watched"}
+                      title={item.watched ? "Watched — click to unmark" : "Mark as watched"}
+                      className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                    >
+                      {item.watched ? (
+                        <Eye className="size-5 text-emerald-400" />
+                      ) : (
+                        <EyeOff className="size-5" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleAddToList}
                       aria-label="Add to My List"
                       className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
@@ -296,6 +552,73 @@ export function MediaDetailModal({
                 </button>
               )}
             </>
+          )}
+
+          {/* Sits above the native control bar rather than replacing it —
+              the browser's scrubber and fullscreen already work, these are
+              only the pieces it doesn't offer. */}
+          {mode === "playing" && item?.itemType === "video" && (
+            <div className="absolute left-4 top-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => skip(-SKIP_SECONDS)}
+                aria-label={`Back ${SKIP_SECONDS} seconds`}
+                title={`Back ${SKIP_SECONDS}s (←)`}
+                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+              >
+                <RotateCcw className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => skip(SKIP_SECONDS)}
+                aria-label={`Forward ${SKIP_SECONDS} seconds`}
+                title={`Forward ${SKIP_SECONDS}s (→)`}
+                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+              >
+                <RotateCw className="size-4" />
+              </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowRates((v) => !v)}
+                  aria-label="Playback speed"
+                  aria-expanded={showRates}
+                  title="Playback speed"
+                  className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-medium backdrop-blur-sm transition-colors hover:bg-black/80"
+                >
+                  <Gauge className="size-4" />
+                  {rate}×
+                </button>
+                {showRates && (
+                  <div className="absolute left-0 top-11 z-10 flex flex-col overflow-hidden rounded-md bg-black/90 py-1 backdrop-blur-sm">
+                    {PLAYBACK_RATES.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => applyRate(option)}
+                        className={cn(
+                          "px-4 py-1.5 text-left text-xs transition-colors hover:bg-white/15",
+                          option === rate && "font-semibold text-white"
+                        )}
+                      >
+                        {option}×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label="Fullscreen"
+                title="Fullscreen (f)"
+                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+              >
+                <Maximize className="size-4" />
+              </button>
+            </div>
           )}
 
           <button
@@ -359,9 +682,7 @@ export function MediaDetailModal({
               )}
 
               <div className="space-y-1.5 pt-1">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Performers
-                </span>
+                <FieldLabel accent={accent}>Performers</FieldLabel>
                 <PerformerEditor
                   itemId={item.id}
                   performers={item.performers}
@@ -378,33 +699,89 @@ export function MediaDetailModal({
             </div>
 
             <div className="space-y-4">
+              <div className="space-y-1.5">
+                <FieldLabel accent={accent}>Category</FieldLabel>
+                {editing ? (
+                  <select
+                    value={item.kind}
+                    onChange={(e) => updateKind.mutate(e.target.value)}
+                    disabled={updateKind.isPending}
+                    className="w-full rounded-md border border-border bg-secondary/60 px-2 py-1.5 text-sm outline-none focus:border-ring/60 disabled:opacity-50"
+                  >
+                    {categories.map((category) => (
+                      <option key={category.slug} value={category.slug}>
+                        {category.label}
+                      </option>
+                    ))}
+                    {/* An item can hold a slug whose category was deleted;
+                        without this the select would silently show the first
+                        option and misrepresent what's stored. */}
+                    {!categories.some((c) => c.slug === item.kind) && (
+                      <option value={item.kind}>{item.kind}</option>
+                    )}
+                  </select>
+                ) : (
+                  <span
+                    className="text-sm font-medium transition-colors duration-500"
+                    style={{ color: accent ?? undefined }}
+                  >
+                    {categories.find((c) => c.slug === item.kind)?.label ?? item.kind}
+                  </span>
+                )}
+              </div>
+
               {editing && (
                 <div className="space-y-1.5">
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Thumbnail
-                  </span>
-                  <ThumbnailPicker itemId={item.id} hasCustom={item.thumbnailFile !== null} />
+                  <FieldLabel accent={accent}>Thumbnail</FieldLabel>
+                  <ThumbnailPicker
+                    itemId={item.id}
+                    hasCustom={item.thumbnailFile !== null}
+                    onUploaded={() => setReframing(true)}
+                  />
+
+                  {reframing ? (
+                    <FramingEditor
+                      src={thumbnailUrl(item)}
+                      value={{
+                        x: item.thumbnailPositionX,
+                        y: item.thumbnailPositionY,
+                        scale: item.thumbnailScale,
+                      }}
+                      // Previewed at the tile's shape, which is also the hover
+                      // card's and the modal backdrop's. The hero crops the
+                      // same image far wider, so the note below warns that the
+                      // choice shows up there too.
+                      aspectClass="aspect-video"
+                      saving={saveFraming.isPending}
+                      onSave={(next) => saveFraming.mutate(next)}
+                      onCancel={() => setReframing(false)}
+                      note="Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setReframing(true)}
+                      className="flex items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1.5 text-xs transition-colors hover:bg-accent"
+                    >
+                      <Move className="size-3.5" />
+                      Reposition
+                    </button>
+                  )}
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Studio
-                </span>
+                <FieldLabel accent={accent}>Studio</FieldLabel>
                 <StudioEditor itemId={item.id} studio={item.studio} readOnly={!editing} />
               </div>
 
               <div className="space-y-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Tags
-                </span>
-                <TagEditor itemId={item.id} tags={item.tags} readOnly={!editing} />
+                <FieldLabel accent={accent}>Tags</FieldLabel>
+                <TagEditor itemId={item.id} tags={item.tags} readOnly={!editing} accent={accent} />
               </div>
 
               <div className="space-y-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Details
-                </span>
+                <FieldLabel accent={accent}>Details</FieldLabel>
                 <TechnicalInfoPanel item={item} />
               </div>
 
@@ -412,6 +789,10 @@ export function MediaDetailModal({
             </div>
           </div>
         )}
+
+        {/* Above "More like this": the gallery belongs to this video, while
+            related items lead away from it. */}
+        {item && <GalleryStrip itemId={item.id} />}
 
         {item && <RelatedItems itemId={item.id} onSelect={openRelated} />}
       </div>

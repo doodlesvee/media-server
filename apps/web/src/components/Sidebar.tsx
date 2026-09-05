@@ -12,6 +12,7 @@ import {
   Settings,
   Tag,
   Trash2,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateCollectionModal } from "./CreateCollectionModal";
@@ -116,6 +117,15 @@ export function Sidebar({
         >
           <FolderOpen className="size-4 shrink-0" />
           {!collapsed && "Browse"}
+        </Link>
+        <Link
+          to="/performers"
+          className={navItemClass}
+          title={collapsed ? "Performers" : undefined}
+          activeProps={{ className: "bg-accent text-foreground font-medium" }}
+        >
+          <Users className="size-4 shrink-0" />
+          {!collapsed && "Performers"}
         </Link>
 
         {/* Collections and tags are text-only — collapsed they'd be a column of

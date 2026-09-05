@@ -6,9 +6,13 @@ import { PERFORMER_IMAGES_DIR } from "./cache.js";
 
 export type PerformerImageKind = "avatar" | "banner";
 
-// Avatars are cropped square up front — they're always shown in a circle, so
-// there's nothing to reposition later.
-const AVATAR_SIZE = 512;
+// Bounded, never cropped — the same rule as banners. This used to crop a
+// square at upload, on the reasoning that a circular avatar had nothing to
+// reposition. Repositioning exists now, and cropping here made it useless:
+// the pixels the drag needs had already been thrown away, so panning ran out
+// of image almost immediately. Framing is a display decision; the stored file
+// keeps the whole picture.
+const AVATAR_MAX_SIZE = 1280;
 
 // Banners are only bounded, never cropped. Keeping the full frame is what
 // makes the drag-to-reposition control possible: the visible band is chosen
@@ -47,11 +51,14 @@ export async function savePerformerImage(
   // non-image wearing an image extension.
   const pipeline = sharp(buffer).rotate();
 
+  // `inside` bounds the image without cropping and never enlarges a small
+  // one, so the whole picture survives for repositioning.
   if (kind === "avatar") {
-    pipeline.resize(AVATAR_SIZE, AVATAR_SIZE, { fit: "cover", position: "attention" });
+    pipeline.resize(AVATAR_MAX_SIZE, AVATAR_MAX_SIZE, {
+      fit: "inside",
+      withoutEnlargement: true,
+    });
   } else {
-    // `inside` bounds the image without cropping and never enlarges a small
-    // one, so the whole picture survives for repositioning.
     pipeline.resize(BANNER_MAX_WIDTH, BANNER_MAX_HEIGHT, {
       fit: "inside",
       withoutEnlargement: true,

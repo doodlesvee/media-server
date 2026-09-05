@@ -12,6 +12,7 @@ import { fetchAuthStatus, logout } from "@/lib/authApi";
  */
 export function UserMenu() {
   const [open, setOpen] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 

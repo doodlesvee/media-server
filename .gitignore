@@ -7,3 +7,5 @@ build/
 app-data/
 # TypeScript incremental-compile cache — machine-local, rewritten on every build
 *.tsbuildinfo
+# Database + upload archives — data, not source
+backups/

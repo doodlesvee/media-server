@@ -30,7 +30,10 @@ export async function saveItemThumbnail(buffer: Buffer, mediaItemId: number): Pr
   // non-image wearing an image extension.
   await sharp(buffer)
     .rotate() // honour EXIF orientation before cropping
-    .resize(WIDTH, HEIGHT, { fit: "cover", position: "attention" })
+    // Bounded, not cropped: `cover` would bake a crop in at upload and leave
+    // the framing control with nothing left to pan across. WIDTH and HEIGHT
+    // are a bounding box now, not a target shape.
+    .resize(WIDTH, HEIGHT, { fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: JPEG_QUALITY })
     .toFile(itemThumbnailPath(fileName));
 

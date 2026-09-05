@@ -23,9 +23,12 @@ import {
   isUsableMatchKey,
   matchKey,
   normalizeName,
+  parseDeclaredName,
   performerNameFromPath,
+  studioNameFromPath,
   studioNameFromFilename,
 } from "./performerNames.js";
+import { purgeEmptyEntities, recomputeScope, sweepOrphanedArtwork } from "../library/scope.js";
 import { partialContentHash } from "./hash.js";
 import { walk } from "./walk.js";
 
@@ -72,7 +75,7 @@ async function runScan(jobId: number): Promise<void> {
     const itemTypeIdByKind = new Map(typeRows.map((t) => [t.name, t.id]));
 
     const roots = await db
-      .select({ libraryId: libraryRoots.libraryId, path: libraryRoots.path })
+      .select({ id: libraryRoots.id, libraryId: libraryRoots.libraryId, path: libraryRoots.path })
       .from(libraryRoots);
 
     const seenPaths = new Set<string>();
@@ -114,7 +117,14 @@ async function runScan(jobId: number): Promise<void> {
     // give different results depending on the order the walk happened to
     // reach things.
     await assignPerformersFromFilenames(rootLevelPaths);
-    await markMissingFiles(seenPaths);
+    await markMissingFiles(seenPaths, roots.map((r) => r.path));
+    // Reconciles anything the per-file writes above couldn't know about — a
+    // file whose folder was removed mid-scan, say.
+    await recomputeScope();
+    await purgeEmptyEntities();
+    // Cached artwork for items that no longer exist. Everything here is
+    // regenerable, so deleting too much only costs CPU, never data.
+    await sweepOrphanedArtwork();
 
     await db
       .update(scanJobs)
@@ -137,7 +147,7 @@ async function runScan(jobId: number): Promise<void> {
 async function processFile(
   filePath: string,
   kind: MediaKind,
-  root: { libraryId: number; path: string },
+  root: { id: number; libraryId: number; path: string },
   itemTypeIdByKind: Map<string, number>
 ): Promise<void> {
   const libraryId = root.libraryId;
@@ -154,7 +164,7 @@ async function processFile(
     // Every already-known file takes this branch, so this is also what
     // backfills performers across a library that predates the feature.
     await syncPerformersWithPath(existingFile.mediaItemId, filePath, root.path);
-    await syncStudioWithFilename(existingFile.mediaItemId, filePath);
+    await syncStudioWithFilename(existingFile.mediaItemId, filePath, root.path);
 
     if (kind === "video") {
       await ensureArtworkForItem(existingFile.mediaItemId, filePath, existingFile.contentHash);
@@ -185,14 +195,14 @@ async function processFile(
   if (movedFile) {
     await db
       .update(mediaFiles)
-      .set({ path: filePath, sizeBytes: stats.size, mtime: stats.mtime })
+      .set({ path: filePath, sizeBytes: stats.size, mtime: stats.mtime, rootId: root.id })
       .where(eq(mediaFiles.id, movedFile.id));
     await clearMissingSince(movedFile.mediaItemId);
     await syncTitleWithFilename(movedFile.mediaItemId, filePath);
     // A file relocated into a different performer's folder follows it, in
     // exactly the way its title follows a rename.
     await syncPerformersWithPath(movedFile.mediaItemId, filePath, root.path);
-    await syncStudioWithFilename(movedFile.mediaItemId, filePath);
+    await syncStudioWithFilename(movedFile.mediaItemId, filePath, root.path);
     return;
   }
 
@@ -230,6 +240,7 @@ async function processFile(
   await db.insert(mediaFiles).values({
     mediaItemId: item.id,
     path: filePath,
+    rootId: root.id,
     sizeBytes: stats.size,
     mtime: stats.mtime,
     contentHash,
@@ -237,7 +248,7 @@ async function processFile(
   });
 
   await syncPerformersWithPath(item.id, filePath, root.path);
-  await syncStudioWithFilename(item.id, filePath);
+  await syncStudioWithFilename(item.id, filePath, root.path);
 
   if (kind === "video") {
     await generatePosterFrame(filePath, item.id, contentHash, durationSeconds);
@@ -306,15 +317,36 @@ async function ensureStudioId(rawName: string): Promise<number> {
 }
 
 /**
- * Sets an item's studio from the `[Brackets]` in its filename, while the
- * scanner still owns that field. Same contract as titles and performers.
+ * Sets an item's studio while the scanner still owns that field. Same contract
+ * as titles and performers.
+ *
+ * Three sources, most explicit first:
+ *
+ *  1. A leading `[Studio]` in a filename following the declared convention —
+ *     you typed it in the name of this specific file, so it wins.
+ *  2. A `<Performer>/<Studio>/` folder, which is a deliberate filing decision
+ *     covering everything inside it.
+ *  3. A `[Brackets]` group anywhere else in the filename — the weakest signal,
+ *     and the one that has produced nonsense studios from brackets that were
+ *     never studio names.
+ *
+ * Case differences between a folder and a filename don't split a studio in
+ * two: ensureStudioId matches on lower(name), so `Blackedraw/` resolves to an
+ * existing `BlackedRaw`.
  */
-async function syncStudioWithFilename(mediaItemId: number, filePath: string): Promise<void> {
+async function syncStudioWithFilename(
+  mediaItemId: number,
+  filePath: string,
+  rootPath: string
+): Promise<void> {
   const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
   if (!item || item.studioSource !== "scanner") return;
 
-  const name = studioNameFromFilename(filePath);
-  if (!name) return; // no brackets — leave whatever is there alone
+  const name =
+    parseDeclaredName(filePath)?.studio ??
+    studioNameFromPath(rootPath, filePath) ??
+    studioNameFromFilename(filePath);
+  if (!name) return; // nothing says a studio — leave whatever is there alone
 
   const studioId = await ensureStudioId(name);
   if (item.studioId === studioId) return; // already agrees; don't churn updatedAt
@@ -326,8 +358,21 @@ async function syncStudioWithFilename(mediaItemId: number, filePath: string): Pr
 }
 
 /**
- * Points an item's performers at whatever its folder implies — but only while
+ * Points an item's performers at whatever its name implies — but only while
  * the user hasn't taken ownership of them.
+ *
+ * Two sources, in priority order:
+ *
+ *  1. A filename following the declared convention, `[Studio] A, B - Title`,
+ *     which names the **complete cast**. The folder is deliberately not added
+ *     on top: an explicit list is what lets a misfiled video be corrected by
+ *     renaming it, and silently re-adding the folder would take that away.
+ *  2. Otherwise the folder, exactly as before.
+ *
+ * This is the whole reason a video with two performers no longer needs a copy
+ * in each performer's folder — which was never a real option anyway, since two
+ * byte-identical files collide on content hash and get treated as a move of
+ * one another.
  *
  * Shaped like syncTitleWithFilename on purpose: same "scanner owns it until
  * you edit it" contract, same self-healing property across rescans.
@@ -340,27 +385,40 @@ async function syncPerformersWithPath(
   const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
   if (!item || item.performersSource !== "scanner") return;
 
-  const name = performerNameFromPath(rootPath, filePath);
-  if (!name) return; // root-level file — the filename pass handles these
+  const declared = parseDeclaredName(filePath);
+  const names =
+    declared && declared.performerNames.length > 0
+      ? declared.performerNames
+      : ([performerNameFromPath(rootPath, filePath)].filter(Boolean) as string[]);
 
-  const performerId = await ensurePerformerId(name);
+  if (names.length === 0) return; // root-level file — the filename pass handles these
+
+  // Sequential rather than Promise.all: two names in one filename that differ
+  // only by case must resolve to the same row, and racing them past
+  // ensurePerformerId's find-then-insert can create two.
+  const wanted = new Set<number>();
+  for (const name of names) {
+    wanted.add(await ensurePerformerId(name));
+  }
 
   const current = await db
     .select({ performerId: mediaItemPerformers.performerId })
     .from(mediaItemPerformers)
     .where(eq(mediaItemPerformers.mediaItemId, mediaItemId));
 
-  // Bail when they already agree. A blind delete-then-insert would rewrite
-  // added_at on every row of every scan.
-  if (current.length === 1 && current[0].performerId === performerId) return;
+  // Bail when they already agree, compared as sets. Checking a single id here
+  // (as this once did) meant a two-performer item never matched and rewrote
+  // added_at on every row on every scan.
+  const unchanged =
+    current.length === wanted.size && current.every((row) => wanted.has(row.performerId));
+  if (unchanged) return;
 
-  // While the scanner still owns this item the folder is the whole truth, so
-  // replace rather than add: a file moved out of one performer's folder must
-  // stop being credited to them.
+  // Replace rather than add: a file moved out of a performer's folder, or
+  // dropped from a declared list, must stop being credited to them.
   await db.delete(mediaItemPerformers).where(eq(mediaItemPerformers.mediaItemId, mediaItemId));
   await db
     .insert(mediaItemPerformers)
-    .values({ mediaItemId, performerId })
+    .values([...wanted].map((performerId) => ({ mediaItemId, performerId })))
     .onConflictDoNothing();
 }
 
@@ -451,12 +509,27 @@ async function clearMissingSince(mediaItemId: number): Promise<void> {
   await db.update(mediaItems).set({ missingSince: null }).where(eq(mediaItems.id, mediaItemId));
 }
 
-async function markMissingFiles(seenPaths: Set<string>): Promise<void> {
+/**
+ * Flags items whose file has disappeared from a folder we're still watching.
+ *
+ * Scoped to the configured roots on purpose: a file under a folder you've
+ * stopped scanning hasn't gone anywhere, so calling it "missing" is wrong and
+ * floods the library with warnings the moment you reorganise. Those items are
+ * simply left alone.
+ */
+async function markMissingFiles(
+  seenPaths: Set<string>,
+  rootPaths: string[]
+): Promise<void> {
   const allFiles = await db.select().from(mediaFiles);
   const now = new Date();
 
+  const isWatched = (filePath: string): boolean =>
+    rootPaths.some((root) => filePath === root || filePath.startsWith(root + "/"));
+
   for (const file of allFiles) {
     if (seenPaths.has(file.path)) continue;
+    if (!isWatched(file.path)) continue;
 
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, file.mediaItemId));
     if (item && !item.missingSince) {

@@ -7,7 +7,18 @@ WORKDIR /repo
 # stage that can run the server — including `deps`, which is what the dev
 # compose override runs from. Installing it only in the runtime stage meant
 # posters and video metadata silently no-op'd under `npm run dev:docker`.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+#
+# pg_dump backs up the database. It comes from the PGDG repo rather than
+# Debian's own, because bookworm ships postgresql-client-15 and pg_dump
+# refuses outright to dump a newer server than itself — and the database here
+# is Postgres 17.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg ca-certificates curl gnupg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
   && rm -rf /var/lib/apt/lists/*
 
 # ---- deps: install workspace dependencies once, shared by later stages ----
@@ -39,8 +50,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Runtime starts from a clean base rather than `base`, so it needs its own
-# copy — see the note there about why every server-running stage needs this.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# copy — see the note there about why every server-running stage needs this,
+# and why postgresql-client comes from PGDG rather than Debian.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg ca-certificates curl gnupg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY apps/server/package.json ./package.json

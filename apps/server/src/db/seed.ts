@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "./client.js";
-import { libraries, libraryRoots, mediaItemTypes } from "./schema.js";
+import { categories, libraries, libraryRoots, mediaItemTypes } from "./schema.js";
 
 const MEDIA_ITEM_TYPES = ["video", "photo", "folder"] as const;
 
@@ -34,4 +34,27 @@ export async function seed(): Promise<void> {
     libraryId: library.id,
     path: mediaRoot,
   });
+}
+
+/**
+ * The three categories the app ships with. Seeded rather than hardcoded so
+ * they can be edited or removed later; only inserted when absent, so renaming
+ * "Videos" doesn't get undone on the next boot.
+ *
+ * Seeding only ever runs on an empty table. `onConflictDoNothing` guards the
+ * slug alone, which wasn't enough: creating a category named "Movies" picks
+ * the slug `movies`, the seeded `movie` doesn't collide with it, and the next
+ * boot re-added a second tile with the identical label. Once any category
+ * exists the set is the user's to manage, and re-asserting defaults into it
+ * can only fight them.
+ */
+export async function seedCategories(): Promise<void> {
+  const [existing] = await db.select({ count: sql<number>`count(*)::int` }).from(categories);
+  if ((existing?.count ?? 0) > 0) return;
+
+  await db.insert(categories).values([
+    { slug: "video", label: "Videos", position: 0 },
+    { slug: "movie", label: "Movies", position: 1 },
+    { slug: "series", label: "Series", position: 2 },
+  ]);
 }

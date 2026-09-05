@@ -4,6 +4,21 @@ function formatCoords(gps: { latitude: number; longitude: number }): string {
   return `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`;
 }
 
+/** Date only — the time a file was written is noise at this granularity. */
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatSize(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
 export function TechnicalInfoPanel({ item }: { item: MediaItemDetail }) {
   if (item.itemType === "folder") return null;
 
@@ -13,12 +28,23 @@ export function TechnicalInfoPanel({ item }: { item: MediaItemDetail }) {
     const meta = (item.extraMetadata ?? {}) as VideoMetadata;
     if (meta.width && meta.height) rows.push(["Resolution", `${meta.width}×${meta.height}`]);
     if (meta.codec) rows.push(["Codec", meta.codec]);
-    if (meta.containerFormat) rows.push(["Container", meta.containerFormat]);
+    if (item.fileSizeBytes) rows.push(["Size", formatSize(item.fileSizeBytes)]);
+    // Two genuinely different dates, so both are labelled rather than one
+    // generic "Date": when the file itself was last written, versus when this
+    // library first saw it. A re-scan never changes the former.
+    if (item.fileModifiedAt) rows.push(["File date", formatDate(item.fileModifiedAt)]);
+    rows.push(["Added", formatDate(item.createdAt)]);
+    if (item.playCount > 0) {
+      rows.push(["Plays", item.playCount === 1 ? "1 time" : `${item.playCount} times`]);
+    }
+    if (item.watchedAt) rows.push(["Finished", formatDate(item.watchedAt)]);
   } else {
     const meta = (item.extraMetadata ?? {}) as PhotoMetadata;
     if (meta.cameraModel) rows.push(["Camera", meta.cameraModel]);
     if (meta.gps) rows.push(["Location", formatCoords(meta.gps)]);
     if (item.takenAt) rows.push(["Taken", new Date(item.takenAt).toLocaleString()]);
+    if (item.fileSizeBytes) rows.push(["Size", formatSize(item.fileSizeBytes)]);
+    rows.push(["Added", formatDate(item.createdAt)]);
   }
 
   if (rows.length === 0) return null;

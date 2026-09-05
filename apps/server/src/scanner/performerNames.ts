@@ -45,6 +45,65 @@ export function performerNameFromPath(rootPath: string, filePath: string): strin
   return top;
 }
 
+/** What a filename following the declared convention says about its video. */
+export type DeclaredName = {
+  studio: string | null;
+  performerNames: string[];
+  title: string;
+};
+
+/**
+ * Parses the declared naming convention:
+ *
+ *     [Studio] Performer 1, Performer 2 - Video title.ext
+ *
+ * A **leading** `[` is the opt-in signal, which is what makes this safe to add
+ * to an existing library: a filename that doesn't start with one is left
+ * entirely to the folder-derived path, so nothing already on disk changes
+ * meaning. (Verified against the library at the time of writing: none of its
+ * 37 filenames began with a bracket.)
+ *
+ * Because the brackets and commas are typed deliberately, the names inside are
+ * a statement rather than a guess — so they're taken literally and created on
+ * sight. That's the whole reason for a convention: the alternative, sniffing
+ * co-performers out of arbitrary filenames, needs Title-Case heuristics that
+ * eventually invent a performer out of some stray phrase.
+ *
+ * Returns null when the convention doesn't apply, never a partial result — a
+ * half-applied parse would be harder to predict than no parse at all.
+ */
+export function parseDeclaredName(filePath: string): DeclaredName | null {
+  const base = (filePath.split("/").pop() ?? filePath).replace(/\.[^./]+$/, "");
+  if (!base.startsWith("[")) return null;
+
+  const close = base.indexOf("]");
+  if (close === -1) return null;
+
+  const studio = normalizeName(base.slice(1, close));
+  const rest = base.slice(close + 1);
+
+  // Split on the FIRST " - " only: titles legitimately contain dashes
+  // ("Girls - Girls - Girls"), and everything after the first one is title.
+  const separator = rest.indexOf(" - ");
+  const namePart = separator === -1 ? rest : rest.slice(0, separator);
+  const titlePart = separator === -1 ? rest : rest.slice(separator + 3);
+
+  const performerNames = namePart
+    .split(",")
+    .map(normalizeName)
+    .filter((name) => name.length >= 2)
+    // A bare resolution or year in the performer slot is a naming slip, not a
+    // person. Cheap to ignore, and it keeps one typo from creating "1080p".
+    .filter((name) => !/^\d{3,4}p?$/i.test(name));
+
+  return {
+    // `[]` is a legitimate way to say "no studio" while still opting in.
+    studio: studio && !/^\d{3,4}p?$/i.test(studio) ? studio : null,
+    performerNames,
+    title: normalizeName(titlePart) || normalizeName(namePart),
+  };
+}
+
 /**
  * Flattens a string for loose comparison: separators become spaces and
  * diacritics are stripped, so "Dani.Daniels-2019_HD" becomes
@@ -73,6 +132,33 @@ export function hasWordBoundaryMatch(haystack: string, needle: string): boolean 
   // Names legitimately contain regex metacharacters — "Anna (UK)", "A+".
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(haystack);
+}
+
+/**
+ * The studio implied by a file's location: the second path segment, when a
+ * file is nested one level deeper than the performer folder.
+ *
+ *     <root>/<Performer>/<Studio>/file.mp4
+ *
+ * Same guards as the performer equivalent, and for the same reasons: a
+ * bookkeeping directory or a bare year is a fact about the filing, not a
+ * studio. Returns null at any other depth, so a file sitting directly in a
+ * performer folder is unaffected.
+ */
+export function studioNameFromPath(rootPath: string, filePath: string): string | null {
+  const relative = path.relative(rootPath, filePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+
+  const segments = relative.split(/[\\/]/);
+  // 3 segments is <Performer>/<Studio>/<file> — fewer means no studio folder.
+  if (segments.length < 3) return null;
+
+  const studio = normalizeName(segments[1]);
+  if (!studio) return null;
+  if (IGNORED_SEGMENT_PREFIXES.some((prefix) => studio.startsWith(prefix))) return null;
+  if (/^\d{4}$/.test(studio)) return null;
+
+  return studio;
 }
 
 /**

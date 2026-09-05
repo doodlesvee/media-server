@@ -75,6 +75,9 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
         name: performers.name,
         hasImage: sql<boolean>`(${performers.imageFile} is not null)`,
         hasBanner: sql<boolean>`(${performers.bannerFile} is not null)`,
+        imagePositionX: performers.imagePositionX,
+        imagePositionY: performers.imagePositionY,
+        imageScale: performers.imageScale,
         // count(<column>) rather than count(*): on a LEFT JOIN with no match,
         // count(*) counts the NULL-padded row and reports 1.
         videoCount: sql<number>`count(${mediaItems.id})::int`,
@@ -90,6 +93,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
         mediaItems,
         and(
           eq(mediaItems.id, mediaItemPerformers.mediaItemId),
+          eq(mediaItems.inScope, true),
           isNull(mediaItems.missingSince),
           inArray(mediaItems.itemTypeId, videoTypeIds)
         )
@@ -127,6 +131,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
         mediaItems,
         and(
           eq(mediaItems.id, mediaItemPerformers.mediaItemId),
+          eq(mediaItems.inScope, true),
           isNull(mediaItems.missingSince),
           inArray(mediaItems.itemTypeId, videoTypeIds)
         )
@@ -142,6 +147,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
         mediaItems,
         and(
           eq(mediaItems.id, mediaItemPerformers.mediaItemId),
+          eq(mediaItems.inScope, true),
           isNull(mediaItems.missingSince),
           inArray(mediaItems.itemTypeId, videoTypeIds)
         )
@@ -156,6 +162,9 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       hasImage: performer.imageFile !== null,
       hasBanner: performer.bannerFile !== null,
       bannerPositionY: performer.bannerPositionY,
+      imagePositionX: performer.imagePositionX,
+      imagePositionY: performer.imagePositionY,
+      imageScale: performer.imageScale,
       videoCount: totals?.videoCount ?? 0,
       totalDurationSeconds: totals?.totalDurationSeconds ?? 0,
       representativeItemId: recentItems[0]?.id ?? null,
@@ -312,20 +321,38 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  app.patch<{ Params: { id: string }; Body: { name?: string; bannerPositionY?: number } }>(
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      name?: string;
+      bannerPositionY?: number;
+      imagePositionX?: number;
+      imagePositionY?: number;
+      imageScale?: number;
+    };
+  }>(
     "/api/performers/:id",
     async (request, reply) => {
       const id = Number(request.params.id);
-      const { bannerPositionY } = request.body;
+      const { bannerPositionY, imagePositionX, imagePositionY, imageScale } = request.body;
 
-      // Position-only update: the drag control saves through here, and must
+      // Framing-only update: the drag controls save through here, and must
       // not require re-sending the name.
-      if (request.body.name === undefined && bannerPositionY !== undefined) {
+      const framing: Partial<typeof performers.$inferInsert> = {};
+      // Clamped rather than rejected — a value outside range is a client
+      // rounding artefact, not something worth failing a save over.
+      const clamp = (v: number, lo: number, hi: number) =>
+        Math.max(lo, Math.min(hi, Math.round(Number(v) || lo)));
+      if (bannerPositionY !== undefined) framing.bannerPositionY = clamp(bannerPositionY, 0, 100);
+      if (imagePositionX !== undefined) framing.imagePositionX = clamp(imagePositionX, 0, 100);
+      if (imagePositionY !== undefined) framing.imagePositionY = clamp(imagePositionY, 0, 100);
+      // Floor of 100: below it the portrait stops covering its tile.
+      if (imageScale !== undefined) framing.imageScale = clamp(imageScale, 100, 300);
+
+      if (request.body.name === undefined && Object.keys(framing).length > 0) {
         const updated = await db
           .update(performers)
-          // Clamped rather than rejected — a value outside 0-100 is a client
-          // rounding artefact, not something worth failing a save over.
-          .set({ bannerPositionY: Math.max(0, Math.min(100, Math.round(bannerPositionY))) })
+          .set(framing)
           .where(eq(performers.id, id))
           .returning();
         if (updated.length === 0) {

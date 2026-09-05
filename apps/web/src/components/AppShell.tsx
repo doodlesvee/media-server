@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { AppFooter } from "./AppFooter";
-import { RescanButton } from "./RescanButton";
 import { Sidebar } from "./Sidebar";
 import { UserMenu } from "./UserMenu";
 
@@ -31,7 +30,7 @@ function SearchBar({ initialValue = "" }: { initialValue?: string }) {
         e.preventDefault();
         void navigate({ to: "/browse", search: { q: value.trim() || undefined } });
       }}
-      className="relative w-full max-w-sm"
+      className="relative w-full"
     >
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <input
@@ -58,6 +57,9 @@ export function AppShell({
   actions?: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  // Keying the main region on the path re-runs its entry animation on every
+  // navigation, so pages fade in rather than snapping into place.
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   useEffect(() => {
     try {
@@ -72,11 +74,13 @@ export function AppShell({
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border bg-background/85 px-6 py-3 backdrop-blur-md">
+        {/* Three columns with equal 1fr sides, so the search sits on the
+            header's true centre rather than wherever the actions leave it. */}
+        <header className="sticky top-0 z-30 grid grid-cols-[1fr_minmax(0,28rem)_1fr] items-center gap-4 border-b border-border bg-background/85 px-6 py-3 backdrop-blur-md">
+          <div />
           <SearchBar initialValue={searchValue} />
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center gap-3 justify-self-end">
             {actions}
-            <RescanButton />
             <UserMenu />
           </div>
         </header>
@@ -88,7 +92,9 @@ export function AppShell({
           </div>
         )}
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main key={pathname} className="min-w-0 flex-1 animate-fade-in">
+          {children}
+        </main>
 
         <AppFooter />
       </div>

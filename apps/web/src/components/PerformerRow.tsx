@@ -22,7 +22,9 @@ export function PerformerRow() {
   // here, so the row filters them out rather than the endpoint.
   const performers = (data?.performers ?? [])
     .filter((p) => p.videoCount > 0)
-    .sort((a, b) => b.videoCount - a.videoCount || a.name.localeCompare(b.name));
+    // Alphabetical here too, matching the Performers page — the same list in
+    // two orders on two screens is worse than either order on its own.
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   return (
     <ScrollRow title="Performers" itemCount={performers.length}>

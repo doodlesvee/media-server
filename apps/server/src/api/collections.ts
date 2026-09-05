@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { compileSmartRule, type SmartRule } from "../collections/ruleCompiler.js";
 import { db } from "../db/client.js";
@@ -59,7 +59,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>("/api/collections/:id", async (request, reply) => {
     const id = Number(request.params.id);
-    await db.delete(collectionItems).where(eq(collectionItems.collectionId, id));
+    await db.delete(collectionItems).where(and(eq(collectionItems.collectionId, id), eq(mediaItems.inScope, true)));
     const deleted = await db.delete(collections).where(eq(collections.id, id)).returning();
     if (deleted.length === 0) {
       reply.code(404);
@@ -85,22 +85,39 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         .from(mediaItems)
         .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id));
 
+      // Both branches must sort before they page: an unordered LIMIT/OFFSET
+      // lets Postgres return rows in a different order per call, which shows
+      // up as items duplicated on one page and missing from the next. The id
+      // breaks ties between rows created in the same scan instant.
+      const order = [desc(mediaItems.createdAt), desc(mediaItems.id)];
+
+      // One row past the page size, so "is there more?" needs no COUNT(*).
       let rows;
       if (collection.type === "manual") {
         rows = await baseQuery
           .innerJoin(collectionItems, eq(collectionItems.mediaItemId, mediaItems.id))
-          .where(eq(collectionItems.collectionId, id))
-          .limit(PAGE_SIZE)
+          .where(and(eq(collectionItems.collectionId, id), eq(mediaItems.inScope, true)))
+          .orderBy(...order)
+          .limit(PAGE_SIZE + 1)
           .offset((pageNum - 1) * PAGE_SIZE);
       } else {
         const rule = collection.smartRule as SmartRule;
         rows = await baseQuery
-          .where(compileSmartRule(rule))
-          .limit(PAGE_SIZE)
+          .where(and(compileSmartRule(rule), eq(mediaItems.inScope, true)))
+          .orderBy(...order)
+          .limit(PAGE_SIZE + 1)
           .offset((pageNum - 1) * PAGE_SIZE);
       }
 
-      return { items: rows.map(withPlaybackWarning), page: pageNum, pageSize: PAGE_SIZE };
+      const hasMore = rows.length > PAGE_SIZE;
+      const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+
+      return {
+        items: pageRows.map(withPlaybackWarning),
+        page: pageNum,
+        pageSize: PAGE_SIZE,
+        hasMore,
+      };
     }
   );
 

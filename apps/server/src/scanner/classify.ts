@@ -1,3 +1,5 @@
+import { parseDeclaredName } from "./performerNames.js";
+
 export type MediaKind = "video" | "photo";
 
 const VIDEO_MIME_TYPES: Record<string, string> = {
@@ -52,6 +54,12 @@ export function mimeTypeFor(filePath: string): string {
 }
 
 export function titleFromFilename(filePath: string): string {
+  // A filename following the declared convention already says where its title
+  // starts, so use that rather than scrubbing the whole string — otherwise the
+  // studio and the cast end up in the title.
+  const declared = parseDeclaredName(filePath);
+  if (declared?.title) return declared.title;
+
   const base = filePath.split("/").pop() ?? filePath;
   const withoutExt = base.replace(/\.[^./]+$/, "");
   return withoutExt.replace(/[_-]+/g, " ").trim();

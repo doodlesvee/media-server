@@ -1,0 +1,1 @@
+ALTER TABLE "categories" ADD COLUMN "cover_position_x" integer DEFAULT 50 NOT NULL;

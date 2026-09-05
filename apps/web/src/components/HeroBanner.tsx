@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Info, Play } from "lucide-react";
 import { useAccentColor } from "@/lib/dominantColor";
-import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
 
@@ -28,13 +28,24 @@ function resolutionBadge(item: MediaCardItem): string | null {
 
 function HeroSlide({
   item,
+  hovering,
   onPlay,
   onMoreInfo,
 }: {
   item: MediaCardItem;
+  hovering: boolean;
   onPlay: (id: number) => void;
   onMoreInfo: (id: number) => void;
 }) {
+  // The clip only mounts on hover, so a page load never downloads five of
+  // them — and the still-to-motion swap is something you asked for rather
+  // than something that happens at you, which is what made autoplay here
+  // feel wrong every time.
+  const [clipReady, setClipReady] = useState(false);
+  useEffect(() => {
+    if (!hovering) setClipReady(false);
+  }, [hovering]);
+
   const imageSrc = thumbnailUrl(item);
   // Each slide takes its palette from its own artwork, so the accent always
   // belongs to the picture rather than being a brand colour laid over it.
@@ -46,7 +57,29 @@ function HeroSlide({
     <>
       {/* The item's thumbnail — your uploaded image when there is one, the
           generated poster otherwise. */}
-      <img src={imageSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <img
+        src={imageSrc}
+        alt=""
+        style={framingStyle(item)}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+
+      {hovering && item.itemType === "video" && (
+        // eslint-disable-next-line jsx-a11y/media-has-caption -- silent ambient preview
+        <video
+          src={`/api/media-items/${item.id}/preview`}
+          onCanPlay={() => setClipReady(true)}
+          muted
+          loop
+          autoPlay
+          playsInline
+          preload="auto"
+          // Fades in only once it can actually play, so the image never blinks
+          // to black while the clip buffers.
+          style={{ opacity: clipReady ? 1 : 0 }}
+          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+        />
+      )}
 
       {/* Scrims, kept light: enough contrast for the title and buttons
           without burying the picture the way the old full-height one did. */}
@@ -153,14 +186,19 @@ export function HeroBanner({
   onMoreInfo: (id: number) => void;
 }) {
   const [index, setIndex] = useState(0);
+  const [hovering, setHovering] = useState(false);
 
   // Keyed on `index` so the countdown restarts after a manual jump too —
   // otherwise clicking an arrow mid-cycle could auto-advance a moment later.
   useEffect(() => {
     if (items.length < 2) return;
+    // Rotation pauses while you're hovering: being yanked to the next item
+    // part-way through a preview you deliberately started is worse than the
+    // carousel simply waiting.
+    if (hovering) return;
     const timer = setTimeout(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearTimeout(timer);
-  }, [index, items.length]);
+  }, [index, items.length, hovering]);
 
   function go(direction: 1 | -1) {
     setIndex((i) => (i + direction + items.length) % items.length);
@@ -171,10 +209,20 @@ export function HeroBanner({
   const item = items[index];
 
   return (
-    <section className="relative h-[78vh] min-h-[560px] w-full overflow-hidden">
+    <section
+      className="relative h-[70vh] min-h-[500px] w-full overflow-hidden"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
       {/* Only the current item is rendered — no sliding track, so switching
           featured items is a straight swap. */}
-      <HeroSlide key={item.id} item={item} onPlay={onPlay} onMoreInfo={onMoreInfo} />
+      <HeroSlide
+        key={item.id}
+        item={item}
+        hovering={hovering}
+        onPlay={onPlay}
+        onMoreInfo={onMoreInfo}
+      />
 
       {items.length > 1 && (
         <>

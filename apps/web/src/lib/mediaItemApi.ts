@@ -1,3 +1,4 @@
+import type React from "react";
 export type Tag = { id: number; name: string; color: string | null };
 export type Performer = { id: number; name: string };
 export type Folder = { id: number; title: string; parentId: number | null };
@@ -21,7 +22,12 @@ export type MediaItemDetail = {
   description: string | null;
   performers: Performer[];
   isFavorite: boolean;
+  kind: "video" | "movie" | "series";
   thumbnailFile: string | null;
+  /** How the thumbnail is framed wherever it's shown. Display only. */
+  thumbnailPositionX: number;
+  thumbnailPositionY: number;
+  thumbnailScale: number;
   studio: string | null;
   studioSource: "scanner" | "user";
   performersSource: "scanner" | "user";
@@ -33,6 +39,13 @@ export type MediaItemDetail = {
   createdAt: string;
   extraMetadata: VideoMetadata | PhotoMetadata | null;
   lastPositionSeconds: number;
+  /** Whether it's been played to the end (or marked watched by hand). */
+  watched: boolean;
+  watchedAt: string | null;
+  playCount: number;
+  /** Detail responses only — the source file's own dates and size. */
+  fileModifiedAt?: string | null;
+  fileSizeBytes?: number | null;
 };
 
 /**
@@ -63,6 +76,35 @@ export async function resetThumbnail(id: number): Promise<void> {
   if (!res.ok) throw new Error(`Failed to reset thumbnail: ${res.status}`);
 }
 
+/**
+ * Inline style applying an item's chosen thumbnail framing.
+ *
+ * Every surface that shows a thumbnail uses this — tile, hero, hover card,
+ * modal backdrop — so one framing decision holds everywhere the image
+ * appears, rather than each place cropping it its own way.
+ *
+ * Returns undefined when the framing is untouched, so React doesn't attach a
+ * style attribute to hundreds of grid images that don't need one.
+ */
+export function framingStyle(item: {
+  thumbnailPositionX?: number;
+  thumbnailPositionY?: number;
+  thumbnailScale?: number;
+}): React.CSSProperties | undefined {
+  const x = item.thumbnailPositionX ?? 50;
+  const y = item.thumbnailPositionY ?? 50;
+  const scale = item.thumbnailScale ?? 100;
+  if (x === 50 && y === 50 && scale === 100) return undefined;
+
+  return {
+    objectPosition: `${x}% ${y}%`,
+    transform: `scale(${scale / 100})`,
+    // Same anchor as the position, so zooming reveals the side the crop is
+    // already showing instead of pulling away from it.
+    transformOrigin: `${x}% ${y}%`,
+  };
+}
+
 export async function fetchItem(id: number): Promise<MediaItemDetail> {
   const res = await fetch(`/api/media-items/${id}`);
   if (!res.ok) throw new Error(`Failed to load item: ${res.status}`);
@@ -75,7 +117,11 @@ export async function updateItem(
     title?: string;
     description?: string | null;
     isFavorite?: boolean;
+    kind?: string;
     studio?: string | null;
+    thumbnailPositionX?: number;
+    thumbnailPositionY?: number;
+    thumbnailScale?: number;
   }
 ) {
   const res = await fetch(`/api/media-items/${id}`, {
@@ -132,4 +178,20 @@ export async function savePlaybackPosition(id: number, positionSeconds: number):
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ positionSeconds }),
   });
+}
+
+/**
+ * Marks an item watched or unwatched.
+ *
+ * Deliberately not folded into `savePlaybackPosition`: that fires every few
+ * seconds during playback, and incrementing a play count there would count a
+ * single viewing dozens of times.
+ */
+export async function setWatched(id: number, watched: boolean): Promise<void> {
+  const res = await fetch(`/api/media-items/${id}/watched`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ watched }),
+  });
+  if (!res.ok) throw new Error(`Failed to update watched state: ${res.status}`);
 }

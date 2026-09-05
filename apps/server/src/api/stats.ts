@@ -9,6 +9,7 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
       .select({ type: mediaItemTypes.name, total: count() })
       .from(mediaItems)
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .where(eq(mediaItems.inScope, true))
       .groupBy(mediaItemTypes.name);
 
     const [{ total: tagCount }] = await db.select({ total: count() }).from(tags);

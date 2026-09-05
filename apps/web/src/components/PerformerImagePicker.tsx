@@ -19,11 +19,19 @@ export function PerformerImagePicker({
   kind,
   hasImage,
   className,
+  onUploaded,
 }: {
   performerId: number;
   kind: PerformerImageKind;
   hasImage: boolean;
   className?: string;
+  /**
+   * Fired after a successful upload, so the caller can drop straight into
+   * framing. A freshly uploaded picture is exactly when you know how you want
+   * it cropped — making that a separate button you have to remember later is
+   * how images end up badly framed forever.
+   */
+  onUploaded?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +47,7 @@ export function PerformerImagePicker({
     onSuccess: () => {
       setError(null);
       invalidate();
+      onUploaded?.();
     },
     onError: (err: Error) => setError(err.message),
   });

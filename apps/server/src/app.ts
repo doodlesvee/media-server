@@ -7,8 +7,11 @@ import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import { backupRoutes } from "./api/backups.js";
+import { categoryRoutes } from "./api/categories.js";
 import { collectionRoutes } from "./api/collections.js";
 import { folderRoutes } from "./api/folders.js";
+import { libraryRoutes } from "./api/library.js";
 import { mediaItemRoutes } from "./api/mediaItems.js";
 import { mediaRoutes } from "./api/media.js";
 import { playbackRoutes } from "./api/playback.js";
@@ -20,15 +23,18 @@ import { tagRoutes } from "./api/tags.js";
 import { authRoutes } from "./api/auth.js";
 import { registerAuthGuard } from "./auth/guard.js";
 import { purgeExpiredSessions } from "./auth/sessions.js";
+import { startScanSchedule } from "./scanner/schedule.js";
 import { checkDbConnection, runMigrations } from "./db/client.js";
 import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
-import { seed } from "./db/seed.js";
+import { seed, seedCategories } from "./db/seed.js";
 
 const app = Fastify({ logger: true });
 
 await runMigrations();
 await seed();
+await seedCategories();
 await purgeExpiredSessions();
+await startScanSchedule();
 
 await app.register(cookie);
 
@@ -88,6 +94,9 @@ await app.register(folderRoutes);
 await app.register(playbackRoutes);
 await app.register(statsRoutes);
 await app.register(settingsRoutes);
+await app.register(libraryRoutes);
+await app.register(backupRoutes);
+await app.register(categoryRoutes);
 
 // In the production Docker image the built frontend is copied to ../web-dist
 // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

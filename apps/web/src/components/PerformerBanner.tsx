@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Move, X } from "lucide-react";
 import { saveBannerPosition } from "@/lib/performerApi";
+import { framingAfterDrag } from "@/lib/reposition";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,12 +22,20 @@ export function PerformerBanner({
   src,
   positionY,
   canReposition,
+  editRequest = 0,
   children,
 }: {
   performerId: number;
   src: string | null;
   positionY: number;
   canReposition: boolean;
+  /**
+   * Bump to open repositioning from outside — the upload control lives in
+   * `children`, so it can't reach this component's own editing state.
+   * A counter rather than a boolean: two uploads in a row must both open the
+   * editor, and a boolean that's already true wouldn't fire again.
+   */
+  editRequest?: number;
   children?: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -39,6 +48,9 @@ export function PerformerBanner({
   const queryClient = useQueryClient();
 
   useEffect(() => setDraft(positionY), [positionY]);
+  useEffect(() => {
+    if (editRequest > 0) setEditing(true);
+  }, [editRequest]);
 
   const save = useMutation({
     mutationFn: (value: number) => saveBannerPosition(performerId, value),
@@ -57,17 +69,22 @@ export function PerformerBanner({
       const image = imageRef.current;
       if (!state || !container || !image || !image.naturalWidth) return;
 
-      // How much taller the covering image is than its frame — that overflow
-      // is the entire range object-position can travel through. Deriving it
-      // from the real dimensions is what makes a drag track the cursor
-      // one-to-one instead of drifting at some arbitrary sensitivity.
-      const scaledHeight = (container.clientWidth * image.naturalHeight) / image.naturalWidth;
-      const overflow = scaledHeight - container.clientHeight;
-      if (overflow <= 0) return; // nothing hidden, nothing to reposition
-
-      const deltaPercent = ((event.clientY - state.startY) / overflow) * 100;
-      // Dragging down should reveal what's above, hence the subtraction.
-      setDraft(Math.max(0, Math.min(100, state.startPosition - deltaPercent)));
+      // Vertical only, and no zoom: the banner is full-bleed, so a cover fit
+      // always overflows downward and never sideways. Passing 0 for the
+      // horizontal delta means the shared helper leaves that axis alone.
+      const next = framingAfterDrag(
+        {
+          containerWidth: container.clientWidth,
+          containerHeight: container.clientHeight,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          zoom: 1,
+        },
+        { x: 50, y: state.startPosition },
+        0,
+        event.clientY - state.startY
+      );
+      setDraft(next.y);
     }
 
     function endDrag() {

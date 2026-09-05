@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -11,12 +12,15 @@ import { cn } from "@/lib/utils";
 export function PerformerAvatar({
   name,
   src,
+  framing,
   className,
   fallbackClassName,
 }: {
   name: string;
   /** Resolve with performerPortraitUrl so every caller agrees on the image. */
   src: string | null | undefined;
+  /** Portrait framing from the performer record, if the caller has it. */
+  framing?: React.CSSProperties;
   className?: string;
   fallbackClassName?: string;
 }) {
@@ -35,9 +39,11 @@ export function PerformerAvatar({
           src={src}
           alt=""
           onError={() => setImageFailed(true)}
-          // Posters are 16:9 and this frame is square, so the sides crop away;
-          // object-top keeps faces in frame more often than centring does.
-          className="h-full w-full object-cover object-top"
+          // Posters are 16:9 and this frame is square, so the sides crop away.
+          // The framing defaults to top-aligned for the same reason the class
+          // used to hardcode `object-top`: faces are usually up there.
+          style={framing}
+          className="h-full w-full object-cover"
         />
       ) : (
         <div

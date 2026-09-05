@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Check, Play, Plus } from "lucide-react";
 import { addToMyList } from "@/lib/myList";
-import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
 
@@ -145,10 +145,11 @@ export function HoverPreviewCard({
         // The thumbnail sits underneath rather than using the video's own
         // `poster`: fading the video in means opacity 0, which would hide a
         // poster attribute too and leave a blank panel.
-        <div className="relative aspect-video w-full cursor-pointer">
+        <div className="relative aspect-video w-full cursor-pointer overflow-hidden">
           <img
             src={thumbnailUrl(item)}
             alt=""
+            style={framingStyle(item)}
             className="absolute inset-0 h-full w-full object-cover"
           />
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- silent hover preview */}
@@ -170,7 +171,8 @@ export function HoverPreviewCard({
         <img
           src={thumbnailUrl(item)}
           alt=""
-          className="aspect-video w-full cursor-pointer object-cover"
+          style={framingStyle(item)}
+          className="aspect-video w-full cursor-pointer overflow-hidden object-cover"
         />
       )}
 

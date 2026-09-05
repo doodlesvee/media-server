@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { savePerformers, type Performer } from "@/lib/mediaItemApi";
-import { performerPortraitUrl } from "@/lib/performerApi";
+import { performerPortraitUrl, portraitStyle } from "@/lib/performerApi";
 import { PerformerAvatar } from "./PerformerAvatar";
 import type { PerformerSummary } from "./PerformerCard";
 
@@ -27,6 +28,7 @@ export function PerformerEditor({
   const [pending, setPending] = useState<string[]>(performers.map((p) => p.name));
   const [input, setInput] = useState("");
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   useEffect(() => {
     setPending(performers.map((p) => p.name));
@@ -70,38 +72,54 @@ export function PerformerEditor({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        {pending.map((name) => (
-          <div
-            key={name}
-            className="group flex max-w-full items-center gap-2 rounded-full bg-secondary/60 py-1 pl-1 pr-3"
-          >
-            <PerformerAvatar
-              name={name}
-              // A name you've just typed has no performer record yet, so it
-              // shows an initial until saved.
-              src={(() => {
-                const summary = summaryByName.get(name.toLowerCase());
-                return summary ? performerPortraitUrl(summary) : null;
-              })()}
-              className="size-9 shrink-0"
-              fallbackClassName="text-sm"
-            />
-            <span className="truncate text-xs font-medium" title={name}>
-              {name}
-            </span>
-            {!readOnly && (
+      <div className="flex flex-wrap items-start gap-4">
+        {pending.map((name) => {
+          const summary = summaryByName.get(name.toLowerCase());
+          return (
+            <div key={name} className="group relative w-20">
               <button
                 type="button"
-                onClick={() => setPending(pending.filter((n) => n !== name))}
-                aria-label={`Remove performer ${name}`}
-                className="shrink-0 rounded-full p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                // A name you've only just typed has no performer record yet,
+                // so there's nowhere to navigate to until it's saved.
+                onClick={() =>
+                  summary &&
+                  void navigate({
+                    to: "/performer/$performerId",
+                    params: { performerId: String(summary.id) },
+                  })
+                }
+                disabled={!summary}
+                title={summary ? `See ${name}` : name}
+                className="block w-full focus-visible:outline-none disabled:cursor-default"
               >
-                <X className="size-3.5" />
+                <PerformerAvatar
+                  name={name}
+                  src={summary ? performerPortraitUrl(summary) : null}
+                  framing={summary ? portraitStyle(summary) : undefined}
+                  className="aspect-square w-20 transition-all duration-200 group-hover:ring-2 group-hover:ring-white/50"
+                  fallbackClassName="text-xl"
+                />
+                <span
+                  className="mt-1.5 block truncate text-center text-[11px] font-medium leading-tight"
+                  title={name}
+                >
+                  {name}
+                </span>
               </button>
-            )}
-          </div>
-        ))}
+
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setPending(pending.filter((n) => n !== name))}
+                  aria-label={`Remove performer ${name}`}
+                  className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-black/80 text-white opacity-0 ring-1 ring-white/30 transition-opacity hover:bg-black focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <X className="size-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
 
         {pending.length === 0 && !readOnly && (
           <span className="text-xs text-muted-foreground">No performers yet</span>

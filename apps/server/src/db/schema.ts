@@ -65,6 +65,22 @@ export const mediaItems = pgTable("media_items", {
   // Null means "use the generated poster". The random suffix in the name is
   // what lets the served URL change when you replace the image.
   thumbnailFile: text("thumbnail_file"),
+  // How the thumbnail is framed wherever it's shown — tile, hero, hover card.
+  // Display only: the image file is never cropped, so re-framing costs no
+  // quality and stays adjustable. Same shape as `categories.cover_*`.
+  thumbnailPositionX: integer("thumbnail_position_x").notNull().default(50),
+  thumbnailPositionY: integer("thumbnail_position_y").notNull().default(50),
+  thumbnailScale: integer("thumbnail_scale").notNull().default(100),
+  // False when the item's file sits in a folder you've removed from the scan
+  // list. Distinct from missingSince, which means the file vanished from a
+  // folder still being watched — different causes, different fixes. Rows are
+  // hidden rather than deleted so re-adding the folder restores everything.
+  inScope: boolean("in_scope").notNull().default(true),
+  // What kind of thing this is, as opposed to itemTypeId which is the media
+  // type (video/photo/folder). Everything scanned starts as a plain "video";
+  // "movie" and "series" are set by hand, since nothing in a filename can
+  // reliably tell them apart.
+  kind: text("kind").notNull().default("video"),
   durationSeconds: integer("duration_seconds"),
   takenAt: timestamp("taken_at"),
   extraMetadata: jsonb("extra_metadata"),
@@ -83,6 +99,10 @@ export const mediaFiles = pgTable("media_files", {
   mtime: timestamp("mtime").notNull(),
   contentHash: text("content_hash"),
   mimeType: text("mime_type"),
+  // Which configured folder this file came from. Null once that folder is
+  // removed. Replaces matching on a path prefix, which needed a LIKE pattern
+  // built from a user-chosen path — unsafe when a folder name contains _ or %.
+  rootId: integer("root_id").references((): AnyPgColumn => libraryRoots.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -128,6 +148,13 @@ export const performers = pgTable(
     // a random suffix so replacing an image changes the URL and defeats the
     // browser cache without any invalidation logic.
     imageFile: text("image_file"),
+    // Framing for the portrait, the same shape as categories and thumbnails.
+    // Defaults centre horizontally and sit near the top, matching the
+    // `object-top` the cards hardcoded before this was adjustable — faces are
+    // usually up there, so it's a better default than dead centre.
+    imagePositionX: integer("image_position_x").notNull().default(50),
+    imagePositionY: integer("image_position_y").notNull().default(0),
+    imageScale: integer("image_scale").notNull().default(100),
     bannerFile: text("banner_file"),
     // Which horizontal band of the banner image is visible, as a percentage
     // for CSS object-position. The image is stored uncropped so this stays
@@ -194,6 +221,28 @@ export const collectionItems = pgTable(
 
 // Generic key/value so a new setting is a new key rather than a migration.
 // Values are jsonb because settings are shaped objects, not scalars.
+// Home-page categories. Data rather than a constant, so they can be added,
+// renamed, reordered and removed without a deploy. Items reference a category
+// by slug, so renaming a label never has to touch media_items.
+export const categories = pgTable("categories", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  label: text("label").notNull(),
+  position: integer("position").notNull().default(0),
+  coverFile: text("cover_file"),
+  // Which horizontal band of the cover the tile shows, as a percentage —
+  // the same display-only framing `performers.bannerPositionY` stores. The
+  // file is never cropped, so this stays adjustable forever and re-framing
+  // costs no image quality.
+  coverPositionX: integer("cover_position_x").notNull().default(50),
+  coverPositionY: integer("cover_position_y").notNull().default(50),
+  // Zoom as a percentage — 100 is the untouched `object-cover` fit. Stored
+  // alongside the position because the two together are the framing; neither
+  // touches the file.
+  coverScale: integer("cover_scale").notNull().default(100),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
@@ -234,5 +283,12 @@ export const playbackStates = pgTable("playback_states", {
     .unique()
     .references(() => mediaItems.id),
   positionSeconds: integer("position_seconds").notNull().default(0),
+  // Set once a video is played to the end (or marked watched by hand), and
+  // cleared when it's un-marked. A nullable timestamp rather than a boolean
+  // so "when did I finish this" is answerable later without another column.
+  completedAt: timestamp("completed_at"),
+  // Incremented on each completion. Cheap to keep, and it's the only signal
+  // the app would have for a "most played" view.
+  playCount: integer("play_count").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

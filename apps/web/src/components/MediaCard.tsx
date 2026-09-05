@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Circle, Film, Folder, Image as ImageIcon } from "lucide-react";
-import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 
@@ -12,6 +12,10 @@ export type MediaCardItem = {
   missingSince: string | null;
   lastPositionSeconds?: number;
   thumbnailFile?: string | null;
+  /** Framing chosen in the detail modal; defaults mean "untouched". */
+  thumbnailPositionX?: number;
+  thumbnailPositionY?: number;
+  thumbnailScale?: number;
   description?: string | null;
   tags?: { id: number; name: string }[];
   performers?: { id: number; name: string }[];
@@ -80,12 +84,26 @@ export function MediaCard({
     }
   }
 
+  /**
+   * Opening the detail modal must also tear down the hover card.
+   *
+   * The hover card only dismissed on its own mouseleave — but the modal
+   * covers it, so the pointer never leaves and it stayed sitting underneath.
+   * Both entry points (the tile, and the buttons on the expanded card) go
+   * through here.
+   */
+  function openItem(action: () => void) {
+    cancelHover();
+    setAnchorRect(null);
+    action();
+  }
+
   return (
     <>
       <button
         ref={cardRef}
         type="button"
-        onClick={onClick}
+        onClick={() => openItem(onClick)}
         onMouseEnter={handleMouseEnter}
         // The expanded card overlays this one, so only cancel a *pending*
         // hover here — dismissing the open card is its own mouseleave.
@@ -115,6 +133,7 @@ export function MediaCard({
           {showImage ? (
             <img
               src={thumbnailUrl(item)}
+              style={framingStyle(item)}
               alt=""
               onError={() => setThumbFailed(true)}
               className="h-full w-full object-cover"
@@ -160,8 +179,8 @@ export function MediaCard({
         <HoverPreviewCard
           item={item}
           anchorRect={anchorRect}
-          onOpen={onClick}
-          onPlay={onPlay ?? onClick}
+          onOpen={() => openItem(onClick)}
+          onPlay={() => openItem(onPlay ?? onClick)}
           onDismiss={() => setAnchorRect(null)}
         />
       )}

@@ -1,0 +1,1 @@
+ALTER TABLE "media_items" ADD COLUMN "kind" text DEFAULT 'video' NOT NULL;

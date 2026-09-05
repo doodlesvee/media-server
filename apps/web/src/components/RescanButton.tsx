@@ -58,7 +58,18 @@ export function RescanButton() {
   useEffect(() => {
     if (jobId === null || !job) return;
     if (job.status === "completed" || job.status === "failed") {
-      queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      // A scan can add items, reassign performers and studios, and change
+      // counts — invalidating only media-items left the rest stale.
+      for (const key of [
+        ["media-items"],
+        ["performers"],
+        ["studios"],
+        ["stats"],
+        ["hero-items"],
+        ["library-roots"],
+      ]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
       if (job.status === "failed") setLastError(job.error);
       setJobId(null);
     }

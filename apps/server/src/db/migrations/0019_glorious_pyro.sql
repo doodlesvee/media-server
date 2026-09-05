@@ -1,0 +1,1 @@
+ALTER TABLE "categories" ADD COLUMN "cover_scale" integer DEFAULT 100 NOT NULL;

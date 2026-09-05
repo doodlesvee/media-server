@@ -71,7 +71,7 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
-  const { tag, performer, collectionId, q } = routeApi.useSearch();
+  const { tag, performer, kind, collectionId, q } = routeApi.useSearch();
   const navigate = useNavigate();
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
 
@@ -84,6 +84,7 @@ export function BrowsePage() {
           type: "library",
           tag: tag ?? null,
           performer: performer ?? null,
+          kind: kind ?? null,
           q: q ?? null,
           parentId: currentParentId,
         };
@@ -97,16 +98,18 @@ export function BrowsePage() {
     ? `Tag: ${tag}`
     : performer
       ? `Performer: ${performer}`
-      : q
-        ? `Search: “${q}”`
-        : null;
+      : kind
+        ? kind.charAt(0).toUpperCase() + kind.slice(1) + "s"
+        : q
+          ? `Search: “${q}”`
+          : null;
 
   return (
     <AppShell searchValue={q ?? ""}>
       <div className="space-y-5 px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
-            {source.type === "library" && !tag && !performer && !q && (
+            {source.type === "library" && !tag && !performer && !kind && !q && (
               <div className="flex items-center gap-1 text-muted-foreground">
                 <button
                   type="button"
@@ -155,7 +158,7 @@ export function BrowsePage() {
             )}
           </div>
 
-          {source.type === "library" && !tag && !performer && !q && (
+          {source.type === "library" && !tag && !performer && !kind && !q && (
             <NewFolderButton parentId={currentParentId} />
           )}
         </div>

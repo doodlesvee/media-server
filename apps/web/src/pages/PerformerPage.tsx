@@ -1,10 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Move } from "lucide-react";
+import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
 import { getRouteApi } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { MediaGrid } from "@/components/MediaGrid";
 import { PerformerBanner } from "@/components/PerformerBanner";
 import { PerformerImagePicker } from "@/components/PerformerImagePicker";
-import { fetchPerformer, performerImageUrl, performerPortraitUrl } from "@/lib/performerApi";
+import {
+  fetchPerformer,
+  performerImageUrl,
+  performerPortraitUrl,
+  portraitStyle,
+  savePortraitFraming,
+} from "@/lib/performerApi";
 
 const routeApi = getRouteApi("/performer/$performerId");
 
@@ -18,6 +27,25 @@ function formatTotalDuration(seconds: number): string | null {
 export function PerformerPage() {
   const { performerId } = routeApi.useParams();
   const id = Number(performerId);
+  const [reframing, setReframing] = useState(false);
+  const [bannerEditRequest, setBannerEditRequest] = useState(0);
+  const queryClient = useQueryClient();
+
+  const saveFraming = useMutation({
+    mutationFn: (next: FramingValue) =>
+      savePortraitFraming(id, {
+        imagePositionX: next.x,
+        imagePositionY: next.y,
+        imageScale: next.scale,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["performer", id] });
+      // The cards on the performers page and the home row show the same
+      // portrait, so they have to repaint too.
+      queryClient.invalidateQueries({ queryKey: ["performers"] });
+      setReframing(false);
+    },
+  });
 
   const { data: performer, isError } = useQuery({
     queryKey: ["performer", id],
@@ -60,12 +88,14 @@ export function PerformerPage() {
           // regenerated from the poster, so a saved framing wouldn't stick to
           // anything.
           canReposition={Boolean(performer?.hasBanner)}
+          editRequest={bannerEditRequest}
         >
           {performer && (
             <PerformerImagePicker
               performerId={performer.id}
               kind="banner"
               hasImage={performer.hasBanner}
+              onUploaded={() => setBannerEditRequest((n) => n + 1)}
             />
           )}
         </PerformerBanner>
@@ -75,7 +105,12 @@ export function PerformerPage() {
           <div className="relative shrink-0">
             <div className="size-28 overflow-hidden rounded-full bg-secondary ring-4 ring-background sm:size-36">
               {avatarSrc ? (
-                <img src={avatarSrc} alt="" className="h-full w-full object-cover object-top" />
+                <img
+                  src={avatarSrc}
+                  alt=""
+                  style={performer ? portraitStyle(performer) : undefined}
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-4xl font-semibold text-muted-foreground">
                   {performer?.name.trim()[0]?.toUpperCase() ?? "?"}
@@ -102,11 +137,45 @@ export function PerformerPage() {
               </div>
             )}
             {performer && (
-              <PerformerImagePicker
-                performerId={performer.id}
-                kind="avatar"
-                hasImage={performer.hasImage}
-              />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <PerformerImagePicker
+                    performerId={performer.id}
+                    kind="avatar"
+                    hasImage={performer.hasImage}
+                    onUploaded={() => setReframing(true)}
+                  />
+                  {avatarSrc && !reframing && (
+                    <button
+                      type="button"
+                      onClick={() => setReframing(true)}
+                      className="flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/80"
+                    >
+                      <Move className="size-3.5" />
+                      Reposition
+                    </button>
+                  )}
+                </div>
+
+                {reframing && avatarSrc && (
+                  <FramingEditor
+                    src={avatarSrc}
+                    value={{
+                      x: performer.imagePositionX,
+                      y: performer.imagePositionY,
+                      scale: performer.imageScale,
+                    }}
+                    // The portrait's tallest frame is the 2:3 card on the
+                    // performers page; framing here matches what that shows.
+                    // The circular avatars crop further in from the same band.
+                    aspectClass="aspect-[2/3]"
+                    saving={saveFraming.isPending}
+                    onSave={(next) => saveFraming.mutate(next)}
+                    onCancel={() => setReframing(false)}
+                    note="Used on the performers page, the home row and the avatar in a video's details."
+                  />
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -119,6 +188,7 @@ export function PerformerPage() {
               type: "library",
               tag: null,
               performer: performer.name,
+              kind: null,
               q: null,
               parentId: null,
             }}

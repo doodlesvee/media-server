@@ -12,9 +12,12 @@ import { resetThumbnail, uploadThumbnail } from "@/lib/mediaItemApi";
 export function ThumbnailPicker({
   itemId,
   hasCustom,
+  onUploaded,
 }: {
   itemId: number;
   hasCustom: boolean;
+  /** Fired after a successful upload, so the caller can open framing. */
+  onUploaded?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +34,7 @@ export function ThumbnailPicker({
     onSuccess: () => {
       setError(null);
       invalidate();
+      onUploaded?.();
     },
     onError: (err: Error) => setError(err.message),
   });
