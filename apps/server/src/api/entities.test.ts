@@ -115,12 +115,17 @@ describe("performers", () => {
       // silently vanish from a grouped view.
       const alice = await makePerformer("Alice");
       const vixen = await makeStudio("Vixen");
+      const colette = await makeStudio("Colette");
       await linkPerformer(await makeItem(libraryId, { title: "A", studioId: vixen }), alice);
       await linkPerformer(await makeItem(libraryId, { title: "B", studioId: vixen }), alice);
-      await linkPerformer(await makeItem(libraryId, { title: "C" }), alice);
+      await linkPerformer(await makeItem(libraryId, { title: "C", studioId: colette }), alice);
+      await linkPerformer(await makeItem(libraryId, { title: "D" }), alice);
 
+      // Alphabetical, not by count — Colette has fewer videos but comes
+      // first. "No studio" is last, since it isn't a name.
       const body = (await get(`/api/performers/${alice}`)).json();
       expect(body.studios).toEqual([
+        { name: "Colette", count: 1 },
         { name: "Vixen", count: 2 },
         { name: null, count: 1 },
       ]);

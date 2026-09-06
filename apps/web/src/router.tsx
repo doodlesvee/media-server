@@ -1,5 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { AccountPage } from "@/pages/AccountPage";
+import { AlbumPage } from "@/pages/AlbumPage";
+import { AlbumsPage } from "@/pages/AlbumsPage";
 import { BrowsePage } from "@/pages/BrowsePage";
 import { HomePage } from "@/pages/HomePage";
 import { PerformerPage } from "@/pages/PerformerPage";
@@ -50,6 +52,20 @@ const performersRoute = createRoute({
   component: PerformersPage,
 });
 
+const albumsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/albums",
+  component: AlbumsPage,
+});
+
+const albumRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // Keyed by id, like performers: an album's title comes from its folder
+  // name, so renaming the folder would otherwise break every link to it.
+  path: "/album/$albumId",
+  component: AlbumPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -67,6 +83,8 @@ const routeTree = rootRoute.addChildren([
   browseRoute,
   performerRoute,
   performersRoute,
+  albumsRoute,
+  albumRoute,
   settingsRoute,
   accountRoute,
 ]);

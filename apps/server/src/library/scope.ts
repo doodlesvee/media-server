@@ -3,6 +3,7 @@ import path from "node:path";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
+  albums,
   libraryRoots,
   mediaFiles,
   mediaItemPerformers,
@@ -103,7 +104,11 @@ export async function clearScopeForRoot(rootId: number): Promise<void> {
  * ever hidden, never deleted, so this cleans the lists without touching
  * anything you authored.
  */
-export async function purgeEmptyEntities(): Promise<{ performers: number; studios: number }> {
+export async function purgeEmptyEntities(): Promise<{
+  performers: number;
+  studios: number;
+  albums: number;
+}> {
   // "No items at all", not "no *visible* items". Two reasons, and the first
   // is a hard crash: an item that is merely hidden still has its join row, so
   // deleting the performer violates the foreign key and fails the whole scan.
@@ -142,7 +147,30 @@ export async function purgeEmptyEntities(): Promise<{ performers: number; studio
     )
     .returning({ id: studios.id });
 
-  return { performers: deadPerformers.length, studios: deadStudios.length };
+  // Albums whose files are all gone. media_items.album_id still points at
+  // them, so those references have to be cleared first — deleting the parent
+  // while children reference it is the foreign-key error that has already
+  // broken this function once, and the collection delete separately.
+  const emptyAlbums = await db
+    .select({ id: albums.id })
+    .from(albums)
+    .where(
+      sql`not exists (
+        select 1 from ${mediaItems} mi where mi.album_id = ${albums.id}
+      )`
+    );
+
+  if (emptyAlbums.length > 0) {
+    const ids = emptyAlbums.map((a) => a.id);
+    await db.update(mediaItems).set({ albumId: null }).where(inArray(mediaItems.albumId, ids));
+    await db.delete(albums).where(inArray(albums.id, ids));
+  }
+
+  return {
+    performers: deadPerformers.length,
+    studios: deadStudios.length,
+    albums: emptyAlbums.length,
+  };
 }
 
 /**

@@ -20,7 +20,11 @@ export function KindTiles() {
   return (
     // Centred as a group, with each tile a fixed width so they stay compact
     // however wide the page gets.
-    <div className="flex flex-wrap justify-center gap-5 sm:gap-7">
+    // Tiles share the row rather than each claiming a fixed width, so adding
+    // a category makes them all a little narrower instead of pushing one onto
+    // a second line. max-w keeps two or three from stretching absurdly wide;
+    // below `sm` they still wrap, which is right on a phone.
+    <div className="flex flex-wrap justify-center gap-5 sm:flex-nowrap sm:gap-7">
       {categories.map((entry) => {
         const { slug, label, total, coverPositionX, coverPositionY, coverScale } = entry;
         const Icon = ICONS[slug] ?? Layers;
@@ -37,7 +41,7 @@ export function KindTiles() {
             key={slug}
             to="/browse"
             search={{ kind: slug }}
-            className="group relative flex h-40 w-72 items-center justify-center overflow-hidden rounded-lg bg-card/60 ring-1 ring-border transition-all duration-200 hover:ring-white/25 sm:h-44 sm:w-96"
+            className="group relative flex h-40 w-72 min-w-0 items-center justify-center overflow-hidden rounded-lg bg-card/60 ring-1 ring-border transition-all duration-200 hover:ring-white/25 sm:h-44 sm:w-auto sm:max-w-96 sm:flex-1 sm:basis-0"
           >
             {cover ? (
               // The zoom sits on a wrapper rather than the image so it

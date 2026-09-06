@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
 import { attachFile, makeFolder, makeItem, makeLibrary, makeLibraryAt } from "../test/fixtures.js";
 import { isScanRunning } from "../scanner/pipeline.js";
+import { seed } from "../db/seed.js";
 
 /**
  * Waits for any in-flight scan to finish.
@@ -88,6 +89,32 @@ describe("collections", () => {
 
   it("404s for a collection that does not exist", async () => {
     expect((await get("/api/collections/999999/items")).statusCode).toBe(404);
+  });
+
+  it("deletes a collection that still has items in it", async () => {
+    // The delete used to filter membership rows on `mediaItems.inScope` while
+    // deleting from collection_items alone — a table the statement never
+    // joins. Postgres rejected it outright, so the sidebar's delete button
+    // silently did nothing for any non-empty collection.
+    const created = (await send("POST", "/api/collections", { name: "My List", type: "manual" }))
+      .json();
+    const item = await makeItem(libraryId, { title: "In the list" });
+    await send("POST", `/api/collections/${created.id}/items`, { mediaItemId: item });
+
+    expect((await send("DELETE", `/api/collections/${created.id}`)).statusCode).toBe(200);
+    expect((await get("/api/collections")).json().collections).toEqual([]);
+    // The video itself survives — a collection is a grouping, not ownership.
+    expect((await get(`/api/media-items/${item}`)).statusCode).toBe(200);
+  });
+
+  it("still deletes an empty collection", async () => {
+    const created = (await send("POST", "/api/collections", { name: "Empty", type: "manual" }))
+      .json();
+    expect((await send("DELETE", `/api/collections/${created.id}`)).statusCode).toBe(200);
+  });
+
+  it("404s when deleting a collection that does not exist", async () => {
+    expect((await send("DELETE", "/api/collections/999999")).statusCode).toBe(404);
   });
 });
 
@@ -174,6 +201,21 @@ describe("library roots", () => {
     // Path traversal must not escape into the rest of the filesystem.
     const res = await get("/api/library/browse?path=/etc");
     expect([400, 403]).toContain(res.statusCode);
+  });
+
+  it("does not resurrect a removed folder on the next boot", async () => {
+    // seed() used to recreate a root matching MEDIA_ROOT whenever one was
+    // absent, so removing a folder in Site settings lasted until the next
+    // restart — and added another "Library" row each time.
+    const before = (await get("/api/library/roots")).json().roots;
+    expect(before.length).toBeGreaterThan(0);
+
+    await send("DELETE", `/api/library/roots/${before[0].id}`);
+    expect((await get("/api/library/roots")).json().roots).toEqual([]);
+
+    // Stands in for a restart.
+    await seed();
+    expect((await get("/api/library/roots")).json().roots).toEqual([]);
   });
 
   it("rejects adding a folder that does not exist", async () => {

@@ -69,6 +69,10 @@ export const mediaItems = pgTable("media_items", {
   // a timestamp: nobody writes a release *time*, and storing one would invite
   // timezone shifts that move a date across midnight.
   releaseDate: date("release_date"),
+  // Set on the photos of an album *and* on the video sharing their directory:
+  // a scene is the video and its stills together, so the video belonging to
+  // the album is true and makes "this album's video" a single lookup.
+  albumId: integer("album_id"),
   thumbnailFile: text("thumbnail_file"),
   // How the thumbnail is framed wherever it's shown — tile, hero, hover card.
   // Display only: the image file is never cropped, so re-framing costs no
@@ -250,6 +254,24 @@ export const categories = pgTable("categories", {
   // alongside the position because the two together are the framing; neither
   // touches the file.
   coverScale: integer("cover_scale").notNull().default(100),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/**
+ * A directory of photos — a scene's stills, alongside the video they belong to.
+ *
+ * Stored rather than derived from paths at query time because a browsable
+ * section needs stable ids for its URLs, and a filesystem path is neither
+ * stable nor URL-safe. Same treatment as performers and studios: derived from
+ * the filesystem, kept as rows, purged when nothing references them.
+ */
+export const albums = pgTable("albums", {
+  id: serial("id").primaryKey(),
+  // The directory itself. Unique, so a rescan updates rather than duplicates.
+  path: text("path").notNull().unique(),
+  title: text("title").notNull(),
+  performerId: integer("performer_id").references(() => performers.id),
+  studioId: integer("studio_id").references(() => studios.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

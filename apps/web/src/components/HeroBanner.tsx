@@ -93,7 +93,7 @@ function HeroSlide({
         />
       )}
 
-      <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-end gap-4 px-6 pb-20">
+      <div className="relative flex h-full flex-col justify-end gap-4 px-6 pb-20">
         <span
           className="text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors duration-500"
           style={{ color: accent ?? undefined }}

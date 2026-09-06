@@ -167,7 +167,10 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       .leftJoin(studios, eq(studios.id, mediaItems.studioId))
       .where(eq(mediaItemPerformers.performerId, id))
       .groupBy(studios.name)
-      .orderBy(desc(sql`count(*)`), sql`lower(${studios.name})`);
+      // Alphabetical, matching GET /api/studios — ordering by count meant the
+      // sections reshuffled as the library grew, so a studio was never in the
+      // same place twice. "No studio" sorts last: it isn't a name.
+      .orderBy(sql`lower(${studios.name}) asc nulls last`);
 
     const yearBreakdown = await db
       .select({

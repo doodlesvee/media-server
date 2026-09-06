@@ -5,6 +5,7 @@ import {
   Clapperboard,
   FolderOpen,
   Home,
+  Images,
   Layers,
   PanelLeftClose,
   PanelLeftOpen,
@@ -126,6 +127,15 @@ export function Sidebar({
         >
           <Users className="size-4 shrink-0" />
           {!collapsed && "Performers"}
+        </Link>
+        <Link
+          to="/albums"
+          className={navItemClass}
+          title={collapsed ? "Albums" : undefined}
+          activeProps={{ className: "bg-accent text-foreground font-medium" }}
+        >
+          <Images className="size-4 shrink-0" />
+          {!collapsed && "Albums"}
         </Link>
 
         {/* Collections and tags are text-only — collapsed they'd be a column of

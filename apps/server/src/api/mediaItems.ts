@@ -898,7 +898,15 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       // Filenames are the only stable order here — they're usually numbered.
       .orderBy(asc(mediaFiles.path));
 
+    // The album id lets the modal link through to the full gallery instead
+    // of the strip being the only way to see 121 photos.
+    const [owner] = await db
+      .select({ albumId: mediaItems.albumId })
+      .from(mediaItems)
+      .where(eq(mediaItems.id, id));
+
     return {
+      albumId: owner?.albumId ?? null,
       images: rows.map((row) => ({
         id: row.id,
         title: row.title,

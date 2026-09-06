@@ -4,6 +4,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { db } from "../db/client.js";
 import {
+  albums,
   libraryRoots,
   mediaFiles,
   mediaItemPerformers,
@@ -118,6 +119,11 @@ async function runScan(jobId: number): Promise<void> {
     // give different results depending on the order the walk happened to
     // reach things.
     await assignPerformersFromFilenames(rootLevelPaths);
+    // After the walk for the same reason as the pass above: whether a
+    // directory is an album depends on files the walk may not have reached
+    // yet, so deciding per-file would give different answers depending on the
+    // order things happened to be visited.
+    await assignAlbums(roots);
     await markMissingFiles(seenPaths, roots.map((r) => r.path));
     // Reconciles anything the per-file writes above couldn't know about — a
     // file whose folder was removed mid-scan, say.
@@ -458,6 +464,81 @@ async function syncPerformersWithPath(
     .insert(mediaItemPerformers)
     .values([...wanted].map((performerId) => ({ mediaItemId, performerId })))
     .onConflictDoNothing();
+}
+
+/**
+ * Groups each directory of photos into an album.
+ *
+ * Only directories that actually contain a photo qualify. Without that every
+ * video folder would become a meaningless one-item album, and the section
+ * would be mostly noise.
+ *
+ * The album's video gets the same `albumId` as its photos: a scene is the
+ * video and its stills together, so "this album's video" stays one lookup
+ * rather than another path-prefix comparison.
+ */
+async function assignAlbums(roots: { path: string }[]): Promise<void> {
+  const rows = await db
+    .select({
+      itemId: mediaItems.id,
+      path: mediaFiles.path,
+      typeName: mediaItemTypes.name,
+      albumId: mediaItems.albumId,
+      missing: mediaItems.missingSince,
+    })
+    .from(mediaFiles)
+    .innerJoin(mediaItems, eq(mediaItems.id, mediaFiles.mediaItemId))
+    .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id));
+
+  // Group by directory in JS rather than SQL: the same string handling the
+  // gallery endpoint uses, and it avoids a regex over every row.
+  const byDirectory = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const directory = row.path.slice(0, row.path.lastIndexOf("/"));
+    if (!directory) continue;
+    const list = byDirectory.get(directory) ?? [];
+    list.push(row);
+    byDirectory.set(directory, list);
+  }
+
+  for (const [directory, items] of byDirectory) {
+    // A photo whose file is gone must not conjure an album. Rows outlive
+    // their files by design — the scanner flags `missingSince` rather than
+    // deleting, so an unplugged drive can't destroy metadata — but a folder
+    // that exists only in the database is not something to browse.
+    //
+    // Only album *creation* is gated this way: items already linked keep
+    // their albumId, so an album on a temporarily absent drive survives.
+    if (!items.some((i) => i.typeName === "photo" && i.missing === null)) continue;
+
+    const root = roots.find(
+      (r) => directory === r.path || directory.startsWith(r.path + "/")
+    );
+    const title = normalizeName(basename(directory)) || directory;
+    const performerName = root ? performerNameFromPath(root.path, `${directory}/x`) : null;
+    const studioName = root ? studioNameFromPath(root.path, `${directory}/x`) : null;
+
+    const [album] = await db
+      .insert(albums)
+      .values({
+        path: directory,
+        title,
+        performerId: performerName ? await ensurePerformerId(performerName) : null,
+        studioId: studioName ? await ensureStudioId(studioName) : null,
+      })
+      // Unique on path, so a rescan updates the derived fields instead of
+      // failing or duplicating.
+      .onConflictDoUpdate({ target: albums.path, set: { title } })
+      .returning();
+
+    const needsLinking = items.filter((i) => i.albumId !== album.id).map((i) => i.itemId);
+    if (needsLinking.length > 0) {
+      await db
+        .update(mediaItems)
+        .set({ albumId: album.id })
+        .where(inArray(mediaItems.id, needsLinking));
+    }
+  }
 }
 
 /**

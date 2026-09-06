@@ -167,7 +167,7 @@ export function MediaGrid({
     return (
       // No `stagger` here: it sets the same `animation` property the
       // skeletons need for their shimmer, and the two would fight.
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="skeleton aspect-video rounded-md" />
         ))}
@@ -242,7 +242,7 @@ export function MediaGrid({
         <BulkActionBar selectedIds={[...selectedIds]} onDone={exitSelectionMode} />
       )}
 
-      <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-3 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
           <MediaCard
             key={item.id}
@@ -257,7 +257,7 @@ export function MediaGrid({
       <div ref={sentinelRef} aria-hidden className="h-px" />
 
       {isFetchingNextPage && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="skeleton aspect-video rounded-md" />
           ))}

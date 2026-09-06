@@ -176,6 +176,13 @@
       "when": 1788675961073,
       "tag": "0024_famous_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788706672404,
+      "tag": "0025_nice_exiles",
+      "breakpoints": true
     }
   ]
 }

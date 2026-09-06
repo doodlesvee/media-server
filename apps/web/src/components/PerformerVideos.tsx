@@ -45,6 +45,9 @@ function VideoSection({
   return (
     <MediaRow
       title={title}
+      // Larger than a home-page row: on a profile these headings are how the
+      // page is structured, not just a label above a strip.
+      titleClassName="text-xl font-semibold tracking-tight sm:text-2xl"
       items={data?.items ?? []}
       onSelectItem={(id) => onSelect(id, false)}
       onPlayItem={(id) => onSelect(id, true)}

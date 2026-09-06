@@ -59,7 +59,18 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>("/api/collections/:id", async (request, reply) => {
     const id = Number(request.params.id);
-    await db.delete(collectionItems).where(and(eq(collectionItems.collectionId, id), eq(mediaItems.inScope, true)));
+
+    // Membership rows first: collection_items has a foreign key to
+    // collections, so the parent cannot be removed while they exist.
+    //
+    // Every row, not just the in-scope ones. This previously filtered on
+    // `mediaItems.inScope` while deleting from collection_items alone — a
+    // table the statement never joins — so Postgres rejected it outright
+    // ("missing FROM-clause entry") and deleting a collection did nothing at
+    // all. Scope is a display concern anyway; a hidden item's membership
+    // still has to go when its collection does.
+    await db.delete(collectionItems).where(eq(collectionItems.collectionId, id));
+
     const deleted = await db.delete(collections).where(eq(collections.id, id)).returning();
     if (deleted.length === 0) {
       reply.code(404);

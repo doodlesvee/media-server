@@ -18,12 +18,17 @@ export async function seed(): Promise<void> {
   const mediaRoot = process.env.MEDIA_ROOT;
   if (!mediaRoot) return;
 
-  const existingRoot = await db
-    .select()
-    .from(libraryRoots)
-    .where(eq(libraryRoots.path, mediaRoot));
-
-  if (existingRoot.length > 0) return;
+  // Only on a genuinely empty library. This used to look for a root matching
+  // MEDIA_ROOT specifically and recreate it when absent — so removing that
+  // folder in Site settings lasted exactly until the next restart, which put
+  // it back along with another "Library" row every time. Six of them
+  // accumulated before anyone noticed.
+  //
+  // Seeding is for a first run. Once any folder is configured, the set is
+  // the user's to manage and re-asserting a default can only fight them.
+  // Same rule as seedCategories below, for the same reason.
+  const [existing] = await db.select({ count: sql<number>`count(*)::int` }).from(libraryRoots);
+  if ((existing?.count ?? 0) > 0) return;
 
   const [library] = await db
     .insert(libraries)

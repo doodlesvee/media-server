@@ -17,10 +17,17 @@ const arrowClass =
  */
 export function ScrollRow({
   title,
+  titleClassName = "text-lg font-semibold tracking-tight",
   itemCount,
   children,
 }: {
   title: string;
+  /**
+   * Overrides the heading's size, for callers where the row title carries
+   * more weight than it does in a home-page row. Replaces rather than
+   * appends, so a caller can't end up with two conflicting text sizes.
+   */
+  titleClassName?: string;
   itemCount: number;
   children: React.ReactNode;
 }) {
@@ -57,7 +64,7 @@ export function ScrollRow({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <h2 className={titleClassName}>{title}</h2>
 
       <div className="relative">
         <div

@@ -101,7 +101,7 @@ export function PerformerPage() {
         </PerformerBanner>
 
         {/* Minimal overlap — just enough to tie the portrait to the banner. */}
-        <div className="relative mx-auto -mt-8 flex max-w-7xl flex-col items-start gap-4 px-6 sm:-mt-10 sm:flex-row sm:items-end">
+        <div className="relative -mt-8 flex flex-col items-start gap-4 px-6 sm:-mt-10 sm:flex-row sm:items-end">
           <div className="relative shrink-0">
             <div className="size-28 overflow-hidden rounded-full bg-secondary ring-4 ring-background sm:size-36">
               {avatarSrc ? (
@@ -172,13 +172,13 @@ export function PerformerPage() {
       {/* Full width rather than squeezed into the header column beside the
           avatar — prose needs a readable line length. */}
       {performer && (
-        <div className="mx-auto max-w-7xl px-6 pt-6">
+        <div className="px-6 pt-6">
           <PerformerBio performerId={performer.id} bio={performer.bio} />
         </div>
       )}
 
       {performer && (
-        <div className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+        <div className="space-y-8 px-6 py-8">
           {/* What you most likely came back for, before anything to browse. */}
           <PerformerContinueWatching performer={performer} onSelect={openItem} />
 
