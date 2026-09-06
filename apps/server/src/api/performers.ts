@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { aliasedTable, and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import {
@@ -6,7 +6,16 @@ import {
   mediaItems,
   mediaItemTypes,
   performers,
+  playbackStates,
+  studios,
 } from "../db/schema.js";
+
+// The co-performer query joins media_item_performers and performers to
+// themselves — once for the performer whose page this is, once for everyone
+// else on the same video. Without aliases both sides resolve to the same
+// table and the join condition is meaningless.
+const otherCredits = aliasedTable(mediaItemPerformers, "other_credits");
+const coPerformer = aliasedTable(performers, "co_performer");
 import {
   deletePerformerImage,
   performerImagePath,
@@ -138,6 +147,119 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(mediaItemPerformers.performerId, id));
 
+    // The performer's videos, as one reusable join condition. Every aggregate
+    // below counts exactly the same set the profile grid will show, so the
+    // section counts can't disagree with what's rendered.
+    const performerVideos = and(
+      eq(mediaItems.id, mediaItemPerformers.mediaItemId),
+      eq(mediaItems.inScope, true),
+      isNull(mediaItems.missingSince),
+      inArray(mediaItems.itemTypeId, videoTypeIds)
+    );
+
+    // `name` is nullable here on purpose — a LEFT JOIN leaves it null for
+    // videos with no studio, and that bucket has to exist or those videos
+    // vanish from a grouped view.
+    const studioBreakdown = await db
+      .select({ name: studios.name, count: sql<number>`count(*)::int` })
+      .from(mediaItemPerformers)
+      .innerJoin(mediaItems, performerVideos)
+      .leftJoin(studios, eq(studios.id, mediaItems.studioId))
+      .where(eq(mediaItemPerformers.performerId, id))
+      .groupBy(studios.name)
+      .orderBy(desc(sql`count(*)`), sql`lower(${studios.name})`);
+
+    const yearBreakdown = await db
+      .select({
+        year: sql<number | null>`extract(year from ${mediaItems.releaseDate})::int`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(mediaItemPerformers)
+      .innerJoin(mediaItems, performerVideos)
+      .where(eq(mediaItemPerformers.performerId, id))
+      .groupBy(sql`extract(year from ${mediaItems.releaseDate})`)
+      .orderBy(desc(sql`extract(year from ${mediaItems.releaseDate})`));
+
+    const [watch] = await db
+      .select({
+        watched: sql<number>`count(*) filter (where ${playbackStates.completedAt} is not null)::int`,
+        inProgress: sql<number>`count(*) filter (
+          where ${playbackStates.positionSeconds} > 15 and ${playbackStates.completedAt} is null
+        )::int`,
+        unwatched: sql<number>`count(*) filter (where ${playbackStates.id} is null)::int`,
+      })
+      .from(mediaItemPerformers)
+      .innerJoin(mediaItems, performerVideos)
+      .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id))
+      .where(eq(mediaItemPerformers.performerId, id));
+
+    // Self-join on the join table: anyone credited on a video this performer
+    // is also on. Aggregated with GROUP BY rather than a correlated subquery
+    // in the select list — drizzle renders `performers.id` unqualified when
+    // the outer query has one table, which is ambiguous inside a subquery and
+    // fails outright. That exact mistake broke search suggestions before.
+    const coPerformerRows = await db
+      .select({
+        id: coPerformer.id,
+        name: coPerformer.name,
+        hasImage: sql<boolean>`(${coPerformer.imageFile} is not null)`,
+        hasBanner: sql<boolean>`(${coPerformer.bannerFile} is not null)`,
+        imagePositionX: coPerformer.imagePositionX,
+        imagePositionY: coPerformer.imagePositionY,
+        imageScale: coPerformer.imageScale,
+        representativeItemId: sql<number | null>`max(${mediaItems.id})`,
+        together: sql<number>`count(*)::int`,
+      })
+      .from(mediaItemPerformers)
+      .innerJoin(mediaItems, performerVideos)
+      .innerJoin(
+        otherCredits,
+        and(
+          eq(otherCredits.mediaItemId, mediaItemPerformers.mediaItemId),
+          ne(otherCredits.performerId, mediaItemPerformers.performerId)
+        )
+      )
+      .innerJoin(coPerformer, eq(coPerformer.id, otherCredits.performerId))
+      .where(eq(mediaItemPerformers.performerId, id))
+      .groupBy(
+        coPerformer.id,
+        coPerformer.name,
+        coPerformer.imageFile,
+        coPerformer.bannerFile,
+        coPerformer.imagePositionX,
+        coPerformer.imagePositionY,
+        coPerformer.imageScale
+      )
+      .orderBy(desc(sql`count(*)`), sql`lower(${coPerformer.name})`);
+
+    // Their own video totals, in one grouped query rather than a correlated
+    // subquery per row. A subquery here rendered `from "co_performer"` — the
+    // alias, not a real table — and failed outright. Aliases are only valid
+    // in the query that declares them.
+    const coPerformerIds = coPerformerRows.map((row) => row.id);
+    const coTotals =
+      coPerformerIds.length === 0
+        ? []
+        : await db
+            .select({
+              performerId: mediaItemPerformers.performerId,
+              videoCount: sql<number>`count(*)::int`,
+            })
+            .from(mediaItemPerformers)
+            .innerJoin(
+              mediaItems,
+              and(
+                eq(mediaItems.id, mediaItemPerformers.mediaItemId),
+                eq(mediaItems.inScope, true),
+                isNull(mediaItems.missingSince),
+                inArray(mediaItems.itemTypeId, videoTypeIds)
+              )
+            )
+            .where(inArray(mediaItemPerformers.performerId, coPerformerIds))
+            .groupBy(mediaItemPerformers.performerId);
+
+    const totalByPerformerId = new Map(coTotals.map((r) => [r.performerId, r.videoCount]));
+
     // Two different frames where possible, so the blurred backdrop isn't the
     // same picture as the portrait sitting on top of it.
     const recentItems = await db
@@ -161,6 +283,16 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       name: performer.name,
       hasImage: performer.imageFile !== null,
       hasBanner: performer.bannerFile !== null,
+      // Detail only, deliberately: a bio is prose, and the performers grid
+      // renders every performer as a card that would carry text nothing shows.
+      bio: performer.bio,
+      studios: studioBreakdown,
+      years: yearBreakdown,
+      watch: watch ?? { watched: 0, inProgress: 0, unwatched: 0 },
+      coPerformers: coPerformerRows.map((row) => ({
+        ...row,
+        videoCount: totalByPerformerId.get(row.id) ?? 0,
+      })),
       bannerPositionY: performer.bannerPositionY,
       imagePositionX: performer.imagePositionX,
       imagePositionY: performer.imagePositionY,
@@ -325,6 +457,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
     Params: { id: string };
     Body: {
       name?: string;
+      bio?: string | null;
       bannerPositionY?: number;
       imagePositionX?: number;
       imagePositionY?: number;
@@ -334,25 +467,33 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
     "/api/performers/:id",
     async (request, reply) => {
       const id = Number(request.params.id);
-      const { bannerPositionY, imagePositionX, imagePositionY, imageScale } = request.body;
+      const { bio, bannerPositionY, imagePositionX, imagePositionY, imageScale } = request.body;
 
-      // Framing-only update: the drag controls save through here, and must
-      // not require re-sending the name.
-      const framing: Partial<typeof performers.$inferInsert> = {};
+      // Everything that can be saved on its own, without re-sending the name:
+      // the drag controls and the bio editor both patch a single field.
+      const partial: Partial<typeof performers.$inferInsert> = {};
+
+      if (bio !== undefined) {
+        const trimmed = bio?.trim();
+        // Empty string stored as null, so "cleared" and "never written" are
+        // one state rather than two that render identically.
+        partial.bio = trimmed ? trimmed : null;
+      }
+
       // Clamped rather than rejected — a value outside range is a client
       // rounding artefact, not something worth failing a save over.
       const clamp = (v: number, lo: number, hi: number) =>
         Math.max(lo, Math.min(hi, Math.round(Number(v) || lo)));
-      if (bannerPositionY !== undefined) framing.bannerPositionY = clamp(bannerPositionY, 0, 100);
-      if (imagePositionX !== undefined) framing.imagePositionX = clamp(imagePositionX, 0, 100);
-      if (imagePositionY !== undefined) framing.imagePositionY = clamp(imagePositionY, 0, 100);
+      if (bannerPositionY !== undefined) partial.bannerPositionY = clamp(bannerPositionY, 0, 100);
+      if (imagePositionX !== undefined) partial.imagePositionX = clamp(imagePositionX, 0, 100);
+      if (imagePositionY !== undefined) partial.imagePositionY = clamp(imagePositionY, 0, 100);
       // Floor of 100: below it the portrait stops covering its tile.
-      if (imageScale !== undefined) framing.imageScale = clamp(imageScale, 100, 300);
+      if (imageScale !== undefined) partial.imageScale = clamp(imageScale, 100, 300);
 
-      if (request.body.name === undefined && Object.keys(framing).length > 0) {
+      if (request.body.name === undefined && Object.keys(partial).length > 0) {
         const updated = await db
           .update(performers)
-          .set(framing)
+          .set(partial)
           .where(eq(performers.id, id))
           .returning();
         if (updated.length === 0) {

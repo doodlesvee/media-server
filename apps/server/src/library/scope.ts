@@ -111,15 +111,22 @@ export async function purgeEmptyEntities(): Promise<{ performers: number; studio
   // The second is that hiding is meant to be reversible. Removing a scan
   // folder hides its items so re-adding restores them instantly; destroying
   // their performers in the meantime would make that restore incomplete.
-  // A performer whose items were genuinely deleted has no join rows left and
-  // is still purged, which is the case this exists for.
+  //
+  // Hand-authored content is spared regardless. api/performers.ts relies on
+  // being able to create a performer by hand before their files arrive, so
+  // the filename pass can match them on the next scan — and that performer
+  // has no join rows at all, so without this the very next scan deleted them
+  // along with any bio or artwork you had added.
   const deadPerformers = await db
     .delete(performers)
     .where(
       sql`not exists (
         select 1 from ${mediaItemPerformers} mip
         where mip.performer_id = ${performers.id}
-      )`
+      )
+      and ${performers.bio} is null
+      and ${performers.imageFile} is null
+      and ${performers.bannerFile} is null`
     )
     .returning({ id: performers.id });
 

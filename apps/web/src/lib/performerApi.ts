@@ -13,7 +13,38 @@ export type PerformerSummary = {
   imageScale: number;
 };
 
+/** A group in the profile's breakdown. `null` is the "unset" bucket. */
+export type StudioGroup = { name: string | null; count: number };
+export type YearGroup = { year: number | null; count: number };
+
+/**
+ * Spelled out rather than extending PerformerSummary: the co-performer query
+ * returns what a portrait needs and how many videos they *share*, not their
+ * own total video count. Inheriting the summary would claim a field the
+ * endpoint never sends.
+ */
+export type CoPerformer = {
+  id: number;
+  name: string;
+  hasImage: boolean;
+  hasBanner: boolean;
+  representativeItemId: number | null;
+  imagePositionX: number;
+  imagePositionY: number;
+  imageScale: number;
+  /** How many videos they share with the performer whose page this is. */
+  together: number;
+  /** Their own catalogue size, for the tile's "N videos" line. */
+  videoCount: number;
+};
+
 export type PerformerDetail = PerformerSummary & {
+  /** Free text, on the profile only — the list endpoint does not carry it. */
+  bio: string | null;
+  studios: StudioGroup[];
+  years: YearGroup[];
+  watch: { watched: number; inProgress: number; unwatched: number };
+  coPerformers: CoPerformer[];
   totalDurationSeconds: number;
   /** Which horizontal band of the banner is visible, for CSS object-position. */
   bannerPositionY: number;
@@ -90,6 +121,16 @@ export function portraitStyle(performer: {
     transform: scale === 100 ? undefined : `scale(${scale / 100})`,
     transformOrigin: `${x}% ${y}%`,
   };
+}
+
+export async function savePerformerBio(id: number, bio: string): Promise<void> {
+  const res = await fetch(`/api/performers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    // Sent alone: the endpoint accepts any single field without the name.
+    body: JSON.stringify({ bio }),
+  });
+  if (!res.ok) throw new Error(`Failed to save bio: ${res.status}`);
 }
 
 export async function savePortraitFraming(

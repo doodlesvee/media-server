@@ -414,10 +414,28 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       page?: string;
       sort?: string;
       year?: string;
+      noStudio?: string;
+      noYear?: string;
+      progress?: string;
     };
   }>("/api/media-items", async (request) => {
-    const { libraryId, type, tag, performer, favorite, studio, kind, parentId, q, page, sort, year } =
-      request.query;
+    const {
+      libraryId,
+      type,
+      tag,
+      performer,
+      favorite,
+      studio,
+      kind,
+      parentId,
+      q,
+      page,
+      sort,
+      year,
+      noStudio,
+      noYear,
+      progress,
+    } = request.query;
     const pageNum = Math.max(1, Number(page) || 1);
     const search = q?.trim();
 
@@ -510,6 +528,28 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     if (filterYear !== null) {
       conditions.push(sql`extract(year from ${mediaItems.releaseDate}) = ${filterYear}`);
     }
+
+    // Explicit "unset" filters, so a grouped view can show the items that
+    // belong to no group. A sentinel like `studio=none` would collide with a
+    // studio genuinely called "none"; a separate flag cannot.
+    const unsetStudio = noStudio === "true";
+    if (unsetStudio) conditions.push(isNull(mediaItems.studioId));
+    const unsetYear = noYear === "true";
+    if (unsetYear) conditions.push(isNull(mediaItems.releaseDate));
+
+    // Part-watched only. /api/continue-watching is global and can't be scoped
+    // to one performer, which is what a profile page needs.
+    const inProgressOnly = progress === "in-progress";
+    if (inProgressOnly) {
+      conditions.push(
+        sql`exists (
+          select 1 from ${playbackStates} ps
+          where ps.media_item_id = ${mediaItems.id}
+            and ps.position_seconds > 15
+            and ps.completed_at is null
+        )`
+      );
+    }
     const favoritesOnly = favorite === "true";
     if (favoritesOnly) {
       conditions.push(eq(mediaItems.isFavorite, true));
@@ -518,7 +558,18 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     // parentId is omitted) so nested items don't leak into the top view. Tag,
     // performer and search all deliberately ignore folder nesting — they're
     // global lookups, you shouldn't have to drill into folders to hit them.
-    if (!tag && !performer && !search && !favoritesOnly && !studio && !kind && filterYear === null) {
+    if (
+      !tag &&
+      !performer &&
+      !search &&
+      !favoritesOnly &&
+      !studio &&
+      !kind &&
+      filterYear === null &&
+      !unsetStudio &&
+      !unsetYear &&
+      !inProgressOnly
+    ) {
       conditions.push(
         parentId ? eq(mediaItems.parentId, Number(parentId)) : isNull(mediaItems.parentId)
       );

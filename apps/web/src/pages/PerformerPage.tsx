@@ -4,8 +4,13 @@ import { Move } from "lucide-react";
 import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
 import { getRouteApi } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { MediaGrid } from "@/components/MediaGrid";
+import { MediaDetailModal } from "@/components/MediaDetailModal";
+import { PerformerContinueWatching } from "@/components/PerformerContinueWatching";
+import { PerformerCoPerformers } from "@/components/PerformerCoPerformers";
+import { PerformerStats } from "@/components/PerformerStats";
+import { PerformerVideos } from "@/components/PerformerVideos";
 import { PerformerBanner } from "@/components/PerformerBanner";
+import { PerformerBio } from "@/components/PerformerBio";
 import { PerformerImagePicker } from "@/components/PerformerImagePicker";
 import {
   fetchPerformer,
@@ -17,17 +22,14 @@ import {
 
 const routeApi = getRouteApi("/performer/$performerId");
 
-function formatTotalDuration(seconds: number): string | null {
-  if (!seconds) return null;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-}
-
 export function PerformerPage() {
   const { performerId } = routeApi.useParams();
   const id = Number(performerId);
   const [reframing, setReframing] = useState(false);
+  // Opening a video from here shows the modal in place, rather than
+  // navigating away and losing your position on the profile.
+  const [open, setOpen] = useState<{ id: number; autoPlay: boolean } | null>(null);
+  const openItem = (id: number, autoPlay: boolean) => setOpen({ id, autoPlay });
   const [bannerEditRequest, setBannerEditRequest] = useState(0);
   const queryClient = useQueryClient();
 
@@ -75,8 +77,6 @@ export function PerformerPage() {
   // same face for a given performer.
   const avatarSrc = performer ? performerPortraitUrl(performer) : null;
 
-  const totalDuration = formatTotalDuration(performer?.totalDurationSeconds ?? 0);
-
   return (
     <AppShell>
       <section className="relative">
@@ -123,19 +123,7 @@ export function PerformerPage() {
             <h1 className="truncate text-3xl font-bold tracking-tight sm:text-4xl">
               {performer?.name ?? " "}
             </h1>
-            {performer && (
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground/90">
-                  {performer.videoCount} {performer.videoCount === 1 ? "video" : "videos"}
-                </span>
-                {totalDuration && (
-                  <>
-                    <span className="text-muted-foreground/40">·</span>
-                    <span>{totalDuration} total</span>
-                  </>
-                )}
-              </div>
-            )}
+            {performer && <PerformerStats performer={performer} />}
             {performer && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -181,22 +169,32 @@ export function PerformerPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        {performer && (
-          <MediaGrid
-            source={{
-              type: "library",
-              tag: null,
-              performer: performer.name,
-              studio: null,
-              kind: null,
-              q: null,
-              parentId: null,
-            }}
-            onOpenFolder={() => {}}
-          />
-        )}
-      </div>
+      {/* Full width rather than squeezed into the header column beside the
+          avatar — prose needs a readable line length. */}
+      {performer && (
+        <div className="mx-auto max-w-7xl px-6 pt-6">
+          <PerformerBio performerId={performer.id} bio={performer.bio} />
+        </div>
+      )}
+
+      {performer && (
+        <div className="mx-auto max-w-7xl space-y-8 px-6 py-8">
+          {/* What you most likely came back for, before anything to browse. */}
+          <PerformerContinueWatching performer={performer} onSelect={openItem} />
+
+          <PerformerCoPerformers performers={performer.coPerformers} />
+
+          <PerformerVideos performer={performer} onSelect={openItem} />
+        </div>
+      )}
+
+      {open && (
+        <MediaDetailModal
+          itemId={open.id}
+          autoPlay={open.autoPlay}
+          onClose={() => setOpen(null)}
+        />
+      )}
 
     </AppShell>
   );

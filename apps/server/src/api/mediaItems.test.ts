@@ -126,6 +126,48 @@ describe("GET /api/media-items", () => {
       expect(body.items.map((i: { title: string }) => i.title)).toEqual(["B"]);
     });
 
+    it("filters to items with no studio", async () => {
+      // Backs the "no studio" bucket in a grouped profile. A sentinel value
+      // like studio=none would collide with a studio actually called "none".
+      const vixen = await makeStudio("Vixen");
+      await makeItem(libraryId, { title: "Has studio", studioId: vixen });
+      await makeItem(libraryId, { title: "No studio" });
+
+      const body = (await get("/api/media-items?noStudio=true")).json();
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["No studio"]);
+    });
+
+    it("filters to items with no release date", async () => {
+      await makeItem(libraryId, { title: "Dated", releaseDate: "2019-05-01" });
+      await makeItem(libraryId, { title: "Undated" });
+
+      const body = (await get("/api/media-items?noYear=true")).json();
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Undated"]);
+    });
+
+    it("filters to part-watched items only", async () => {
+      const partial = await makeItem(libraryId, { title: "Partial", durationSeconds: 1000 });
+      const finished = await makeItem(libraryId, { title: "Finished", durationSeconds: 1000 });
+      await makeItem(libraryId, { title: "Untouched" });
+
+      await app.inject({
+        method: "PUT",
+        url: `/api/media-items/${partial}/playback`,
+        headers: { cookie },
+        payload: { positionSeconds: 300 },
+      });
+      await app.inject({
+        method: "PUT",
+        url: `/api/media-items/${finished}/watched`,
+        headers: { cookie },
+        payload: { watched: true },
+      });
+
+      const body = (await get("/api/media-items?progress=in-progress")).json();
+      // Finished is excluded, not just "has playback".
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Partial"]);
+    });
+
     it("filters by favourite", async () => {
       await makeItem(libraryId, { title: "Loved", isFavorite: true });
       await makeItem(libraryId, { title: "Not" });

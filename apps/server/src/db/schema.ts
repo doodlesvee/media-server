@@ -152,6 +152,11 @@ export const performers = pgTable(
     // UI falls back to a frame from one of their videos. The filename carries
     // a random suffix so replacing an image changes the URL and defeats the
     // browser cache without any invalidation logic.
+    // Free text about the performer. The only genuinely hand-authored thing
+    // here — with no external metadata source, it is the only way this can
+    // exist at all. No source column: the scanner writes `name` and nothing
+    // else, so there is no ownership to arbitrate.
+    bio: text("bio"),
     imageFile: text("image_file"),
     // Framing for the portrait, the same shape as categories and thumbnails.
     // Defaults centre horizontally and sit near the top, matching the

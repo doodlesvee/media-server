@@ -92,6 +92,26 @@ describe("purgeEmptyEntities", () => {
     expect((await db.select().from(performers)).map((r) => r.name)).toEqual(["Only Hidden"]);
   });
 
+  it("keeps a hand-created performer who has a bio but no videos yet", async () => {
+    // api/performers.ts relies on being able to create a performer before
+    // their files arrive, so the filename pass can match them next scan.
+    // Purging them deleted that performer — and any bio written for them —
+    // on the very next scan.
+    const p = await makePerformer("Written About");
+    await db.update(performers).set({ bio: "Some prose." }).where(eq(performers.id, p));
+
+    await purgeEmptyEntities();
+    expect((await db.select().from(performers)).map((r) => r.name)).toEqual(["Written About"]);
+  });
+
+  it("still purges a performer with no videos and nothing hand-authored", async () => {
+    // The case this exists for: one created from a filename typo, then
+    // orphaned when the filename was corrected.
+    await makePerformer("Typo Name");
+    await purgeEmptyEntities();
+    expect(await db.select().from(performers)).toEqual([]);
+  });
+
   it("keeps a studio whose items are only hidden", async () => {
     const s = await makeStudio("Hidden Studio");
     await makeItem(libraryId, { title: "X", studioId: s, inScope: false });

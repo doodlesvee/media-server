@@ -1,7 +1,13 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
-import { linkPerformer, makeItem, makeLibrary, makePerformer } from "../test/fixtures.js";
+import {
+  linkPerformer,
+  makeItem,
+  makeLibrary,
+  makePerformer,
+  makeStudio,
+} from "../test/fixtures.js";
 
 let app: FastifyInstance;
 let cookie: string;
@@ -77,6 +83,124 @@ describe("performers", () => {
     expect((await send("PATCH", `/api/performers/${bella}`, { name: "alice" })).statusCode).toBe(
       409
     );
+  });
+
+  it("saves a bio on its own, without re-sending the name", async () => {
+    // The partial-update branch used to trigger only on framing fields, so a
+    // bio-only PATCH fell through to a path that 400s without a name.
+    const alice = await makePerformer("Alice");
+    const res = await send("PATCH", `/api/performers/${alice}`, { bio: "  Some prose.  " });
+    expect(res.statusCode).toBe(200);
+
+    const detail = (await get(`/api/performers/${alice}`)).json();
+    expect(detail.bio).toBe("Some prose.");
+  });
+
+  it("stores a cleared bio as null, not an empty string", async () => {
+    const alice = await makePerformer("Alice");
+    await send("PATCH", `/api/performers/${alice}`, { bio: "Written" });
+    await send("PATCH", `/api/performers/${alice}`, { bio: "   " });
+    expect((await get(`/api/performers/${alice}`)).json().bio).toBeNull();
+  });
+
+  it("keeps the bio off the list endpoint, which renders every performer", async () => {
+    const alice = await makePerformer("Alice");
+    await send("PATCH", `/api/performers/${alice}`, { bio: "Written" });
+    expect((await get("/api/performers")).json().performers[0].bio).toBeUndefined();
+  });
+
+  describe("profile aggregates", () => {
+    it("breaks videos down by studio, including those with none", async () => {
+      // The null bucket has to exist: without it, videos with no studio
+      // silently vanish from a grouped view.
+      const alice = await makePerformer("Alice");
+      const vixen = await makeStudio("Vixen");
+      await linkPerformer(await makeItem(libraryId, { title: "A", studioId: vixen }), alice);
+      await linkPerformer(await makeItem(libraryId, { title: "B", studioId: vixen }), alice);
+      await linkPerformer(await makeItem(libraryId, { title: "C" }), alice);
+
+      const body = (await get(`/api/performers/${alice}`)).json();
+      expect(body.studios).toEqual([
+        { name: "Vixen", count: 2 },
+        { name: null, count: 1 },
+      ]);
+      // Every video is accounted for.
+      const total = body.studios.reduce((n: number, s: { count: number }) => n + s.count, 0);
+      expect(total).toBe(body.videoCount);
+    });
+
+    it("breaks videos down by year, including undated ones", async () => {
+      const alice = await makePerformer("Alice");
+      await linkPerformer(
+        await makeItem(libraryId, { title: "A", releaseDate: "2019-05-01" }),
+        alice
+      );
+      await linkPerformer(await makeItem(libraryId, { title: "B" }), alice);
+
+      const body = (await get(`/api/performers/${alice}`)).json();
+      expect(body.years).toEqual([
+        { year: null, count: 1 },
+        { year: 2019, count: 1 },
+      ]);
+    });
+
+    it("counts watch state", async () => {
+      const alice = await makePerformer("Alice");
+      const watched = await makeItem(libraryId, { title: "A", durationSeconds: 1000 });
+      const partial = await makeItem(libraryId, { title: "B", durationSeconds: 1000 });
+      await linkPerformer(watched, alice);
+      await linkPerformer(partial, alice);
+      await linkPerformer(await makeItem(libraryId, { title: "C" }), alice);
+
+      await send("PUT", `/api/media-items/${watched}/watched`, { watched: true });
+      await send("PUT", `/api/media-items/${partial}/playback`, { positionSeconds: 300 });
+
+      const body = (await get(`/api/performers/${alice}`)).json();
+      expect(body.watch).toEqual({ watched: 1, inProgress: 1, unwatched: 1 });
+    });
+
+    it("lists co-performers with what the UI needs to draw a portrait", async () => {
+      const alice = await makePerformer("Alice");
+      const bella = await makePerformer("Bella");
+      const shared = await makeItem(libraryId, { title: "Shared" });
+      await linkPerformer(shared, alice);
+      await linkPerformer(shared, bella);
+      // A solo video must not invent a co-performer.
+      await linkPerformer(await makeItem(libraryId, { title: "Solo" }), alice);
+
+      const body = (await get(`/api/performers/${alice}`)).json();
+      expect(body.coPerformers).toHaveLength(1);
+      expect(body.coPerformers[0]).toMatchObject({ name: "Bella", together: 1 });
+      expect(body.coPerformers[0].representativeItemId).toBe(shared);
+    });
+
+    it("reports each co-performer's own video total, not just the shared one", async () => {
+      // The tile reads "N videos", so this is their whole catalogue. It also
+      // guards a real failure: computing it as a correlated subquery rendered
+      // `from "co_performer"` — an alias, not a table — and 500'd the route.
+      const alice = await makePerformer("Alice");
+      const bella = await makePerformer("Bella");
+      const shared = await makeItem(libraryId, { title: "Shared" });
+      await linkPerformer(shared, alice);
+      await linkPerformer(shared, bella);
+      await linkPerformer(await makeItem(libraryId, { title: "Bella solo" }), bella);
+
+      const res = await get(`/api/performers/${alice}`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().coPerformers[0]).toMatchObject({
+        name: "Bella",
+        together: 1,
+        videoCount: 2,
+      });
+    });
+
+    it("returns empty aggregates for a performer with no videos", async () => {
+      const alice = await makePerformer("Alice");
+      const body = (await get(`/api/performers/${alice}`)).json();
+      expect(body.studios).toEqual([]);
+      expect(body.coPerformers).toEqual([]);
+      expect(body.watch).toEqual({ watched: 0, inProgress: 0, unwatched: 0 });
+    });
   });
 
   it("clamps portrait framing", async () => {

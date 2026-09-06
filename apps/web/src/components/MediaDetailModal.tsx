@@ -22,6 +22,7 @@ import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { FolderPicker } from "./FolderPicker";
 import { GalleryStrip } from "./GalleryStrip";
+import { Portal } from "./Portal";
 import { RelatedItems } from "./RelatedItems";
 import { StudioEditor } from "./StudioEditor";
 import { TagEditor } from "./TagEditor";
@@ -403,11 +404,14 @@ export function MediaDetailModal({
       item.lastPositionSeconds < item.durationSeconds - MIN_RESUMABLE_SECONDS);
 
   return (
-    <div
-      ref={scrollRef}
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 p-4 backdrop-blur-sm sm:p-8"
-      onClick={onClose}
-    >
+    <Portal>
+      <div
+        ref={scrollRef}
+        // overscroll-contain stops the scroll continuing into the page
+        // behind once this container hits its end.
+        className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/80 p-4 backdrop-blur-sm sm:p-8"
+        onClick={onClose}
+      >
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -422,7 +426,18 @@ export function MediaDetailModal({
             <img
               src={thumbnailUrl(item)}
               alt=""
-              style={framingStyle(item)}
+              // Fades out once real playback is actually on screen. It fills
+              // the frame (object-cover) while the video letterboxes inside it
+              // (object-contain), so for anything not exactly 16:9 the poster
+              // stayed visible down the sides — a bright one reads as a white
+              // border rather than as bars. Kept until the seek lands, which
+              // is what stops the frame flashing black while the stream
+              // buffers.
+              style={{
+                ...framingStyle(item),
+                opacity: mode === "playing" && seeked ? 0 : 1,
+                transition: "opacity 300ms ease-out",
+              }}
               className="absolute inset-0 h-full w-full object-cover"
             />
           )}
@@ -794,8 +809,9 @@ export function MediaDetailModal({
             related items lead away from it. */}
         {item && <GalleryStrip itemId={item.id} />}
 
-        {item && <RelatedItems itemId={item.id} onSelect={openRelated} />}
+          {item && <RelatedItems itemId={item.id} onSelect={openRelated} />}
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }

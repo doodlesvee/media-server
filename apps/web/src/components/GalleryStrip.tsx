@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { Portal } from "./Portal";
 
 type GalleryImage = { id: number; title: string; thumbnailFile: string | null };
 
@@ -87,6 +88,7 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
       </ul>
 
       {openIndex !== null && (
+        <Portal>
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
           onClick={() => setOpenIndex(null)}
@@ -142,6 +144,7 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
             </>
           )}
         </div>
+        </Portal>
       )}
     </div>
   );

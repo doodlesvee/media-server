@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
+import { Portal } from "./Portal";
 
 type ConditionField = "tags" | "itemType" | "title" | "createdAt";
 
@@ -66,10 +67,11 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
-      onClick={onClose}
-    >
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
+        onClick={onClose}
+      >
       <div
         className="w-full max-w-md space-y-4 rounded-lg bg-background p-5 text-foreground"
         onClick={(e) => e.stopPropagation()}
@@ -189,8 +191,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
           className="w-full rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
         >
           Create
-        </button>
+          </button>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }

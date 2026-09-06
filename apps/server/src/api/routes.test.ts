@@ -5,6 +5,21 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
 import { attachFile, makeFolder, makeItem, makeLibrary, makeLibraryAt } from "../test/fixtures.js";
+import { isScanRunning } from "../scanner/pipeline.js";
+
+/**
+ * Waits for any in-flight scan to finish.
+ *
+ * A scan started by a test keeps running in the background after the test
+ * ends, and the next test truncates the tables underneath it — which fails
+ * intermittently and in a different place each time. A flaky suite is worse
+ * than no suite, because you learn to ignore it.
+ */
+async function settleScan(): Promise<void> {
+  for (let i = 0; i < 200 && isScanRunning(); i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 let app: FastifyInstance;
 let cookie: string;
@@ -22,6 +37,8 @@ beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "routes-test-"));
 });
 afterEach(async () => {
+  // Belt and braces: no test may leave a scan running into the next one.
+  await settleScan();
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -138,6 +155,7 @@ describe("scan jobs", () => {
       const body = (await get(`/api/scan/${started.json().id}`)).json();
       expect(["running", "completed", "failed"]).toContain(body.status);
     }
+    await settleScan();
   });
 
   it("404s for a job that does not exist", async () => {
