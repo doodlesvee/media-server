@@ -188,6 +188,7 @@ export function PerformerPage() {
               type: "library",
               tag: null,
               performer: performer.name,
+              studio: null,
               kind: null,
               q: null,
               parentId: null,

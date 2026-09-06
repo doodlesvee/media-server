@@ -9,3 +9,6 @@ app-data/
 *.tsbuildinfo
 # Database + upload archives — data, not source
 backups/
+
+# Test coverage output
+coverage/

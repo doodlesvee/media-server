@@ -36,6 +36,8 @@ export type MediaItemDetail = {
   playbackWarning: string | null;
   tags: Tag[];
   takenAt: string | null;
+  /** Release date parsed from the filename, ISO "YYYY-MM-DD", or null. */
+  releaseDate: string | null;
   createdAt: string;
   extraMetadata: VideoMetadata | PhotoMetadata | null;
   lastPositionSeconds: number;

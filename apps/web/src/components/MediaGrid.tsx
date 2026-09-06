@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { MediaDetailModal } from "./MediaDetailModal";
@@ -9,6 +9,7 @@ export type GridSource =
       type: "library";
       tag: string | null;
       performer: string | null;
+      studio: string | null;
       kind: string | null;
       q: string | null;
       parentId: number | null;
@@ -26,6 +27,14 @@ const SORT_OPTIONS = [
 
 type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
+type ReleaseYear = { year: number; total: number };
+
+async function fetchReleaseYears(): Promise<{ years: ReleaseYear[] }> {
+  const res = await fetch("/api/release-years");
+  if (!res.ok) throw new Error(`Failed to load years: ${res.status}`);
+  return res.json();
+}
+
 type MediaItemsResponse = {
   items: MediaCardItem[];
   page: number;
@@ -36,6 +45,7 @@ type MediaItemsResponse = {
 async function fetchMediaItems(
   source: GridSource,
   sort: SortValue,
+  year: string,
   page: number
 ): Promise<MediaItemsResponse> {
   if (source.type === "collection") {
@@ -47,10 +57,12 @@ async function fetchMediaItems(
   const params = new URLSearchParams();
   if (source.tag) params.set("tag", source.tag);
   if (source.performer) params.set("performer", source.performer);
+  if (source.studio) params.set("studio", source.studio);
   if (source.kind) params.set("kind", source.kind);
   if (source.q) params.set("q", source.q);
   if (source.parentId !== null) params.set("parentId", String(source.parentId));
   params.set("sort", sort);
+  if (year) params.set("year", year);
   params.set("page", String(page));
 
   const res = await fetch(`/api/media-items?${params}`);
@@ -69,6 +81,10 @@ export function MediaGrid({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [sort, setSort] = useState<SortValue>("newest");
+  const [year, setYear] = useState("");
+
+  const { data: yearData } = useQuery({ queryKey: ["release-years"], queryFn: fetchReleaseYears });
+  const years = yearData?.years ?? [];
 
   const { data, error, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
@@ -79,12 +95,16 @@ export function MediaGrid({
               "media-items",
               source.tag,
               source.performer,
+              source.studio,
               source.kind,
               source.q,
               source.parentId,
               sort,
+              // Must be in the key: without it React Query serves one year's
+              // results for another, which reads as the filter doing nothing.
+              year,
             ],
-      queryFn: ({ pageParam }) => fetchMediaItems(source, sort, pageParam),
+      queryFn: ({ pageParam }) => fetchMediaItems(source, sort, year, pageParam),
       initialPageParam: 1,
       // The server returns one row past the page size to answer this, so
       // there's no COUNT(*) behind it. Older responses without `hasMore` fall
@@ -181,6 +201,25 @@ export function MediaGrid({
         {/* A collection has its own order; offering to re-sort it would
             imply the choice sticks, which it wouldn't. */}
         {source.type === "library" && (
+          <div className="flex items-center gap-3">
+            {years.length > 0 && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Year</span>
+                <select
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
+                >
+                  <option value="">All</option>
+                  {years.map((entry) => (
+                    <option key={entry.year} value={String(entry.year)}>
+                      {entry.year} ({entry.total})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Sort</span>
             <select
@@ -195,6 +234,7 @@ export function MediaGrid({
               ))}
             </select>
           </label>
+          </div>
         )}
       </div>
 

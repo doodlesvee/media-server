@@ -1,4 +1,18 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import {
@@ -47,6 +61,24 @@ const WATCHED_PERCENT = 92;
 export const SORTS = ["newest", "oldest", "title", "longest", "shortest"] as const;
 export type Sort = (typeof SORTS)[number];
 
+/**
+ * Ordering while a search is running: anything whose title contains the whole
+ * query comes first, then the rest by recency.
+ *
+ * Without this a title match ranks below an unrelated item that merely
+ * happens to be newer, which reads as the search having ignored you. Only
+ * applied when no explicit sort was chosen — picking "Longest" should mean
+ * longest, search or not.
+ */
+function searchOrder(search: string): SQL[] {
+  const phrase = `%${escapeLike(search)}%`;
+  return [
+    sql`(case when ${mediaItems.title} ilike ${phrase} then 0 else 1 end)`,
+    desc(mediaItems.createdAt),
+    desc(mediaItems.id),
+  ];
+}
+
 function orderFor(sort: string | undefined): SQL[] {
   switch (sort) {
     case "oldest":
@@ -69,6 +101,18 @@ function clampPercent(value: number, min: number, max: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return min;
   return Math.round(Math.max(min, Math.min(max, n)));
+}
+
+/**
+ * Splits a query into the words that must each match.
+ *
+ * Capped so a pasted paragraph can't build a query with hundreds of
+ * subselects in it; the first handful of words decide the result anyway.
+ */
+const MAX_SEARCH_TERMS = 6;
+
+function searchTerms(raw: string): string[] {
+  return raw.split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_TERMS);
 }
 
 // `%` and `_` are LIKE wildcards, and a filename legitimately contains both.
@@ -114,6 +158,7 @@ const itemColumns = {
   thumbnailScale: mediaItems.thumbnailScale,
   durationSeconds: mediaItems.durationSeconds,
   takenAt: mediaItems.takenAt,
+  releaseDate: mediaItems.releaseDate,
   extraMetadata: mediaItems.extraMetadata,
   missingSince: mediaItems.missingSince,
   createdAt: mediaItems.createdAt,
@@ -368,9 +413,10 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       q?: string;
       page?: string;
       sort?: string;
+      year?: string;
     };
   }>("/api/media-items", async (request) => {
-    const { libraryId, type, tag, performer, favorite, studio, kind, parentId, q, page, sort } =
+    const { libraryId, type, tag, performer, favorite, studio, kind, parentId, q, page, sort, year } =
       request.query;
     const pageNum = Math.max(1, Number(page) || 1);
     const search = q?.trim();
@@ -391,29 +437,44 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       conditions.push(ne(mediaItemTypes.name, "photo"));
     }
     if (search) {
+      // Every word must match something, but each is free to match a
+      // different field — "caprice vixen" is a performer and a studio, and
+      // treating the whole query as one literal substring (as this used to)
+      // found nothing at all for it.
+      //
       // Titles here are machine-derived from filenames and often unhelpful,
       // so searching only them misses the names people actually remember.
       // Studio comes free — it's already left-joined for the studio filter.
-      const pattern = `%${escapeLike(search)}%`;
-      const performerMatches = db
-        .select({ id: mediaItemPerformers.mediaItemId })
-        .from(mediaItemPerformers)
-        .innerJoin(performers, eq(performers.id, mediaItemPerformers.performerId))
-        .where(ilike(performers.name, pattern));
-      const tagMatches = db
-        .select({ id: mediaItemTags.mediaItemId })
-        .from(mediaItemTags)
-        .innerJoin(tags, eq(tags.id, mediaItemTags.tagId))
-        .where(ilike(tags.name, pattern));
+      for (const term of searchTerms(search)) {
+        const pattern = `%${escapeLike(term)}%`;
 
-      const match = or(
-        ilike(mediaItems.title, pattern),
-        ilike(mediaItems.description, pattern),
-        ilike(studios.name, pattern),
-        inArray(mediaItems.id, performerMatches),
-        inArray(mediaItems.id, tagMatches)
-      );
-      if (match) conditions.push(match);
+        const performerMatches = db
+          .select({ id: mediaItemPerformers.mediaItemId })
+          .from(mediaItemPerformers)
+          .innerJoin(performers, eq(performers.id, mediaItemPerformers.performerId))
+          .where(ilike(performers.name, pattern));
+        const tagMatches = db
+          .select({ id: mediaItemTags.mediaItemId })
+          .from(mediaItemTags)
+          .innerJoin(tags, eq(tags.id, mediaItemTags.tagId))
+          .where(ilike(tags.name, pattern));
+
+        const fields = [
+          ilike(mediaItems.title, pattern),
+          ilike(mediaItems.description, pattern),
+          ilike(studios.name, pattern),
+          inArray(mediaItems.id, performerMatches),
+          inArray(mediaItems.id, tagMatches),
+        ];
+        // A bare four-digit word is almost certainly a year, so let it match
+        // the release date too — "2019 caprice" then works as you'd expect.
+        if (/^\d{4}$/.test(term)) {
+          fields.push(sql`extract(year from ${mediaItems.releaseDate}) = ${Number(term)}`);
+        }
+
+        const match = or(...fields);
+        if (match) conditions.push(match);
+      }
     }
     if (tag) {
       const matchingItemIds = db
@@ -444,6 +505,11 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     if (studio) {
       conditions.push(sql`lower(${studios.name}) = lower(${studio})`);
     }
+    const yearNum = Number(year);
+    const filterYear = year && Number.isInteger(yearNum) ? yearNum : null;
+    if (filterYear !== null) {
+      conditions.push(sql`extract(year from ${mediaItems.releaseDate}) = ${filterYear}`);
+    }
     const favoritesOnly = favorite === "true";
     if (favoritesOnly) {
       conditions.push(eq(mediaItems.isFavorite, true));
@@ -452,7 +518,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     // parentId is omitted) so nested items don't leak into the top view. Tag,
     // performer and search all deliberately ignore folder nesting — they're
     // global lookups, you shouldn't have to drill into folders to hit them.
-    if (!tag && !performer && !search && !favoritesOnly && !studio && !kind) {
+    if (!tag && !performer && !search && !favoritesOnly && !studio && !kind && filterYear === null) {
       conditions.push(
         parentId ? eq(mediaItems.parentId, Number(parentId)) : isNull(mediaItems.parentId)
       );
@@ -468,7 +534,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     // Fetching one extra row answers "is there another page?" without a
     // second COUNT(*) over the same filtered set.
     const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
-      .orderBy(...orderFor(sort))
+      .orderBy(...(search && (!sort || sort === "newest") ? searchOrder(search) : orderFor(sort)))
       .limit(PAGE_SIZE + 1)
       .offset((pageNum - 1) * PAGE_SIZE);
 
@@ -483,6 +549,141 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       pageSize: PAGE_SIZE,
       hasMore,
     };
+  });
+
+  /**
+   * Type-ahead suggestions: the named things a query could mean, plus a few
+   * matching titles.
+   *
+   * Performers and studios come first because they're what you actually
+   * remember — the titles are machine-derived from filenames and rarely what
+   * you'd type. Picking one navigates to that filter rather than running a
+   * text search, so "Little Caprice" lands on her exact set instead of every
+   * item whose filename happens to contain those words.
+   *
+   * Only the first term is used: suggestions are for completing what you're
+   * typing now, not for re-running the whole query.
+   */
+  app.get<{ Querystring: { q?: string } }>("/api/search/suggestions", async (request) => {
+    const raw = request.query.q?.trim() ?? "";
+    if (raw.length < 2) return { performers: [], studios: [], items: [] };
+
+    const pattern = `%${escapeLike(raw)}%`;
+    const LIMIT = 5;
+
+    // Enough for performerPortraitUrl to resolve a face: an uploaded photo
+    // if there is one, otherwise a frame from their newest video.
+    //
+    // A LEFT JOIN with GROUP BY rather than correlated subqueries in the
+    // select list: drizzle renders `performers.id` unqualified when the outer
+    // query has a single table, which inside a subquery collides with the
+    // joined tables' own `id` and fails as an ambiguous column reference.
+    // This is the same shape GET /api/performers already uses.
+    const performerRows = await db
+      .select({
+        id: performers.id,
+        name: performers.name,
+        hasImage: sql<boolean>`(${performers.imageFile} is not null)`,
+        hasBanner: sql<boolean>`(${performers.bannerFile} is not null)`,
+        imagePositionX: performers.imagePositionX,
+        imagePositionY: performers.imagePositionY,
+        imageScale: performers.imageScale,
+        representativeItemId: sql<number | null>`max(${mediaItems.id})`,
+        // count(<column>) not count(*): a LEFT JOIN with no match would
+        // otherwise count the NULL-padded row and report 1.
+        videoCount: sql<number>`count(${mediaItems.id})::int`,
+      })
+      .from(performers)
+      .leftJoin(mediaItemPerformers, eq(mediaItemPerformers.performerId, performers.id))
+      .leftJoin(
+        mediaItems,
+        and(eq(mediaItems.id, mediaItemPerformers.mediaItemId), eq(mediaItems.inScope, true))
+      )
+      .where(ilike(performers.name, pattern))
+      .groupBy(
+        performers.id,
+        performers.name,
+        performers.imageFile,
+        performers.bannerFile,
+        performers.imagePositionX,
+        performers.imagePositionY,
+        performers.imageScale
+      )
+      .orderBy(sql`lower(${performers.name})`)
+      .limit(LIMIT);
+
+    const studioRows = await db
+      .select({ id: studios.id, name: studios.name })
+      .from(studios)
+      .where(ilike(studios.name, pattern))
+      .orderBy(sql`lower(${studios.name})`)
+      .limit(LIMIT);
+
+    const itemRows = await db
+      .select({
+        id: mediaItems.id,
+        title: mediaItems.title,
+        description: mediaItems.description,
+        // Part of the thumbnail URL's cache-busting token, so a replaced
+        // thumbnail shows here too rather than staying stale for a year.
+        thumbnailFile: mediaItems.thumbnailFile,
+        thumbnailPositionX: mediaItems.thumbnailPositionX,
+        thumbnailPositionY: mediaItems.thumbnailPositionY,
+        thumbnailScale: mediaItems.thumbnailScale,
+        releaseDate: mediaItems.releaseDate,
+      })
+      .from(mediaItems)
+      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .where(
+        and(
+          eq(mediaItems.inScope, true),
+          ne(mediaItemTypes.name, "photo"),
+          ilike(mediaItems.title, pattern)
+        )
+      )
+      .orderBy(desc(mediaItems.createdAt))
+      .limit(LIMIT);
+
+    // One batched lookup rather than a query per row — the same helper the
+    // listing endpoints use.
+    const performersByItemId = await fetchPerformersByItemIds(itemRows.map((r) => r.id));
+
+    return {
+      performers: performerRows,
+      studios: studioRows,
+      items: itemRows.map((row) => ({
+        ...row,
+        performers: performersByItemId.get(row.id) ?? [],
+      })),
+    };
+  });
+
+  /**
+   * Release years present in the library, newest first, for the year filter.
+   *
+   * A dedicated endpoint rather than deriving it client-side: the grid is
+   * paginated, so the client only ever holds one page and could never see
+   * every year from it.
+   */
+  app.get("/api/release-years", async () => {
+    const rows = await db
+      .select({
+        year: sql<number>`extract(year from ${mediaItems.releaseDate})::int`,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(mediaItems)
+      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .where(
+        and(
+          eq(mediaItems.inScope, true),
+          ne(mediaItemTypes.name, "photo"),
+          isNotNull(mediaItems.releaseDate)
+        )
+      )
+      .groupBy(sql`extract(year from ${mediaItems.releaseDate})`)
+      .orderBy(sql`extract(year from ${mediaItems.releaseDate}) desc`);
+
+    return { years: rows };
   });
 
   // Resolves the hero setting into actual items, so the homepage doesn't have
@@ -655,9 +856,17 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  // "More like this": no external metadata to compare against, so
-  // relatedness means shared tags — the user's own organizing signal —
-  // falling back to folder siblings for an untagged item.
+  // "More like this": no external metadata to compare against, so relatedness
+  // is whatever the library already knows, in descending order of how much it
+  // actually means:
+  //
+  //   1. the same performer — this library is organised by performer, so it's
+  //      the strongest signal available and the one most likely to be what
+  //      you'd want next;
+  //   2. a shared tag, the user's own explicit grouping;
+  //   3. folder siblings, which is nearly arbitrary but beats an empty row.
+  //
+  // Each tier only runs when the one before it returned nothing.
   app.get<{ Params: { id: string } }>("/api/media-items/:id/related", async (request, reply) => {
     const id = Number(request.params.id);
 
@@ -677,6 +886,13 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(mediaItemTags.mediaItemId, id))
     ).map((r) => r.tagId);
 
+    const ownPerformerIds = (
+      await db
+        .select({ performerId: mediaItemPerformers.performerId })
+        .from(mediaItemPerformers)
+        .where(eq(mediaItemPerformers.mediaItemId, id))
+    ).map((r) => r.performerId);
+
     const baseQuery = db
       .select(itemColumns)
       .from(mediaItems)
@@ -685,7 +901,28 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
 
     let rows: Awaited<ReturnType<typeof baseQuery.where>> = [];
 
-    if (ownTagIds.length > 0) {
+    if (ownPerformerIds.length > 0) {
+      // selectDistinct matters: a video sharing two performers with this one
+      // would otherwise come back twice and use up two of the eight slots.
+      const samePerformerIds = db
+        .selectDistinct({ id: mediaItemPerformers.mediaItemId })
+        .from(mediaItemPerformers)
+        .where(inArray(mediaItemPerformers.performerId, ownPerformerIds));
+
+      rows = await baseQuery
+        .where(
+          and(
+            inArray(mediaItems.id, samePerformerIds),
+            ne(mediaItems.id, id),
+            ne(mediaItemTypes.name, "photo"),
+            eq(mediaItems.inScope, true)
+          )
+        )
+        .orderBy(desc(mediaItems.createdAt))
+        .limit(RELATED_LIMIT);
+    }
+
+    if (rows.length === 0 && ownTagIds.length > 0) {
       const relatedIds = db
         .selectDistinct({ id: mediaItemTags.mediaItemId })
         .from(mediaItemTags)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
 import { AppFooter } from "./AppFooter";
+import { SearchBar } from "./SearchBar";
 import { Sidebar } from "./Sidebar";
 import { UserMenu } from "./UserMenu";
 
@@ -16,31 +16,6 @@ function readCollapsed(): boolean {
   } catch {
     return false;
   }
-}
-
-function SearchBar({ initialValue = "" }: { initialValue?: string }) {
-  const [value, setValue] = useState(initialValue);
-  const navigate = useNavigate();
-
-  useEffect(() => setValue(initialValue), [initialValue]);
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void navigate({ to: "/browse", search: { q: value.trim() || undefined } });
-      }}
-      className="relative w-full"
-    >
-      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Search titles and descriptions…"
-        className="w-full rounded-md border border-border bg-secondary/60 py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60 focus:bg-secondary"
-      />
-    </form>
-  );
 }
 
 export function AppShell({

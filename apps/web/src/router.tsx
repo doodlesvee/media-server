@@ -22,12 +22,14 @@ const browseRoute = createRoute({
   ): {
     tag?: string;
     performer?: string;
+    studio?: string;
     kind?: string;
     collectionId?: number;
     q?: string;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
     performer: typeof search.performer === "string" ? search.performer : undefined,
+    studio: typeof search.studio === "string" ? search.studio : undefined,
     kind: typeof search.kind === "string" ? search.kind : undefined,
     collectionId: search.collectionId != null ? Number(search.collectionId) : undefined,
     q: typeof search.q === "string" ? search.q : undefined,

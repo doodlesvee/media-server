@@ -46,20 +46,19 @@ export function PerformerCard({
         </span>
       )}
 
-      {/* Name and action appear only on hover, so a wall of performers reads
-          as portraits rather than a labelled list. */}
-      <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-        {/* Lighter than before: with no centred button to keep legible, only
-            the name needs backing, so the artwork stays visible on hover. */}
-        <span className="absolute inset-0 bg-black/20" />
+      {/* A dim on hover only — at rest the artwork is untouched, so the
+          labels below sit on the picture rather than over a greyed one. */}
+      <span className="pointer-events-none absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/20" />
 
-        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 to-transparent p-3 text-left">
-          <span className="line-clamp-2 text-sm font-semibold leading-tight text-white">
-            {performer.name}
-          </span>
-          <span className="mt-0.5 block text-[11px] text-white/70">
-            {performer.videoCount} {performer.videoCount === 1 ? "video" : "videos"}
-          </span>
+      {/* Always visible: a wall of unlabelled portraits looks tidy but makes
+          you hover every one to find anybody. The gradient is what keeps the
+          text legible over whatever the picture happens to be doing here. */}
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3 pt-8 text-left">
+        <span className="line-clamp-2 text-sm font-semibold leading-tight text-white drop-shadow">
+          {performer.name}
+        </span>
+        <span className="mt-0.5 block text-[11px] text-white/75">
+          {performer.videoCount} {performer.videoCount === 1 ? "video" : "videos"}
         </span>
       </span>
     </button>

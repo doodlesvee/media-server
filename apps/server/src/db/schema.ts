@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  date,
   integer,
   jsonb,
   pgTable,
@@ -9,8 +10,8 @@ import {
   serial,
   text,
   timestamp,
-  uniqueIndex,
   type AnyPgColumn,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const mediaItemTypes = pgTable("media_item_types", {
@@ -64,6 +65,10 @@ export const mediaItems = pgTable("media_items", {
   // Filename under APP_DATA_DIR/item-thumbnails of an uploaded override.
   // Null means "use the generated poster". The random suffix in the name is
   // what lets the served URL change when you replace the image.
+  // When the scene was released, parsed from the filename. A plain date, not
+  // a timestamp: nobody writes a release *time*, and storing one would invite
+  // timezone shifts that move a date across midnight.
+  releaseDate: date("release_date"),
   thumbnailFile: text("thumbnail_file"),
   // How the thumbnail is framed wherever it's shown — tile, hero, hover card.
   // Display only: the image file is never cropped, so re-framing costs no

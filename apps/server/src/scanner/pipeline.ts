@@ -25,6 +25,7 @@ import {
   normalizeName,
   parseDeclaredName,
   performerNameFromPath,
+  releaseDateFromFilename,
   studioNameFromPath,
   studioNameFromFilename,
 } from "./performerNames.js";
@@ -165,6 +166,7 @@ async function processFile(
     // backfills performers across a library that predates the feature.
     await syncPerformersWithPath(existingFile.mediaItemId, filePath, root.path);
     await syncStudioWithFilename(existingFile.mediaItemId, filePath, root.path);
+    await syncReleaseDateWithFilename(existingFile.mediaItemId, filePath);
 
     if (kind === "video") {
       await ensureArtworkForItem(existingFile.mediaItemId, filePath, existingFile.contentHash);
@@ -203,6 +205,7 @@ async function processFile(
     // exactly the way its title follows a rename.
     await syncPerformersWithPath(movedFile.mediaItemId, filePath, root.path);
     await syncStudioWithFilename(movedFile.mediaItemId, filePath, root.path);
+    await syncReleaseDateWithFilename(movedFile.mediaItemId, filePath);
     return;
   }
 
@@ -249,6 +252,7 @@ async function processFile(
 
   await syncPerformersWithPath(item.id, filePath, root.path);
   await syncStudioWithFilename(item.id, filePath, root.path);
+  await syncReleaseDateWithFilename(item.id, filePath);
 
   if (kind === "video") {
     await generatePosterFrame(filePath, item.id, contentHash, durationSeconds);
@@ -314,6 +318,40 @@ async function ensureStudioId(rawName: string): Promise<number> {
   const raced = await findId();
   if (raced === null) throw new Error(`Could not resolve studio "${name}"`);
   return raced;
+}
+
+/**
+ * Sets an item's release date from its filename.
+ *
+ * Two sources, in the same order of explicitness as everything else: the date
+ * segment of a declared name, then any date found loose in a filename that
+ * doesn't follow the convention — which is what gives the not-yet-renamed
+ * files a date without touching them.
+ *
+ * No source flag, because there's nothing to protect: the date is never
+ * user-authored today. If manual editing is added, this needs the same
+ * `!== "scanner"` guard the title and studio syncs have.
+ */
+async function syncReleaseDateWithFilename(
+  mediaItemId: number,
+  filePath: string
+): Promise<void> {
+  const declared = parseDeclaredName(filePath);
+  const releaseDate = declared?.releaseDate ?? releaseDateFromFilename(filePath);
+  if (!releaseDate) return; // nothing in the name — leave whatever is there
+
+  const [item] = await db
+    .select({ releaseDate: mediaItems.releaseDate })
+    .from(mediaItems)
+    .where(eq(mediaItems.id, mediaItemId));
+  // Already agrees; don't churn updatedAt on every scan. The column is a
+  // `date`, which drizzle hands back as a "YYYY-MM-DD" string.
+  if (!item || item.releaseDate === releaseDate) return;
+
+  await db
+    .update(mediaItems)
+    .set({ releaseDate, updatedAt: new Date() })
+    .where(eq(mediaItems.id, mediaItemId));
 }
 
 /**

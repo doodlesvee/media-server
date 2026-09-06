@@ -71,7 +71,7 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
-  const { tag, performer, kind, collectionId, q } = routeApi.useSearch();
+  const { tag, performer, studio, kind, collectionId, q } = routeApi.useSearch();
   const navigate = useNavigate();
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
 
@@ -84,6 +84,7 @@ export function BrowsePage() {
           type: "library",
           tag: tag ?? null,
           performer: performer ?? null,
+          studio: studio ?? null,
           kind: kind ?? null,
           q: q ?? null,
           parentId: currentParentId,
@@ -96,7 +97,9 @@ export function BrowsePage() {
 
   const activeFilter = tag
     ? `Tag: ${tag}`
-    : performer
+    : studio
+      ? `Studio: ${studio}`
+      : performer
       ? `Performer: ${performer}`
       : kind
         ? kind.charAt(0).toUpperCase() + kind.slice(1) + "s"
@@ -109,7 +112,7 @@ export function BrowsePage() {
       <div className="space-y-5 px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
-            {source.type === "library" && !tag && !performer && !kind && !q && (
+            {source.type === "library" && !tag && !performer && !studio && !kind && !q && (
               <div className="flex items-center gap-1 text-muted-foreground">
                 <button
                   type="button"
@@ -158,7 +161,7 @@ export function BrowsePage() {
             )}
           </div>
 
-          {source.type === "library" && !tag && !performer && !kind && !q && (
+          {source.type === "library" && !tag && !performer && !studio && !kind && !q && (
             <NewFolderButton parentId={currentParentId} />
           )}
         </div>

@@ -49,13 +49,78 @@ export function performerNameFromPath(rootPath: string, filePath: string): strin
 export type DeclaredName = {
   studio: string | null;
   performerNames: string[];
+  releaseDate: string | null;
   title: string;
 };
 
 /**
+ * A release date written in a filename, as an ISO `YYYY-MM-DD` string.
+ *
+ * Two layouts, told apart by which end carries the four-digit year rather
+ * than by guessing a locale:
+ *
+ *   MM.DD.YYYY  the declared convention  — "02.15.2020"
+ *   YYYY.MM.DD  what most existing names already use — "2018.09.06"
+ *
+ * `01.02.2020` is genuinely ambiguous between the two. The convention says
+ * MM.DD.YYYY, so it resolves that way; there is no clever tiebreak, just a
+ * stated rule.
+ *
+ * Out-of-range parts are rejected rather than clamped — "13.45.2020" yields
+ * no date at all, which is honest, instead of some nearby wrong one.
+ */
+export function parseDateToken(token: string): string | null {
+  const match = /^(\d{2,4})[.\-_](\d{1,2})[.\-_](\d{2,4})$/.exec(token.trim());
+  if (!match) return null;
+
+  const [, first, middle, last] = match;
+
+  let year: number;
+  let month: number;
+  let day: number;
+  if (first.length === 4) {
+    year = Number(first);
+    month = Number(middle);
+    day = Number(last);
+  } else if (last.length === 4) {
+    year = Number(last);
+    month = Number(first);
+    day = Number(middle);
+  } else {
+    // A two-digit year is a coin flip between 1920 and 2020 — skip it rather
+    // than invent a century.
+    return null;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (year < 1900 || year > 2100) return null;
+
+  const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  // Catches a day that doesn't exist in that month — 02.31.2020 round-trips
+  // to March 2nd, which would be a silently wrong date.
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.getUTCDate() !== day) return null;
+
+  return iso;
+}
+
+/**
+ * A release date found anywhere in a filename that doesn't follow the
+ * declared convention, so the names not yet renamed still get one.
+ */
+export function releaseDateFromFilename(filePath: string): string | null {
+  const base = (filePath.split("/").pop() ?? filePath).replace(/\.[^./]+$/, "");
+  for (const candidate of base.match(/\d{2,4}[.\-_]\d{1,2}[.\-_]\d{2,4}/g) ?? []) {
+    const date = parseDateToken(candidate);
+    if (date) return date;
+  }
+  return null;
+}
+
+/**
  * Parses the declared naming convention:
  *
- *     [Studio] Performer 1, Performer 2 - Video title.ext
+ *     [Studio] Performer 1, Performer 2 - MM.DD.YYYY - Video title.ext
  *
  * A **leading** `[` is the opt-in signal, which is what makes this safe to add
  * to an existing library: a filename that doesn't start with one is left
@@ -82,11 +147,25 @@ export function parseDeclaredName(filePath: string): DeclaredName | null {
   const studio = normalizeName(base.slice(1, close));
   const rest = base.slice(close + 1);
 
-  // Split on the FIRST " - " only: titles legitimately contain dashes
-  // ("Girls - Girls - Girls"), and everything after the first one is title.
+  // The cast ends at the FIRST " - "; titles legitimately contain dashes
+  // ("Girls - Girls - Girls"), so nothing after that point is split blindly.
   const separator = rest.indexOf(" - ");
   const namePart = separator === -1 ? rest : rest.slice(0, separator);
-  const titlePart = separator === -1 ? rest : rest.slice(separator + 3);
+  let titlePart = separator === -1 ? rest : rest.slice(separator + 3);
+
+  // The date segment is optional, and is only consumed when it actually
+  // parses as a date. A title that merely starts with a number keeps it —
+  // taking the segment on position alone would eat the first words of every
+  // filename that has no date in it.
+  let releaseDate: string | null = null;
+  const afterNames = titlePart.indexOf(" - ");
+  if (afterNames !== -1) {
+    const candidate = parseDateToken(titlePart.slice(0, afterNames));
+    if (candidate) {
+      releaseDate = candidate;
+      titlePart = titlePart.slice(afterNames + 3);
+    }
+  }
 
   const performerNames = namePart
     .split(",")
@@ -100,6 +179,7 @@ export function parseDeclaredName(filePath: string): DeclaredName | null {
     // `[]` is a legitimate way to say "no studio" while still opting in.
     studio: studio && !/^\d{3,4}p?$/i.test(studio) ? studio : null,
     performerNames,
+    releaseDate,
     title: normalizeName(titlePart) || normalizeName(namePart),
   };
 }

@@ -166,6 +166,21 @@ export function MediaCard({
             </span>
           )}
 
+          {/* Sits before the progress bar in the DOM so that 1px line still
+              paints on top of the gradient rather than under it. */}
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2.5 pb-2 pt-8">
+            {item.performers && item.performers.length > 0 && (
+              // One line only: with the title clamped to two below it, a
+              // wrapping cast list would push the title off the tile.
+              <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-white/70">
+                {item.performers.map((p) => p.name).join(", ")}
+              </span>
+            )}
+            <span className="line-clamp-2 text-xs font-medium leading-snug text-white drop-shadow">
+              {item.title}
+            </span>
+          </span>
+
           {progressPercent !== null && (
             <span className="absolute inset-x-0 bottom-0 h-1 bg-white/25">
               <span className="block h-full bg-white" style={{ width: `${progressPercent}%` }} />

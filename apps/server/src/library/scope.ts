@@ -104,23 +104,33 @@ export async function clearScopeForRoot(rootId: number): Promise<void> {
  * anything you authored.
  */
 export async function purgeEmptyEntities(): Promise<{ performers: number; studios: number }> {
+  // "No items at all", not "no *visible* items". Two reasons, and the first
+  // is a hard crash: an item that is merely hidden still has its join row, so
+  // deleting the performer violates the foreign key and fails the whole scan.
+  //
+  // The second is that hiding is meant to be reversible. Removing a scan
+  // folder hides its items so re-adding restores them instantly; destroying
+  // their performers in the meantime would make that restore incomplete.
+  // A performer whose items were genuinely deleted has no join rows left and
+  // is still purged, which is the case this exists for.
   const deadPerformers = await db
     .delete(performers)
     .where(
       sql`not exists (
         select 1 from ${mediaItemPerformers} mip
-        join ${mediaItems} mi on mi.id = mip.media_item_id
-        where mip.performer_id = ${performers.id} and mi.in_scope
+        where mip.performer_id = ${performers.id}
       )`
     )
     .returning({ id: performers.id });
 
+  // Same reasoning: media_items.studio_id still references a studio whose
+  // items are only hidden, so scoping this to in_scope would fail the delete.
   const deadStudios = await db
     .delete(studios)
     .where(
       sql`not exists (
         select 1 from ${mediaItems} mi
-        where mi.studio_id = ${studios.id} and mi.in_scope
+        where mi.studio_id = ${studios.id}
       )`
     )
     .returning({ id: studios.id });

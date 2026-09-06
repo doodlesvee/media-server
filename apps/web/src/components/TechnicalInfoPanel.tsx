@@ -1,12 +1,20 @@
-import type { MediaItemDetail, PhotoMetadata, VideoMetadata } from "@/lib/mediaItemApi";
+import type { MediaItemDetail, PhotoMetadata } from "@/lib/mediaItemApi";
 
 function formatCoords(gps: { latitude: number; longitude: number }): string {
   return `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`;
 }
 
-/** Date only — the time a file was written is noise at this granularity. */
+/**
+ * Date only — the time a file was written is noise at this granularity.
+ *
+ * A bare "YYYY-MM-DD" (what the release date is) is parsed by JS as UTC
+ * midnight and then rendered in local time, which displays the *previous* day
+ * anywhere west of Greenwich. Appending a local time forces it to be read in
+ * the viewer's own zone, so the date shown is the date stored.
+ */
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, {
+  const localised = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  return new Date(localised).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -25,15 +33,16 @@ export function TechnicalInfoPanel({ item }: { item: MediaItemDetail }) {
   const rows: [string, string][] = [];
 
   if (item.itemType === "video") {
-    const meta = (item.extraMetadata ?? {}) as VideoMetadata;
-    if (meta.width && meta.height) rows.push(["Resolution", `${meta.width}×${meta.height}`]);
-    if (meta.codec) rows.push(["Codec", meta.codec]);
-    if (item.fileSizeBytes) rows.push(["Size", formatSize(item.fileSizeBytes)]);
-    // Two genuinely different dates, so both are labelled rather than one
-    // generic "Date": when the file itself was last written, versus when this
-    // library first saw it. A re-scan never changes the former.
-    if (item.fileModifiedAt) rows.push(["File date", formatDate(item.fileModifiedAt)]);
-    rows.push(["Added", formatDate(item.createdAt)]);
+    // Resolution, codec and size are gone deliberately: they describe the
+    // file, not the scene, and none of them change what you'd choose to
+    // watch. The playback warning below still surfaces a codec or container
+    // problem, which is the only moment that detail actually matters.
+    //
+    // The release date is the one date shown. The file's mtime and the date
+    // the library first saw it are facts about the filing, and showing three
+    // dates made the one that mattered hard to find. Absent rather than
+    // guessed when the filename doesn't carry one.
+    if (item.releaseDate) rows.push(["Released", formatDate(item.releaseDate)]);
     if (item.playCount > 0) {
       rows.push(["Plays", item.playCount === 1 ? "1 time" : `${item.playCount} times`]);
     }

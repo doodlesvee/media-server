@@ -162,6 +162,13 @@
       "when": 1788640947135,
       "tag": "0022_jazzy_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788644076778,
+      "tag": "0023_magical_gladiator",
+      "breakpoints": true
     }
   ]
 }

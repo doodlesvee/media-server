@@ -1,0 +1,102 @@
+import { eq } from "drizzle-orm";
+import { beforeEach, describe, expect, it } from "vitest";
+import { db } from "../db/client.js";
+import { mediaItems, performers, studios } from "../db/schema.js";
+import { resetDatabase, testApp } from "../test/harness.js";
+import {
+  attachFile,
+  linkPerformer,
+  makeFolder,
+  makeItem,
+  makeLibrary,
+  makePerformer,
+  makeStudio,
+} from "../test/fixtures.js";
+import { purgeEmptyEntities, recomputeScope } from "./scope.js";
+
+let libraryId: number;
+let rootId: number;
+
+beforeEach(async () => {
+  await testApp();
+  await resetDatabase();
+  ({ libraryId, rootId } = await makeLibrary());
+});
+
+describe("recomputeScope", () => {
+  it("keeps an item whose file belongs to a configured folder", async () => {
+    const id = await makeItem(libraryId, { title: "In scope", inScope: false });
+    await attachFile(id, rootId, "/media/a.mp4");
+    await recomputeScope();
+
+    const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, id));
+    expect(item.inScope).toBe(true);
+  });
+
+  it("hides an item whose file no longer belongs to any folder", async () => {
+    const id = await makeItem(libraryId, { title: "Orphan" });
+    await attachFile(id, null as unknown as number, "/elsewhere/a.mp4");
+    await recomputeScope();
+
+    const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, id));
+    expect(item.inScope).toBe(false);
+  });
+
+  it("never hides a folder, which has no file of its own", async () => {
+    // Any "has a file under a watched root" rule is false for every folder,
+    // which would empty the folder picker entirely.
+    const id = await makeFolder(libraryId);
+    await recomputeScope();
+
+    const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, id));
+    expect(item.inScope).toBe(true);
+  });
+
+  it("does not delete anything, so removing a folder is reversible", async () => {
+    const id = await makeItem(libraryId, { title: "Hidden" });
+    await attachFile(id, null as unknown as number, "/elsewhere/a.mp4");
+    await recomputeScope();
+    expect(await db.select().from(mediaItems)).toHaveLength(1);
+  });
+});
+
+describe("purgeEmptyEntities", () => {
+  it("removes a performer left with no visible items", async () => {
+    // This is what cleans up a performer created by a filename typo once the
+    // filename is corrected.
+    const stray = await makePerformer("Typo Name");
+    const kept = await makePerformer("Real Name");
+    await linkPerformer(await makeItem(libraryId, { title: "X" }), kept);
+
+    await purgeEmptyEntities();
+    expect((await db.select().from(performers)).map((p) => p.name)).toEqual(["Real Name"]);
+  });
+
+  it("removes a studio no visible item uses", async () => {
+    const used = await makeStudio("Kept");
+    await makeStudio("Unused");
+    await makeItem(libraryId, { title: "X", studioId: used });
+
+    await purgeEmptyEntities();
+    expect((await db.select().from(studios)).map((s) => s.name)).toEqual(["Kept"]);
+  });
+
+  it("keeps a performer whose items are only hidden, and does not crash", async () => {
+    // Hiding is reversible — re-adding the folder must restore everything.
+    // Deleting here also violated the join table's foreign key, which failed
+    // the whole scan, since purge runs at the end of every one.
+    const p = await makePerformer("Only Hidden");
+    await linkPerformer(await makeItem(libraryId, { title: "X", inScope: false }), p);
+
+    await expect(purgeEmptyEntities()).resolves.toBeDefined();
+    expect((await db.select().from(performers)).map((r) => r.name)).toEqual(["Only Hidden"]);
+  });
+
+  it("keeps a studio whose items are only hidden", async () => {
+    const s = await makeStudio("Hidden Studio");
+    await makeItem(libraryId, { title: "X", studioId: s, inScope: false });
+
+    await expect(purgeEmptyEntities()).resolves.toBeDefined();
+    expect((await db.select().from(studios)).map((r) => r.name)).toEqual(["Hidden Studio"]);
+  });
+});

@@ -34,9 +34,15 @@ function write(key: string, value: string): void {
 }
 
 export function readVolume(): number {
-  const raw = Number(read(VOLUME_KEY));
-  // A stored 0 is a real choice (silent), so only reject values outside the
-  // valid range or a non-numeric entry.
+  const stored = read(VOLUME_KEY);
+  // The null check has to come first: `Number(null)` is 0, which is a valid
+  // volume, so a missing value used to read as "silent" and every video
+  // played at zero until the slider was touched.
+  if (stored === null) return 1;
+
+  const raw = Number(stored);
+  // A stored 0 *is* a real choice, so only values outside the valid range or
+  // a non-numeric entry fall back.
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
 }
 
