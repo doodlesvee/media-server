@@ -56,6 +56,97 @@ The REST API is documented at `/api/docs` (Swagger UI), and is deliberately a
 plain HTTP API rather than a TypeScript-only RPC layer, so other clients can
 be written against it.
 
+## Data model
+
+One polymorphic `media_items` table rather than a table per content type —
+that's what lets videos, photos and folders sit in one library and be grouped
+however you like, instead of being locked into "Movies" or "Photos".
+
+```mermaid
+erDiagram
+    libraries ||--o{ library_roots : "folders to scan"
+    libraries ||--o{ media_items : contains
+    library_roots ||--o{ media_files : "found under"
+
+    media_item_types ||--o{ media_items : "video / photo / folder"
+    media_items ||--o{ media_files : "one item, many paths over time"
+    media_items ||--o{ media_items : "parent_id — folders nest"
+    studios ||--o{ media_items : released
+    albums ||--o{ media_items : "album_id (no FK)"
+
+    albums }o--|| performers : "whose"
+    albums }o--|| studios : "whose"
+    albums }o--o| media_items : "cover_item_id"
+
+    media_items ||--o{ media_item_tags : ""
+    tags ||--o{ media_item_tags : ""
+    media_items ||--o{ media_item_performers : ""
+    performers ||--o{ media_item_performers : ""
+
+    collections ||--o{ collection_items : "manual membership"
+    media_items ||--o{ collection_items : ""
+
+    users ||--o{ sessions : ""
+    users ||--o{ webauthn_credentials : "passkeys"
+    users ||--o{ playback_states : ""
+    media_items ||--o{ playback_states : "position, watched, play count"
+
+    media_items {
+        int id PK
+        int parent_id FK "folders nest"
+        int item_type_id FK
+        int studio_id FK
+        int album_id "soft link"
+        text title
+        text title_source "filename | user"
+        text performers_source "scanner | user"
+        text studio_source "scanner | user"
+        date release_date "parsed from the filename"
+        bool is_favorite
+        bool in_scope "folder still watched?"
+        timestamp missing_since "file gone from a watched folder"
+        jsonb extra_metadata "codec, camera, GPS"
+    }
+
+    media_files {
+        int id PK
+        int media_item_id FK
+        int root_id FK
+        text path UK
+        text content_hash "how a moved file is recognised"
+        bigint size_bytes
+        timestamp mtime
+    }
+
+    albums {
+        int id PK
+        text path UK "the directory itself"
+        int cover_item_id FK "chosen photo, else the first"
+        int cover_position_x "framing, display only"
+        int cover_scale
+    }
+```
+
+Four decisions worth knowing:
+
+- **`media_files` is separate from `media_items`.** An item is the thing you
+  tagged and rated; a file is where it currently lives. Files are matched back
+  by `content_hash`, so moving or renaming one on disk keeps everything you
+  did to it.
+- **`*_source` columns arbitrate ownership.** The scanner writes a field until
+  you edit it in the app, then never touches it again. That's what makes "I
+  removed this performer" survive a rescan, with no override table.
+- **`in_scope` and `missing_since` mean different things.** The first is "you
+  stopped watching that folder", the second is "the file vanished from a
+  folder we do watch". Conflating them once flagged 273 items as missing.
+- **`media_items.album_id` has no foreign key**, deliberately: `albums`
+  already points back at `media_items` for its cover, and a hard constraint in
+  both directions needs deferred checks for no practical gain.
+
+Not shown, because nothing references them: `scan_jobs`, `categories` and
+`app_settings` (a key/JSONB store holding hero picks, scan interval,
+appearance and the privacy password hash).
+
 ## Running it
 
 Requires Docker and Docker Compose.
