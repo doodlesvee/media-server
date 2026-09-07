@@ -122,6 +122,9 @@ function escapeLike(value: string): string {
 }
 
 const RELATED_LIMIT = 8;
+
+/** How many stills the video modal previews before handing off to the album. */
+const GALLERY_PREVIEW_LIMIT = 8;
 const HERO_LIMIT = 5;
 
 /**
@@ -382,22 +385,6 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     await setKindCover(kind, null);
     await deleteKindCover(previous);
     return { ok: true };
-  });
-
-  app.get("/api/studios", async () => {
-    const rows = await db
-      .select({
-        id: studios.id,
-        name: studios.name,
-        // count(<column>) not count(*): a LEFT JOIN with no match would
-        // otherwise report 1 for a studio with nothing attached.
-        videoCount: sql<number>`count(${mediaItems.id})::int`,
-      })
-      .from(studios)
-      .leftJoin(mediaItems, and(eq(mediaItems.studioId, studios.id), eq(mediaItems.inScope, true)))
-      .groupBy(studios.id, studios.name)
-      .orderBy(sql`lower(${studios.name})`);
-    return { studios: rows };
   });
 
   app.get<{
@@ -868,10 +855,21 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .select({ path: mediaFiles.path })
       .from(mediaFiles)
       .where(eq(mediaFiles.mediaItemId, id));
-    if (!file) return { images: [] };
+    if (!file) return { albumId: null, total: 0, images: [] };
 
     const directory = file.path.slice(0, file.path.lastIndexOf("/"));
-    if (!directory) return { images: [] };
+    if (!directory) return { albumId: null, total: 0, images: [] };
+
+    const sameDirectoryPhotos = and(
+      eq(mediaItemTypes.name, "photo"),
+      eq(mediaItems.inScope, true),
+      ne(mediaItems.id, id),
+      // Everything up to the last slash, compared exactly. A LIKE prefix
+      // would treat `_` and `%` in a folder name as wildcards, and both
+      // are legal characters — "Little Caprice/100%_Real" would match
+      // folders it has nothing to do with.
+      sql`substring(${mediaFiles.path} from '^(.*)/[^/]*$') = ${directory}`
+    );
 
     const rows = await db
       .select({
@@ -883,20 +881,13 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .from(mediaItems)
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
       .innerJoin(mediaFiles, eq(mediaFiles.mediaItemId, mediaItems.id))
-      .where(
-        and(
-          eq(mediaItemTypes.name, "photo"),
-          eq(mediaItems.inScope, true),
-          ne(mediaItems.id, id),
-          // Everything up to the last slash, compared exactly. A LIKE prefix
-          // would treat `_` and `%` in a folder name as wildcards, and both
-          // are legal characters — "Little Caprice/100%_Real" would match
-          // folders it has nothing to do with.
-          sql`substring(${mediaFiles.path} from '^(.*)/[^/]*$') = ${directory}`
-        )
-      )
+      .where(sameDirectoryPhotos)
       // Filenames are the only stable order here — they're usually numbered.
-      .orderBy(asc(mediaFiles.path));
+      .orderBy(asc(mediaFiles.path))
+      // A preview, not the set. This used to return every photo, so opening a
+      // video put 121 <img> elements inside the modal. Albums have their own
+      // page now, which is where a set that size belongs.
+      .limit(GALLERY_PREVIEW_LIMIT + 1);
 
     // The album id lets the modal link through to the full gallery instead
     // of the strip being the only way to see 121 photos.
@@ -905,9 +896,29 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .from(mediaItems)
       .where(eq(mediaItems.id, id));
 
+    // One extra row was fetched purely to answer "are there more?" without a
+    // COUNT(*); only when there are does the real total get looked up.
+    const hasMore = rows.length > GALLERY_PREVIEW_LIMIT;
+    const images = hasMore ? rows.slice(0, GALLERY_PREVIEW_LIMIT) : rows;
+
+    // Counted over the directory rather than the album, so the number is
+    // right even for a video scanned before albums existed and left with no
+    // album_id — the strip previews a folder, not a row in `albums`.
+    let total = images.length;
+    if (hasMore) {
+      const [counted] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(mediaItems)
+        .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+        .innerJoin(mediaFiles, eq(mediaFiles.mediaItemId, mediaItems.id))
+        .where(sameDirectoryPhotos);
+      total = counted?.total ?? images.length;
+    }
+
     return {
       albumId: owner?.albumId ?? null,
-      images: rows.map((row) => ({
+      total,
+      images: images.map((row) => ({
         id: row.id,
         title: row.title,
         thumbnailFile: row.thumbnailFile,

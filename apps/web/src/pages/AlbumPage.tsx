@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { Play } from "lucide-react";
+import { Crop, Play, Star } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MediaDetailModal } from "@/components/MediaDetailModal";
 import { PhotoLightbox } from "@/components/PhotoLightbox";
-import { fetchAlbum } from "@/lib/albumApi";
+import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
+import { fetchAlbum, saveAlbumCover } from "@/lib/albumApi";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { cn } from "@/lib/utils";
 
 const routeApi = getRouteApi("/album/$albumId");
 
@@ -15,6 +17,21 @@ export function AlbumPage() {
   const id = Number(albumId);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const [reframing, setReframing] = useState(false);
+
+  const cover = useMutation({
+    mutationFn: (patch: Parameters<typeof saveAlbumCover>[1]) => saveAlbumCover(id, patch),
+    onSuccess: () => {
+      setReframing(false);
+      queryClient.invalidateQueries({ queryKey: ["album", id] });
+      // Prefix match, so both the albums page and the row on each performer's
+      // profile repaint with the new face.
+      queryClient.invalidateQueries({ queryKey: ["albums"] });
+    },
+  });
 
   const { data, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["album", id],
@@ -33,7 +50,36 @@ export function AlbumPage() {
     );
   }
 
+  // Shared by the scroll sentinel and the lightbox, so reaching the end of
+  // either loads the next page.
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      // Start early so scrolling doesn't visibly stall at the boundary.
+      { rootMargin: "600px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasNextPage, loadMore]);
+
   const album = data?.pages[0];
+  // What the album card actually shows: the hand-picked photo, or the first
+  // one when it's still automatic. Framing has to preview against that exact
+  // image or you'd be cropping something the card never displays.
+  const coverPhoto =
+    (album?.coverItemId != null
+      ? data?.pages.flatMap((p) => p.photos).find((p) => p.id === album.coverItemId)
+      : undefined) ?? data?.pages[0]?.photos[0];
   // Flattened across pages, so the lightbox can step through everything
   // loaded so far rather than restarting at each page boundary.
   const photos = data?.pages.flatMap((p) => p.photos) ?? [];
@@ -42,7 +88,7 @@ export function AlbumPage() {
     <AppShell>
       <div className="space-y-6 px-6 py-8">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{album?.title ?? " "}</h1>
+          <h1 className="sensitive text-3xl font-bold tracking-tight sm:text-4xl">{album?.title ?? " "}</h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {album?.performer && (
               <Link
@@ -63,46 +109,120 @@ export function AlbumPage() {
             <span>{photos.length} photos</span>
           </div>
 
-          {album?.video && (
-            <button
-              type="button"
-              onClick={() => setVideoOpen(true)}
-              className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm transition-colors hover:bg-accent"
-            >
-              <Play className="size-4 fill-current" />
-              Play the video
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {album?.video && (
+              <button
+                type="button"
+                onClick={() => setVideoOpen(true)}
+                className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+              >
+                <Play className="size-4 fill-current" />
+                Play the video
+              </button>
+            )}
+
+            {coverPhoto && !reframing && (
+              <button
+                type="button"
+                onClick={() => setReframing(true)}
+                className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+              >
+                <Crop className="size-4" />
+                Reposition cover
+              </button>
+            )}
+          </div>
+
+          {reframing && coverPhoto && album && (
+            <FramingEditor
+              src={thumbnailUrl(coverPhoto)}
+              value={{
+                x: album.coverPositionX,
+                y: album.coverPositionY,
+                scale: album.coverScale,
+              }}
+              // The frame the album card actually crops to. Preview at any
+              // other ratio and you'd choose a band that gets cut elsewhere.
+              aspectClass="aspect-[3/2]"
+              saving={cover.isPending}
+              onSave={(next: FramingValue) =>
+                cover.mutate({
+                  // Pins the photo as well when the cover was still automatic:
+                  // otherwise a later scan could change which photo comes
+                  // first, and this framing would be applied to a different
+                  // picture. Sent together, so the server keeps the framing
+                  // rather than resetting it as a cover change.
+                  coverItemId: album.coverItemId ?? coverPhoto.id,
+                  coverPositionX: next.x,
+                  coverPositionY: next.y,
+                  coverScale: next.scale,
+                })
+              }
+              onCancel={() => setReframing(false)}
+              note="Used on the albums page and on each performer's profile."
+            />
           )}
         </div>
 
         <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
-          {photos.map((photo, index) => (
-            <button
-              key={photo.id}
-              type="button"
-              onClick={() => setOpenIndex(index)}
-              aria-label={`Open photo ${index + 1}`}
-              className="group focus-visible:outline-none"
-            >
-              <img
-                src={thumbnailUrl(photo)}
-                alt=""
-                loading="lazy"
-                className="aspect-video w-full rounded-md object-cover ring-1 ring-border transition-all group-hover:ring-white/40"
-              />
-            </button>
-          ))}
+          {photos.map((photo, index) => {
+            const isCover = album?.coverItemId === photo.id;
+            return (
+              // A wrapper rather than the tile itself being the button: the
+              // cover control is a button too, and a button inside a button is
+              // invalid — browsers drop the inner one, so it wouldn't fire.
+              <div key={photo.id} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => setOpenIndex(index)}
+                  aria-label={`Open photo ${index + 1}`}
+                  className="block w-full focus-visible:outline-none"
+                >
+                  <img
+                    src={thumbnailUrl(photo)}
+                    alt=""
+                    loading="lazy"
+                    className={cn(
+                      "aspect-[3/2] w-full rounded-md object-cover ring-1 transition-all",
+                      isCover ? "ring-2 ring-white/70" : "ring-border group-hover:ring-white/40"
+                    )}
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => cover.mutate({ coverItemId: isCover ? null : photo.id })}
+                  disabled={cover.isPending}
+                  aria-pressed={isCover}
+                  title={isCover ? "Cover — click to go back to automatic" : "Use as album cover"}
+                  aria-label={isCover ? "Clear the album cover" : "Use this photo as the album cover"}
+                  className={cn(
+                    "absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/90 focus-visible:opacity-100 disabled:opacity-50",
+                    // The chosen one keeps its star: it's why this photo is on
+                    // the album card, so hiding it behind hover would leave
+                    // that unexplained. Hover-only elsewhere, and always shown
+                    // on small screens, which have no hover state at all.
+                    "md:opacity-0 md:group-hover:opacity-100",
+                    isCover && "md:opacity-100"
+                  )}
+                >
+                  <Star className={cn("size-4", isCover && "fill-yellow-400 text-yellow-400")} />
+                </button>
+              </div>
+            );
+          })}
         </div>
 
-        {hasNextPage && (
-          <button
-            type="button"
-            onClick={() => void fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="mx-auto block rounded-md bg-secondary px-4 py-2 text-sm transition-colors hover:bg-accent disabled:opacity-50"
-          >
-            {isFetchingNextPage ? "Loading…" : "Show more photos"}
-          </button>
+        {/* Infinite scroll, matching the media grid — a button was the odd
+            one out, and 121 photos is a lot of clicking. */}
+        <div ref={sentinelRef} aria-hidden className="h-px" />
+
+        {isFetchingNextPage && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="skeleton aspect-[3/2] rounded-md" />
+            ))}
+          </div>
         )}
       </div>
 
@@ -112,6 +232,7 @@ export function AlbumPage() {
           index={openIndex}
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
+          onReachEnd={loadMore}
         />
       )}
 

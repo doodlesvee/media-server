@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Clapperboard, Film, Layers, Tv } from "lucide-react";
 import { fetchCategories } from "@/lib/categoryApi";
+import { IMAGE_EPOCH, thumbnailUrl } from "@/lib/mediaItemApi";
 
 // Icons for the categories that ship by default. Anything you add gets a
 // neutral one — the label is what identifies it.
@@ -30,11 +31,11 @@ export function KindTiles() {
         const Icon = ICONS[slug] ?? Layers;
         // Your uploaded cover wins; otherwise fall back to the newest item's
         // artwork, so a category is never a blank card.
-        const cover =
-          entry.cover ??
-          (entry.representativeItemId != null
-            ? `/api/media-items/${entry.representativeItemId}/thumbnail`
-            : null);
+        const cover = entry.cover
+          ? `${entry.cover}&e=${IMAGE_EPOCH}`
+          : entry.representativeItemId != null
+            ? thumbnailUrl({ id: entry.representativeItemId })
+            : null;
 
         return (
           <Link

@@ -3,7 +3,11 @@ import path from "node:path";
 import sharp from "sharp";
 import { cacheFilename, ensureCacheDirs, POSTERS_DIR, THUMBNAILS_DIR } from "./cache.js";
 
-const THUMBNAIL_WIDTH = 320;
+// Album covers and photo grids render these several hundred pixels wide on a
+// full-width page, so 320 was being upscaled and looked soft. The width is
+// part of the cache filename below, so changing this number regenerates
+// rather than silently serving the old size forever.
+const THUMBNAIL_WIDTH = 800;
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -21,14 +25,22 @@ export async function getOrCreatePhotoThumbnail(
   contentHash: string | null
 ): Promise<string | null> {
   await ensureCacheDirs();
-  const cachePath = path.join(THUMBNAILS_DIR, cacheFilename(mediaItemId, contentHash));
+  const cachePath = path.join(
+    THUMBNAILS_DIR,
+    `w${THUMBNAIL_WIDTH}-${cacheFilename(mediaItemId, contentHash)}`
+  );
 
   if (await exists(cachePath)) {
     return cachePath;
   }
 
   try {
-    await sharp(sourcePath).resize(THUMBNAIL_WIDTH).jpeg().toFile(cachePath);
+    await sharp(sourcePath)
+      // withoutEnlargement: a photo smaller than the target should stay its
+      // own size rather than being blown up into a blurry copy.
+      .resize(THUMBNAIL_WIDTH, undefined, { withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toFile(cachePath);
     return cachePath;
   } catch {
     // Covers unsupported formats (e.g. HEIC without libheif support) — the

@@ -2,16 +2,19 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
 import {
+  attachFile,
   linkPerformer,
   makeItem,
   makeLibrary,
   makePerformer,
+  makePhoto,
   makeStudio,
 } from "../test/fixtures.js";
 
 let app: FastifyInstance;
 let cookie: string;
 let libraryId: number;
+let rootId: number;
 
 beforeAll(async () => {
   app = await testApp();
@@ -19,7 +22,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDatabase();
   cookie = await signIn();
-  ({ libraryId } = await makeLibrary());
+  ({ libraryId, rootId } = await makeLibrary());
 });
 
 const get = (url: string) => app.inject({ method: "GET", url, headers: { cookie } });
@@ -83,6 +86,33 @@ describe("performers", () => {
     expect((await send("PATCH", `/api/performers/${bella}`, { name: "alice" })).statusCode).toBe(
       409
     );
+  });
+
+  it("pins favourites to the top, alphabetical within each group", async () => {
+    await makePerformer("Alice");
+    const zoe = await makePerformer("Zoe");
+    await makePerformer("Bella");
+    await send("PATCH", `/api/performers/${zoe}`, { isFavorite: true });
+
+    const body = (await get("/api/performers")).json();
+    expect(body.performers.map((p: { name: string }) => p.name)).toEqual([
+      "Zoe",
+      "Alice",
+      "Bella",
+    ]);
+    expect(body.performers[0].isFavorite).toBe(true);
+    expect(body.performers[1].isFavorite).toBe(false);
+  });
+
+  it("toggles a favourite without re-sending the name", async () => {
+    const alice = await makePerformer("Alice");
+    expect((await send("PATCH", `/api/performers/${alice}`, { isFavorite: true })).statusCode).toBe(
+      200
+    );
+    expect((await get(`/api/performers/${alice}`)).json().isFavorite).toBe(true);
+
+    await send("PATCH", `/api/performers/${alice}`, { isFavorite: false });
+    expect((await get(`/api/performers/${alice}`)).json().isFavorite).toBe(false);
   });
 
   it("saves a bio on its own, without re-sending the name", async () => {
@@ -247,6 +277,19 @@ describe("categories", () => {
     expect((await send("POST", "/api/categories", { label: "sHoRtS" })).statusCode).toBe(409);
   });
 
+  it("counts only videos, not the photos that share a default kind", async () => {
+    // `kind` defaults to "video" and nothing ever changes it for a photo, so
+    // counting by kind alone reported every still in the library as a video —
+    // 970 of them against 15 real videos.
+    await makeItem(libraryId, { title: "A real video", kind: "video" });
+    await makePhoto(libraryId, "a still");
+
+    const video = (await get("/api/categories")).json().categories.find(
+      (c: { slug: string }) => c.slug === "video"
+    );
+    expect(video.total).toBe(1);
+  });
+
   it("moves items to another category rather than deleting them", async () => {
     const item = await makeItem(libraryId, { title: "X", kind: "movie" });
     const movie = (await get("/api/categories")).json().categories.find(
@@ -284,6 +327,27 @@ describe("playback and watched state", () => {
     const item = await makeItem(libraryId, { title: "X", durationSeconds: 1000 });
     await send("PUT", `/api/media-items/${item}/playback`, { positionSeconds: 300 });
     expect((await get("/api/continue-watching")).json().items).toHaveLength(1);
+  });
+
+  it("clears Continue Watching without losing watch history", async () => {
+    const partial = await makeItem(libraryId, { title: "Partial", durationSeconds: 1000 });
+    const finished = await makeItem(libraryId, { title: "Finished", durationSeconds: 1000 });
+    await send("PUT", `/api/media-items/${partial}/playback`, { positionSeconds: 300 });
+    await send("PUT", `/api/media-items/${finished}/watched`, { watched: true });
+
+    const res = await send("DELETE", "/api/continue-watching");
+    expect(res.json().cleared).toBe(1);
+    expect((await get("/api/continue-watching")).json().items).toEqual([]);
+
+    // The resume point is gone, but nothing else is.
+    expect((await get(`/api/media-items/${partial}`)).json().lastPositionSeconds).toBe(0);
+    const done = (await get(`/api/media-items/${finished}`)).json();
+    expect(done.watched).toBe(true);
+    expect(done.playCount).toBe(1);
+  });
+
+  it("clearing an already-empty Continue Watching is harmless", async () => {
+    expect((await send("DELETE", "/api/continue-watching")).json().cleared).toBe(0);
   });
 
   it("drops a nearly-finished video out of Continue Watching", async () => {
@@ -328,5 +392,16 @@ describe("stats", () => {
     await makeItem(libraryId, { title: "A" });
     const body = (await get("/api/stats")).json();
     expect(body.videos).toBe(1);
+  });
+
+  it("totals the bytes on disk, ignoring hidden items", async () => {
+    // attachFile writes 1000 bytes per file.
+    const shown = await makeItem(libraryId, { title: "Shown" });
+    await attachFile(shown, rootId, "/media/shown.mp4");
+    const hidden = await makeItem(libraryId, { title: "Hidden", inScope: false });
+    await attachFile(hidden, rootId, "/media/hidden.mp4");
+
+    // A number, not the string the pg driver returns for a numeric sum.
+    expect((await get("/api/stats")).json().totalBytes).toBe(1000);
   });
 });

@@ -17,11 +17,18 @@ export function PhotoLightbox({
   index,
   onIndexChange,
   onClose,
+  onReachEnd,
 }: {
   photos: LightboxPhoto[];
   index: number;
   onIndexChange: (next: number) => void;
   onClose: () => void;
+  /**
+   * Called when stepping near the end of what's loaded, so the caller can
+   * fetch more. Without it an album of 121 photos dead-ends at whatever the
+   * first page happened to contain.
+   */
+  onReachEnd?: () => void;
 }) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -40,8 +47,19 @@ export function PhotoLightbox({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [index, photos.length, onIndexChange, onClose]);
 
+  // Ask for more while there is still a little runway, so stepping forward
+  // doesn't stall at the boundary.
+  useEffect(() => {
+    if (onReachEnd && index >= photos.length - 3) onReachEnd();
+  }, [index, photos.length, onReachEnd]);
+
   const photo = photos[index];
   if (!photo) return null;
+
+  // The neighbours, fetched by the browser but never shown. Stepping through
+  // a gallery is the one time you know exactly what comes next, so waiting
+  // for it to download is avoidable.
+  const neighbours = [photos[index + 1], photos[index - 1]].filter(Boolean);
 
   const step = (delta: number) => onIndexChange((index + delta + photos.length) % photos.length);
 
@@ -61,6 +79,10 @@ export function PhotoLightbox({
           onClick={(e) => e.stopPropagation()}
           className="max-h-full max-w-full rounded object-contain"
         />
+
+        {neighbours.map((neighbour) => (
+          <link key={neighbour.id} rel="preload" as="image" href={`/api/stream/${neighbour.id}`} />
+        ))}
 
         <button
           type="button"

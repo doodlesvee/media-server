@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { playbackStates } from "../db/schema.js";
@@ -26,6 +26,27 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     }
   );
+
+  /**
+   * Empties Continue Watching.
+   *
+   * Resets the resume position rather than deleting the playback row: that
+   * row also carries `playCount` and `completedAt`, which are a record of
+   * what you actually watched. Clearing where you got to in a few unfinished
+   * videos should not quietly erase that you finished thirty others.
+   *
+   * Scoped to unfinished videos for the same reason — a completed one isn't
+   * in the row anyway, and its position is already 0.
+   */
+  app.delete("/api/continue-watching", async () => {
+    const cleared = await db
+      .update(playbackStates)
+      .set({ positionSeconds: 0, updatedAt: new Date() })
+      .where(and(gt(playbackStates.positionSeconds, 0), isNull(playbackStates.completedAt)))
+      .returning({ id: playbackStates.id });
+
+    return { cleared: cleared.length };
+  });
 
   /**
    * Marks a video finished, or puts it back in the unwatched pile.

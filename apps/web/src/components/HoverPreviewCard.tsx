@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Check, Play, Plus } from "lucide-react";
 import { addToMyList } from "@/lib/myList";
+import { useAppearance } from "@/lib/appearance";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
@@ -48,6 +49,7 @@ export function HoverPreviewCard({
   onPlay: () => void;
   onDismiss: () => void;
 }) {
+  const { hoverPreview, discreet } = useAppearance();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [added, setAdded] = useState(false);
   const [ready, setReady] = useState(false);
@@ -141,7 +143,7 @@ export function HoverPreviewCard({
       onMouseLeave={dismiss}
       onClick={onOpen}
     >
-      {item.itemType === "video" ? (
+      {item.itemType === "video" && hoverPreview && !discreet ? (
         // The thumbnail sits underneath rather than using the video's own
         // `poster`: fading the video in means opacity 0, which would hide a
         // poster attribute too and leave a blank panel.

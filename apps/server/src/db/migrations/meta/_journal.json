@@ -183,6 +183,48 @@
       "when": 1788706672404,
       "tag": "0025_nice_exiles",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788721238611,
+      "tag": "0026_puzzling_jackal",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788721629907,
+      "tag": "0027_kind_the_renegades",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788721973331,
+      "tag": "0028_closed_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788805302313,
+      "tag": "0029_high_lady_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788805681151,
+      "tag": "0030_common_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788810819705,
+      "tag": "0031_blushing_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

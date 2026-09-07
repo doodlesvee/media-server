@@ -1,0 +1,151 @@
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { FastifyInstance } from "fastify";
+import { eq } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { mediaItems } from "../db/schema.js";
+import { resetDatabase, signIn, testApp } from "../test/harness.js";
+import {
+  linkPerformer,
+  makeItem,
+  makeLibrary,
+  makePerformer,
+  makePhoto,
+  makeStudio,
+} from "../test/fixtures.js";
+
+let app: FastifyInstance;
+let cookie: string;
+let libraryId: number;
+
+beforeAll(async () => {
+  app = await testApp();
+});
+beforeEach(async () => {
+  await resetDatabase();
+  cookie = await signIn();
+  ({ libraryId } = await makeLibrary());
+});
+
+const get = (url: string) => app.inject({ method: "GET", url, headers: { cookie } });
+
+describe("GET /api/studios", () => {
+  it("counts each studio's videos and offers a frame for the card", async () => {
+    const vixen = await makeStudio("Vixen");
+    await makeItem(libraryId, { title: "One", studioId: vixen });
+    const latest = await makeItem(libraryId, { title: "Two", studioId: vixen });
+
+    const body = (await get("/api/studios")).json();
+    expect(body.studios).toHaveLength(1);
+    expect(body.studios[0]).toMatchObject({
+      name: "Vixen",
+      videoCount: 2,
+      representativeItemId: latest,
+    });
+  });
+
+  it("keeps a studio with no videos, and reports zero rather than one", async () => {
+    // count(*) over a LEFT JOIN with no match counts the null-padded row.
+    await makeStudio("Nobody");
+    expect((await get("/api/studios")).json().studios[0].videoCount).toBe(0);
+  });
+
+  it("counts videos only, not an album's stills", async () => {
+    // The count used to include photos: Vixen read as 553 where it has 8
+    // scenes and 545 gallery images.
+    const vixen = await makeStudio("Vixen");
+    const video = await makeItem(libraryId, { title: "Scene", studioId: vixen });
+    const photo = await makePhoto(libraryId, "still");
+    await db.update(mediaItems).set({ studioId: vixen }).where(eq(mediaItems.id, photo));
+
+    const body = (await get("/api/studios")).json().studios[0];
+    expect(body.videoCount).toBe(1);
+    // And the card's frame is the video, not whichever still scanned last.
+    expect(body.representativeItemId).toBe(video);
+  });
+
+  it("does not count out-of-scope videos", async () => {
+    const vixen = await makeStudio("Vixen");
+    await makeItem(libraryId, { title: "Shown", studioId: vixen });
+    await makeItem(libraryId, { title: "Hidden", studioId: vixen, inScope: false });
+
+    expect((await get("/api/studios")).json().studios[0].videoCount).toBe(1);
+  });
+
+  it("sorts case-insensitively", async () => {
+    await makeStudio("vixen");
+    await makeStudio("Blacked");
+    expect((await get("/api/studios")).json().studios.map((s: { name: string }) => s.name)).toEqual(
+      ["Blacked", "vixen"]
+    );
+  });
+});
+
+describe("GET /api/studios/:id", () => {
+  it("returns totals, years and who appears on them", async () => {
+    const vixen = await makeStudio("Vixen");
+    const alice = await makePerformer("Alice");
+    const bella = await makePerformer("Bella");
+
+    const one = await makeItem(libraryId, {
+      title: "One",
+      studioId: vixen,
+      durationSeconds: 600,
+      releaseDate: "2020-02-15",
+    });
+    const two = await makeItem(libraryId, {
+      title: "Two",
+      studioId: vixen,
+      durationSeconds: 300,
+      releaseDate: "2022-05-01",
+    });
+    await linkPerformer(one, alice);
+    await linkPerformer(two, alice);
+    await linkPerformer(two, bella);
+
+    // Another studio's video, to prove the aggregates are actually scoped.
+    const other = await makeStudio("Blacked");
+    await linkPerformer(await makeItem(libraryId, { title: "Elsewhere", studioId: other }), alice);
+
+    const body = (await get(`/api/studios/${vixen}`)).json();
+    expect(body).toMatchObject({ name: "Vixen", videoCount: 2, totalDurationSeconds: 900 });
+    expect(body.years).toEqual([
+      { year: 2022, count: 1 },
+      { year: 2020, count: 1 },
+    ]);
+
+    // Most-credited first, and `together` counts only this studio's videos
+    // while videoCount is the performer's own catalogue.
+    expect(body.performers.map((p: { name: string }) => p.name)).toEqual(["Alice", "Bella"]);
+    expect(body.performers[0]).toMatchObject({ together: 2, videoCount: 3 });
+    expect(body.performers[1]).toMatchObject({ together: 1, videoCount: 1 });
+  });
+
+  it("keeps a bucket for undated videos rather than dropping them", async () => {
+    const vixen = await makeStudio("Vixen");
+    await makeItem(libraryId, { title: "Undated", studioId: vixen });
+
+    const body = (await get(`/api/studios/${vixen}`)).json();
+    expect(body.years).toEqual([{ year: null, count: 1 }]);
+    expect(body.videoCount).toBe(1);
+  });
+
+  it("excludes hidden videos from every aggregate", async () => {
+    const vixen = await makeStudio("Vixen");
+    const alice = await makePerformer("Alice");
+    const hidden = await makeItem(libraryId, {
+      title: "Hidden",
+      studioId: vixen,
+      inScope: false,
+      durationSeconds: 900,
+    });
+    await linkPerformer(hidden, alice);
+
+    const body = (await get(`/api/studios/${vixen}`)).json();
+    expect(body).toMatchObject({ videoCount: 0, totalDurationSeconds: 0 });
+    expect(body.performers).toEqual([]);
+  });
+
+  it("404s for a studio that doesn't exist", async () => {
+    expect((await get("/api/studios/9999")).statusCode).toBe(404);
+  });
+});

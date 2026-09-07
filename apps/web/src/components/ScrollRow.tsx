@@ -18,6 +18,7 @@ const arrowClass =
 export function ScrollRow({
   title,
   titleClassName = "text-lg font-semibold tracking-tight",
+  action,
   itemCount,
   children,
 }: {
@@ -28,6 +29,8 @@ export function ScrollRow({
    * appends, so a caller can't end up with two conflicting text sizes.
    */
   titleClassName?: string;
+  /** Optional control beside the heading, e.g. a "clear" button. */
+  action?: React.ReactNode;
   itemCount: number;
   children: React.ReactNode;
 }) {
@@ -64,7 +67,10 @@ export function ScrollRow({
 
   return (
     <section className="space-y-3">
-      <h2 className={titleClassName}>{title}</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className={titleClassName}>{title}</h2>
+        {action}
+      </div>
 
       <div className="relative">
         <div

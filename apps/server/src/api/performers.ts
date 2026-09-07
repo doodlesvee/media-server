@@ -82,6 +82,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       .select({
         id: performers.id,
         name: performers.name,
+        isFavorite: performers.isFavorite,
         hasImage: sql<boolean>`(${performers.imageFile} is not null)`,
         hasBanner: sql<boolean>`(${performers.bannerFile} is not null)`,
         imagePositionX: performers.imagePositionX,
@@ -107,9 +108,16 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
           inArray(mediaItems.itemTypeId, videoTypeIds)
         )
       )
-      .groupBy(performers.id, performers.name, performers.imageFile, performers.bannerFile)
-      // Plain name ordering is ASCII, which sorts "Zoe" before "alice".
-      .orderBy(sql`lower(${performers.name})`);
+      .groupBy(
+        performers.id,
+        performers.name,
+        performers.isFavorite,
+        performers.imageFile,
+        performers.bannerFile
+      )
+      // Favourites first, then alphabetically within each group. Plain name
+      // ordering is ASCII, which sorts "Zoe" before "alice".
+      .orderBy(desc(performers.isFavorite), sql`lower(${performers.name})`);
 
     return { performers: rows };
   });
@@ -205,6 +213,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       .select({
         id: coPerformer.id,
         name: coPerformer.name,
+        isFavorite: coPerformer.isFavorite,
         hasImage: sql<boolean>`(${coPerformer.imageFile} is not null)`,
         hasBanner: sql<boolean>`(${coPerformer.bannerFile} is not null)`,
         imagePositionX: coPerformer.imagePositionX,
@@ -227,6 +236,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       .groupBy(
         coPerformer.id,
         coPerformer.name,
+        coPerformer.isFavorite,
         coPerformer.imageFile,
         coPerformer.bannerFile,
         coPerformer.imagePositionX,
@@ -286,6 +296,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
       name: performer.name,
       hasImage: performer.imageFile !== null,
       hasBanner: performer.bannerFile !== null,
+      isFavorite: performer.isFavorite,
       // Detail only, deliberately: a bio is prose, and the performers grid
       // renders every performer as a card that would carry text nothing shows.
       bio: performer.bio,
@@ -461,6 +472,7 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
     Body: {
       name?: string;
       bio?: string | null;
+      isFavorite?: boolean;
       bannerPositionY?: number;
       imagePositionX?: number;
       imagePositionY?: number;
@@ -470,11 +482,14 @@ export async function performerRoutes(app: FastifyInstance): Promise<void> {
     "/api/performers/:id",
     async (request, reply) => {
       const id = Number(request.params.id);
-      const { bio, bannerPositionY, imagePositionX, imagePositionY, imageScale } = request.body;
+      const { bio, isFavorite, bannerPositionY, imagePositionX, imagePositionY, imageScale } =
+        request.body;
 
       // Everything that can be saved on its own, without re-sending the name:
       // the drag controls and the bio editor both patch a single field.
       const partial: Partial<typeof performers.$inferInsert> = {};
+
+      if (isFavorite !== undefined) partial.isFavorite = isFavorite;
 
       if (bio !== undefined) {
         const trimmed = bio?.trim();

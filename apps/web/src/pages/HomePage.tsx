@@ -4,9 +4,12 @@ import { AppShell } from "@/components/AppShell";
 import { HeroBanner } from "@/components/HeroBanner";
 import type { MediaCardItem } from "@/components/MediaCard";
 import { MediaDetailModal } from "@/components/MediaDetailModal";
+import { ClearContinueWatching } from "@/components/ClearContinueWatching";
 import { KindTiles } from "@/components/KindTiles";
 import { MediaRow } from "@/components/MediaRow";
 import { PerformerRow } from "@/components/PerformerRow";
+import { useAppearance } from "@/lib/appearance";
+import { StudioRow } from "@/components/StudioRow";
 
 type Tag = { id: number; name: string };
 type Collection = { id: number; name: string; type: "manual" | "smart" };
@@ -111,6 +114,8 @@ export function HomePage() {
   // Chosen by the hero setting, resolved server-side.
   const heroItems = heroData?.items ?? [];
 
+  const { homeRows } = useAppearance();
+
   function openItem(id: number, autoPlay: boolean) {
     setOpen({ id, autoPlay });
   }
@@ -126,50 +131,74 @@ export function HomePage() {
       )}
 
       <div className="stagger space-y-9 px-6 py-8">
-        <KindTiles />
-
-        <MediaRow
-          title="Continue Watching"
-          items={continueWatching?.items ?? []}
-          onSelectItem={(id) => openItem(id, false)}
-          onPlayItem={(id) => openItem(id, true)}
-          onOpenFolder={noopOpenFolder}
-        />
-        <MediaRow
-          title="Favourites"
-          items={withoutFolders(favorites?.items ?? [])}
-          onSelectItem={(id) => openItem(id, false)}
-          onPlayItem={(id) => openItem(id, true)}
-          onOpenFolder={noopOpenFolder}
-        />
-
-        {/* Above Recently Added: with a library organised by performer
-            folders, this is the primary way you'd actually browse it. */}
-        <PerformerRow />
-
-        <MediaRow
-          title="Recently Added"
-          items={recentItems}
-          onSelectItem={(id) => openItem(id, false)}
-          onPlayItem={(id) => openItem(id, true)}
-          onOpenFolder={noopOpenFolder}
-        />
-        {collectionsData?.collections.map((collection) => (
-          <CollectionRow
-            key={collection.id}
-            collection={collection}
-            onSelectItem={(id) => openItem(id, false)}
-            onPlayItem={(id) => openItem(id, true)}
-          />
-        ))}
-        {tagsData?.tags.map((tag) => (
-          <TagRow
-            key={tag.id}
-            tag={tag}
-            onSelectItem={(id) => openItem(id, false)}
-            onPlayItem={(id) => openItem(id, true)}
-          />
-        ))}
+        {/* Rendered from the saved order rather than written out in sequence,
+            so hiding or moving a section is a data change rather than an edit
+            here. Each case returns null when it has nothing, exactly as it did
+            before — an empty row was never shown. */}
+        {homeRows
+          .filter((row) => row.visible)
+          .map(({ key }) => {
+            switch (key) {
+              case "categories":
+                return <KindTiles key={key} />;
+              case "continue":
+                return (
+                  <MediaRow
+                    key={key}
+                    title="Continue Watching"
+                    action={<ClearContinueWatching />}
+                    items={continueWatching?.items ?? []}
+                    onSelectItem={(id) => openItem(id, false)}
+                    onPlayItem={(id) => openItem(id, true)}
+                    onOpenFolder={noopOpenFolder}
+                  />
+                );
+              case "favourites":
+                return (
+                  <MediaRow
+                    key={key}
+                    title="Favourites"
+                    items={withoutFolders(favorites?.items ?? [])}
+                    onSelectItem={(id) => openItem(id, false)}
+                    onPlayItem={(id) => openItem(id, true)}
+                    onOpenFolder={noopOpenFolder}
+                  />
+                );
+              case "performers":
+                return <PerformerRow key={key} />;
+              case "studios":
+                return <StudioRow key={key} />;
+              case "recent":
+                return (
+                  <MediaRow
+                    key={key}
+                    title="Recently Added"
+                    items={recentItems}
+                    onSelectItem={(id) => openItem(id, false)}
+                    onPlayItem={(id) => openItem(id, true)}
+                    onOpenFolder={noopOpenFolder}
+                  />
+                );
+              case "collections":
+                return collectionsData?.collections.map((collection) => (
+                  <CollectionRow
+                    key={`collection-${collection.id}`}
+                    collection={collection}
+                    onSelectItem={(id) => openItem(id, false)}
+                    onPlayItem={(id) => openItem(id, true)}
+                  />
+                ));
+              case "tags":
+                return tagsData?.tags.map((tag) => (
+                  <TagRow
+                    key={`tag-${tag.id}`}
+                    tag={tag}
+                    onSelectItem={(id) => openItem(id, false)}
+                    onPlayItem={(id) => openItem(id, true)}
+                  />
+                ));
+            }
+          })}
       </div>
 
       {open && (

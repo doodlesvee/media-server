@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 /* The app is dark-only. A light palette existed behind a toggle and was
    removed: every overlay in the app — hero scrims, gradients over tiles,
    the white-on-image controls — is built to sit on a dark ground, and the
@@ -172,4 +173,41 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Discreet mode.
+   
+   Applied from <html> so it covers every image in the app at once, including
+   any added later — a per-component opt-in would eventually miss one, and the
+   one it missed would be the one on screen at the wrong moment.
+   
+   Nothing lifts the blur on hover: a picture that uncovers itself as the
+   pointer crosses it is exactly what this mode exists to prevent. Text,
+   titles and counts are never blurred, so the app stays navigable — you find
+   things by name, and pressing play is the one deliberate act that reveals.
+   
+   `.discreet-exempt` is for the one case where blurring is absurd: a video you
+   have deliberately pressed play on. */
+[data-discreet="true"] img:not(.discreet-exempt),
+[data-discreet="true"] video:not(.discreet-exempt) {
+  /* Strength comes from the Appearance panel; the fallback is what the
+     slider defaults to, so a stylesheet loaded before the script still
+     blurs rather than briefly showing everything. */
+  filter: blur(var(--discreet-blur, 18px));
+  /* Keeps the blur from bleeding a soft halo past the element's own edges. */
+  clip-path: inset(0);
+  transition: filter 150ms ease-out;
+}
+
+/* Names, blurred only when you ask for it — see `discreetText`.
+   
+   Opt-in per element rather than every string on the page: navigation,
+   buttons and counts have to stay readable or there's no way to find your
+   way out. Half the image blur, because text turns to mush far sooner than
+   a photograph does. */
+[data-discreet-text="true"] .sensitive {
+  filter: blur(calc(var(--discreet-blur, 18px) / 3));
+  /* Stops a selection lifting what the blur hides. */
+  user-select: none;
+  transition: filter 150ms ease-out;
 }

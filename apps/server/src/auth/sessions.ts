@@ -22,7 +22,12 @@ export async function createSession(userId: number): Promise<string> {
   return id;
 }
 
-export type SessionUser = { id: number; username: string };
+export type SessionUser = {
+  id: number;
+  username: string;
+  /** The session's own id — what the unlock throttle counts attempts against. */
+  sessionId: string;
+};
 
 /**
  * Resolves a cookie value to its user, or null. Expired rows are deleted on
@@ -54,7 +59,7 @@ export async function resolveSession(sessionId: string | undefined): Promise<Ses
     await db.update(sessions).set({ expiresAt: expiryFromNow() }).where(eq(sessions.id, row.id));
   }
 
-  return { id: row.userId, username: row.username };
+  return { id: row.userId, username: row.username, sessionId: row.id };
 }
 
 export async function destroySession(sessionId: string | undefined): Promise<void> {

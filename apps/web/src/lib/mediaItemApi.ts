@@ -58,9 +58,26 @@ export type MediaItemDetail = {
  * one indefinitely. The uploaded filename carries a random suffix, which
  * makes the new URL distinct from the old.
  */
+/**
+ * Bump to retire every cached image in every browser at once.
+ *
+ * Image routes send `Cache-Control: immutable, max-age=31536000`, which is
+ * right for the picture and was briefly catastrophic for the failures: the
+ * header is set on the reply *before* the file is streamed, so an error sent
+ * afterwards inherited it. Browsers were told to remember those failures for
+ * a year, and `immutable` means they won't even revalidate. Nothing
+ * server-side can evict that — only a different URL can, which is what this
+ * is for.
+ */
+export const IMAGE_EPOCH = "2";
+
+/**
+ * The `v` token changes the URL when the image behind it changes, so a
+ * replaced thumbnail defeats the browser cache with no invalidation logic.
+ */
 export function thumbnailUrl(item: { id: number; thumbnailFile?: string | null }): string {
   const version = item.thumbnailFile ?? "auto";
-  return `/api/media-items/${item.id}/thumbnail?v=${version}`;
+  return `/api/media-items/${item.id}/thumbnail?v=${version}&e=${IMAGE_EPOCH}`;
 }
 
 export async function uploadThumbnail(id: number, file: File): Promise<void> {

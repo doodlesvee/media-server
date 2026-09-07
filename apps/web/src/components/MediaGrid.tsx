@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
+import { tileWidthPx, useAppearance } from "@/lib/appearance";
 import { MediaDetailModal } from "./MediaDetailModal";
 
 export type GridSource =
@@ -77,6 +78,8 @@ export function MediaGrid({
   source: GridSource;
   onOpenFolder: (id: number, title: string) => void;
 }) {
+  const { tileSizePercent } = useAppearance();
+  const tileWidth = tileWidthPx(tileSizePercent);
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -167,9 +170,12 @@ export function MediaGrid({
     return (
       // No `stagger` here: it sets the same `animation` property the
       // skeletons need for their shimmer, and the two would fight.
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+        }}>
         {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="skeleton aspect-video rounded-md" />
+          <div key={i} className="skeleton aspect-[16/10] rounded-md" />
         ))}
       </div>
     );
@@ -242,7 +248,14 @@ export function MediaGrid({
         <BulkActionBar selectedIds={[...selectedIds]} onDone={exitSelectionMode} />
       )}
 
-      <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="stagger grid gap-x-4 gap-y-6"
+        // auto-fill against the chosen tile width, so the grid and the rows
+        // agree on how big a tile is instead of the grid deriving its own size
+        // from a column count. min(100%, …) keeps a single column from
+        // overflowing a narrow screen.
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+        }}>
         {items.map((item) => (
           <MediaCard
             key={item.id}
@@ -257,9 +270,12 @@ export function MediaGrid({
       <div ref={sentinelRef} aria-hidden className="h-px" />
 
       {isFetchingNextPage && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-x-4 gap-y-6"
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+          }}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton aspect-video rounded-md" />
+            <div key={i} className="skeleton aspect-[16/10] rounded-md" />
           ))}
         </div>
       )}

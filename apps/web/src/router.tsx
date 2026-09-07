@@ -3,9 +3,12 @@ import { AccountPage } from "@/pages/AccountPage";
 import { AlbumPage } from "@/pages/AlbumPage";
 import { AlbumsPage } from "@/pages/AlbumsPage";
 import { BrowsePage } from "@/pages/BrowsePage";
+import { HelpPage } from "@/pages/HelpPage";
 import { HomePage } from "@/pages/HomePage";
 import { PerformerPage } from "@/pages/PerformerPage";
 import { PerformersPage } from "@/pages/PerformersPage";
+import { StudioPage } from "@/pages/StudioPage";
+import { StudiosPage } from "@/pages/StudiosPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
 const rootRoute = createRootRoute();
@@ -66,9 +69,35 @@ const albumRoute = createRoute({
   component: AlbumPage,
 });
 
+const studiosRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/studios",
+  component: StudiosPage,
+});
+
+const studioRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // Keyed by id, like performers and albums: a studio's name is derived from
+  // filenames, so a rename would otherwise break every link to it.
+  path: "/studio/$studioId",
+  component: StudioPage,
+});
+
+const helpRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/help",
+  component: HelpPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
+  // In the URL rather than component state: settings pages are where you
+  // reload after changing something, and coming back to the first tab every
+  // time would undo the point of splitting them up.
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
+  }),
   component: SettingsPage,
 });
 
@@ -85,6 +114,9 @@ const routeTree = rootRoute.addChildren([
   performersRoute,
   albumsRoute,
   albumRoute,
+  studiosRoute,
+  studioRoute,
+  helpRoute,
   settingsRoute,
   accountRoute,
 ]);

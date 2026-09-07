@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Heart } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { PerformerCard, type PerformerSummary } from "@/components/PerformerCard";
 
@@ -17,18 +18,25 @@ export function PerformersPage() {
     queryFn: () => fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
   });
 
-  // Alphabetical, so a performer stays put as their video count changes —
-  // ordering by count meant every scan could reshuffle the whole page.
-  // localeCompare so accented names sort next to their base letter.
-  const performers = [...(data?.performers ?? [])].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  // Favourites first, then alphabetical — so a performer stays put as their
+  // video count changes; ordering by count meant every scan could reshuffle
+  // the whole page. localeCompare so accented names sort next to their base
+  // letter. The server orders the same way, but this page re-sorts anyway, so
+  // the pin has to be repeated here or it would be thrown away.
+  const performers = [...(data?.performers ?? [])].sort(
+    (a, b) =>
+      Number(b.isFavorite) - Number(a.isFavorite) ||
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
   );
 
   // Unlike the homepage row, zero-video performers are kept: this is the page
   // where you'd go to find one you created by hand, or one whose folder is
   // currently unscanned.
-  const withVideos = performers.filter((p) => p.videoCount > 0);
-  const empty = performers.filter((p) => p.videoCount === 0);
+  // Favourited performers get their own section at the top, so they're
+  // excluded from the two below rather than appearing twice.
+  const favorites = performers.filter((p) => p.isFavorite);
+  const withVideos = performers.filter((p) => !p.isFavorite && p.videoCount > 0);
+  const empty = performers.filter((p) => !p.isFavorite && p.videoCount === 0);
 
   return (
     <AppShell
@@ -45,6 +53,29 @@ export function PerformersPage() {
             No performers yet. They're created automatically from your folder names when you
             scan.
           </p>
+        )}
+
+        {favorites.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+              <Heart className="size-3.5 fill-red-500 text-red-500" />
+              Favourites
+            </h2>
+            <div className="stagger flex flex-wrap gap-x-6 gap-y-7">
+              {favorites.map((performer) => (
+                <PerformerCard
+                  key={performer.id}
+                  performer={performer}
+                  onClick={() =>
+                    void navigate({
+                      to: "/performer/$performerId",
+                      params: { performerId: String(performer.id) },
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </section>
         )}
 
         {withVideos.length > 0 && (

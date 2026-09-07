@@ -2,23 +2,34 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Images } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { fetchAlbums, type AlbumSummary } from "@/lib/albumApi";
+import { coverFramingStyle, fetchAlbums, type AlbumSummary } from "@/lib/albumApi";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
+import { cn } from "@/lib/utils";
 
 function AlbumCard({ album }: { album: AlbumSummary }) {
+  const framing = coverFramingStyle(album);
   return (
     <Link
       to="/album/$albumId"
       params={{ albumId: String(album.id) }}
       className="group block focus-visible:outline-none"
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200 group-hover:ring-white/40">
+      {/* 3:2, matching the photos themselves (3000x2000). At 16:9 every cover
+          lost its top and bottom to the crop. */}
+      <div className="relative aspect-[3/2] w-full overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 group-hover:ring-white/40">
         {album.coverItemId != null ? (
           <img
             src={thumbnailUrl({ id: album.coverItemId })}
             alt=""
             loading="lazy"
-            className="h-full w-full object-cover"
+            style={framing}
+            className={cn(
+              "h-full w-full object-cover transition-transform duration-300",
+              // The framing sets its own transform, and an inline style beats
+              // a class — so the hover zoom only applies where there's no
+              // chosen framing for it to fight with.
+              !framing && "group-hover:scale-[1.03]"
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -26,25 +37,30 @@ function AlbumCard({ album }: { album: AlbumSummary }) {
           </div>
         )}
 
-        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2.5 pb-2 pt-8">
-          <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-white/70">
-            {[album.performer, album.studio].filter(Boolean).join(" · ")}
-          </span>
-          <span className="line-clamp-2 text-xs font-medium leading-snug text-white drop-shadow">
-            {album.title}
-          </span>
-        </span>
-
-        <span className="absolute right-1.5 top-1.5 rounded bg-black/75 px-2 py-0.5 text-[10px] font-semibold text-white">
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+          <Images className="size-3" />
           {album.photoCount}
         </span>
+      </div>
+
+      {/* Below the cover rather than overlaid: a gradient dark enough to hold
+          text covers the part of the photo you are choosing between. */}
+      <div className="mt-2 space-y-0.5">
+        <h3 className="sensitive truncate text-sm font-medium leading-snug group-hover:underline">
+          {album.title}
+        </h3>
+        <p className="sensitive truncate text-[11px] text-muted-foreground">
+          {[album.performer, album.studio].filter(Boolean).join(" · ")}
+        </p>
       </div>
     </Link>
   );
 }
 
 export function AlbumsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ["albums"], queryFn: fetchAlbums });
+  // Wrapped, not passed by reference: react-query hands the query context
+  // as the first argument, which fetchAlbums would read as a performer name.
+  const { data, isLoading } = useQuery({ queryKey: ["albums"], queryFn: () => fetchAlbums() });
   const albums = data?.albums ?? [];
 
   return (
@@ -53,7 +69,7 @@ export function AlbumsPage() {
         {isLoading ? (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton aspect-video rounded-md" />
+              <div key={i} className="skeleton aspect-[3/2] rounded-lg" />
             ))}
           </div>
         ) : albums.length === 0 ? (

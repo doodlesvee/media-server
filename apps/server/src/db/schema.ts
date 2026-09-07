@@ -161,6 +161,10 @@ export const performers = pgTable(
     // exist at all. No source column: the scanner writes `name` and nothing
     // else, so there is no ownership to arbitrate.
     bio: text("bio"),
+    // Pins them to the top of the performers page. A column rather than a
+    // tag or a collection for the same reason items carry one: it's a state
+    // you toggle, not a label that belongs in any list.
+    isFavorite: boolean("is_favorite").notNull().default(false),
     imageFile: text("image_file"),
     // Framing for the portrait, the same shape as categories and thumbnails.
     // Defaults centre horizontally and sit near the top, matching the
@@ -272,6 +276,41 @@ export const albums = pgTable("albums", {
   title: text("title").notNull(),
   performerId: integer("performer_id").references(() => performers.id),
   studioId: integer("studio_id").references(() => studios.id),
+  // A photo picked by hand as the album's face. Null means "use the first
+  // one", which is what every album starts as — so this is an override, and
+  // clearing it goes back to automatic rather than to no cover at all.
+  coverItemId: integer("cover_item_id").references((): AnyPgColumn => mediaItems.id),
+  // Which part of the cover the card shows, exactly as categories store it:
+  // position as a percentage, zoom as 100 = the untouched object-cover fit.
+  // The photo is never cropped, so this stays adjustable forever and costs no
+  // image quality. Reset when the cover changes — a frame chosen for one
+  // photo means nothing on the next.
+  coverPositionX: integer("cover_position_x").notNull().default(50),
+  coverPositionY: integer("cover_position_y").notNull().default(50),
+  coverScale: integer("cover_scale").notNull().default(100),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/**
+ * Passkeys — in practice, Touch ID on this Mac.
+ *
+ * The browser holds the private key and does the fingerprint check; all that
+ * arrives here is a signature to verify against the public key below. No
+ * biometric data is sent, stored, or storable.
+ *
+ * One row per browser: a credential registered in Safari can't be used by
+ * Chrome, so the same Mac may hold several.
+ */
+export const webauthnCredentials = pgTable("webauthn_credentials", {
+  // The credential id the authenticator generated, base64url.
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  publicKey: text("public_key").notNull(),
+  // The authenticator's own use count, checked to spot a cloned credential.
+  counter: integer("counter").notNull().default(0),
+  label: text("label").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

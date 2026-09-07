@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { updateItem } from "@/lib/mediaItemApi";
+import { fetchStudios } from "@/lib/studioApi";
 
 /**
  * Studio for one item. Read-only until the modal is in edit mode, matching
@@ -18,6 +20,15 @@ export function StudioEditor({
   const [value, setValue] = useState(studio ?? "");
   const queryClient = useQueryClient();
 
+  // The item carries a studio name, but the page is keyed by id — so a name
+  // renamed on disk doesn't break links. Shares the ["studios"] key with the
+  // sidebar and the studios page, so this is usually served from cache.
+  const { data: studios } = useQuery({
+    queryKey: ["studios"],
+    queryFn: fetchStudios,
+    enabled: readOnly && studio !== null,
+  });
+
   useEffect(() => setValue(studio ?? ""), [studio]);
 
   const mutation = useMutation({
@@ -30,10 +41,23 @@ export function StudioEditor({
   });
 
   if (readOnly) {
-    return studio ? (
-      <span className="text-sm text-foreground/90">{studio}</span>
+    if (!studio) return <span className="text-xs text-muted-foreground/60">—</span>;
+
+    const match = studios?.studios.find(
+      (row) => row.name.toLowerCase() === studio.toLowerCase()
+    );
+    // Plain text until the id is known — a studio only just typed in won't be
+    // in the list yet, and a dead link is worse than an unlinked name.
+    return match ? (
+      <Link
+        to="/studio/$studioId"
+        params={{ studioId: String(match.id) }}
+        className="text-sm text-foreground/90 hover:underline"
+      >
+        {studio}
+      </Link>
     ) : (
-      <span className="text-xs text-muted-foreground/60">—</span>
+      <span className="text-sm text-foreground/90">{studio}</span>
     );
   }
 

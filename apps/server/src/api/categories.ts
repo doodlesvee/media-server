@@ -1,7 +1,7 @@
-import { asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
-import { categories, mediaItems } from "../db/schema.js";
+import { categories, mediaItems, mediaItemTypes } from "../db/schema.js";
 import { deleteKindCover, kindCoverPath, saveKindCover } from "../media/kindCovers.js";
 import { streamFile } from "../media/streamer.js";
 
@@ -20,18 +20,27 @@ export async function categoryRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/categories", async () => {
     const rows = await db.select().from(categories).orderBy(asc(categories.position), asc(categories.id));
 
+    // Photos carry a `kind` too — the column defaults to "video" and nothing
+    // ever changes it for them — so counting by kind alone reported every
+    // still in the library as a video. Categories apply to videos only, which
+    // is also how every listing query already treats them.
+    const videosOnly = and(eq(mediaItems.inScope, true), eq(mediaItemTypes.name, "video"));
+
     const counts = await db
       .select({ kind: mediaItems.kind, total: sql<number>`count(*)::int` })
       .from(mediaItems)
-      .where(eq(mediaItems.inScope, true))
+      .innerJoin(mediaItemTypes, eq(mediaItemTypes.id, mediaItems.itemTypeId))
+      .where(videosOnly)
       .groupBy(mediaItems.kind);
     const totalBySlug = new Map(counts.map((c) => [c.kind, c.total]));
 
-    // Newest item per category, for the tile's fallback artwork.
+    // Newest item per category, for the tile's fallback artwork. Same filter,
+    // or a tile could show a still from an album as its cover.
     const newest = await db
       .select({ kind: mediaItems.kind, itemId: sql<number>`max(${mediaItems.id})` })
       .from(mediaItems)
-      .where(eq(mediaItems.inScope, true))
+      .innerJoin(mediaItemTypes, eq(mediaItemTypes.id, mediaItems.itemTypeId))
+      .where(videosOnly)
       .groupBy(mediaItems.kind);
     const newestBySlug = new Map(newest.map((n) => [n.kind, n.itemId]));
 

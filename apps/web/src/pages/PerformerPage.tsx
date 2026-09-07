@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Move } from "lucide-react";
+import { Heart } from "lucide-react";
 import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
 import { getRouteApi } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { MediaDetailModal } from "@/components/MediaDetailModal";
 import { PerformerContinueWatching } from "@/components/PerformerContinueWatching";
+import { AlbumRow } from "@/components/AlbumRow";
 import { PerformerCoPerformers } from "@/components/PerformerCoPerformers";
 import { PerformerStats } from "@/components/PerformerStats";
 import { PerformerVideos } from "@/components/PerformerVideos";
 import { PerformerBanner } from "@/components/PerformerBanner";
 import { PerformerBio } from "@/components/PerformerBio";
+import { PerformerImageMenu } from "@/components/PerformerImageMenu";
 import { PerformerImagePicker } from "@/components/PerformerImagePicker";
 import {
   fetchPerformer,
@@ -18,6 +20,7 @@ import {
   performerPortraitUrl,
   portraitStyle,
   savePortraitFraming,
+  setPerformerFavorite,
 } from "@/lib/performerApi";
 
 const routeApi = getRouteApi("/performer/$performerId");
@@ -46,6 +49,16 @@ export function PerformerPage() {
       // portrait, so they have to repaint too.
       queryClient.invalidateQueries({ queryKey: ["performers"] });
       setReframing(false);
+    },
+  });
+
+  const favorite = useMutation({
+    mutationFn: (next: boolean) => setPerformerFavorite(id, next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["performer", id] });
+      // The performers page pins favourites to the top, so its list has to
+      // re-sort too.
+      queryClient.invalidateQueries({ queryKey: ["performers"] });
     },
   });
 
@@ -102,7 +115,7 @@ export function PerformerPage() {
 
         {/* Minimal overlap — just enough to tie the portrait to the banner. */}
         <div className="relative -mt-8 flex flex-col items-start gap-4 px-6 sm:-mt-10 sm:flex-row sm:items-end">
-          <div className="relative shrink-0">
+          <div className="group relative shrink-0">
             <div className="size-28 overflow-hidden rounded-full bg-secondary ring-4 ring-background sm:size-36">
               {avatarSrc ? (
                 <img
@@ -117,34 +130,52 @@ export function PerformerPage() {
                 </div>
               )}
             </div>
+
+            {performer && (
+              <PerformerImageMenu
+                performerId={performer.id}
+                kind="avatar"
+                hasImage={performer.hasImage}
+                // A video-frame fallback can be reframed too — it's the same
+                // CSS object-position, and nothing about the file changes.
+                canReposition={Boolean(avatarSrc)}
+                onReposition={() => setReframing(true)}
+                onUploaded={() => setReframing(true)}
+                // Bottom-right of the circle, the way a profile picture is
+                // edited everywhere else.
+                className="bottom-0 right-0"
+              />
+            )}
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-2 pb-1">
-            <h1 className="truncate text-3xl font-bold tracking-tight sm:text-4xl">
-              {performer?.name ?? " "}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="sensitive truncate text-3xl font-bold tracking-tight sm:text-4xl">
+                {performer?.name ?? " "}
+              </h1>
+              {performer && (
+                <button
+                  type="button"
+                  onClick={() => favorite.mutate(!performer.isFavorite)}
+                  disabled={favorite.isPending}
+                  aria-pressed={performer.isFavorite}
+                  aria-label={
+                    performer.isFavorite ? "Remove from favourites" : "Add to favourites"
+                  }
+                  title={performer.isFavorite ? "Remove from favourites" : "Add to favourites"}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
+                >
+                  <Heart
+                    className={
+                      performer.isFavorite ? "size-5 fill-red-500 text-red-500" : "size-5"
+                    }
+                  />
+                </button>
+              )}
+            </div>
             {performer && <PerformerStats performer={performer} />}
             {performer && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <PerformerImagePicker
-                    performerId={performer.id}
-                    kind="avatar"
-                    hasImage={performer.hasImage}
-                    onUploaded={() => setReframing(true)}
-                  />
-                  {avatarSrc && !reframing && (
-                    <button
-                      type="button"
-                      onClick={() => setReframing(true)}
-                      className="flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/80"
-                    >
-                      <Move className="size-3.5" />
-                      Reposition
-                    </button>
-                  )}
-                </div>
-
                 {reframing && avatarSrc && (
                   <FramingEditor
                     src={avatarSrc}
@@ -183,6 +214,8 @@ export function PerformerPage() {
           <PerformerContinueWatching performer={performer} onSelect={openItem} />
 
           <PerformerCoPerformers performers={performer.coPerformers} />
+
+          <AlbumRow performer={performer.name} />
 
           <PerformerVideos performer={performer} onSelect={openItem} />
         </div>

@@ -1,0 +1,313 @@
+import { useEffect, useRef, useState } from "react";
+import { EyeOff, RotateCcw, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  BANNER_MAX,
+  BANNER_MIN,
+  BLUR_MAX,
+  BLUR_MIN,
+  DISCREET_SHORTCUT,
+  TILE_INFO_OPTIONS,
+  isDefaultAppearance,
+  TILE_MAX,
+  TILE_MIN,
+  useAppearance,
+} from "@/lib/appearance";
+import { Slider, Toggle } from "./AppearanceControls";
+import { PrivacyUnlockForm } from "./PrivacyUnlockForm";
+import { Portal } from "./Portal";
+import { usePrivacyGuard } from "@/lib/privacyGuard";
+
+/**
+ * How the app looks, on a keyboard shortcut.
+ *
+ * Deliberately not in Site settings: these are choices you can only judge by
+ * looking at them. It opens over whatever page you're on, so the tiles behind
+ * it resize as you drag — you're choosing against the real thing rather than
+ * against a description of it.
+ *
+ * No button anywhere: it used to sit in the header, but a control you open
+ * perhaps twice a week was taking permanent space beside the account menu.
+ * The footer carries the shortcut so it's still discoverable.
+ */
+export function AppearanceMenu() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+      // `code` rather than `key`: with modifiers held, some layouts report a
+      // different character for the same physical key.
+      if (event.code !== "Comma") return;
+      event.preventDefault();
+      setOpen((o) => !o);
+    }
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const appearance = useAppearance();
+  const {
+    tileSizePercent,
+    tileInfo,
+    hoverZoom,
+    hoverPreview,
+    discreet,
+    discreetBlurPercent,
+    discreetText,
+    bannerHeight,
+    set,
+    reset,
+  } = appearance;
+  const [unlocking, setUnlocking] = useState(false);
+
+  const { guarded } = usePrivacyGuard();
+
+  // Closing the panel abandons a half-typed password rather than leaving it
+  // sitting in state for the next time it opens.
+  useEffect(() => {
+    // Closing the panel abandons a half-typed password: the form unmounts
+    // with it, so nothing is left waiting for the next time it opens.
+    if (!open) setUnlocking(false);
+  }, [open]);
+
+  function toggleDiscreet(next: boolean) {
+    // Turning it on is always free. Turning it off is the guarded direction —
+    // that asymmetry is the entire point. With no password set there is
+    // nothing to ask for, and prompting anyway would just trap you.
+    if (next || !guarded) {
+      set({ discreet: next });
+      return;
+    }
+    setUnlocking(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      // Capture phase and stopped here, so closing this doesn't also close a
+      // modal underneath it.
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
+
+  // Covers the settings on the Settings page too: this is the only Reset in
+  // the app, and one that quietly left half the values alone would be worse
+  // than none.
+  const isDefault = isDefaultAppearance(appearance);
+
+  if (!open) return null;
+
+  return (
+    <Portal>
+      <div
+        // The backdrop closes on click, but only its own — a click that
+        // started inside the panel and drifted out (which a slider drag does
+        // constantly) must not dismiss it.
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setOpen(false);
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
+      >
+        <div
+          ref={containerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Appearance"
+          className="max-h-[85vh] w-80 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Appearance</h2>
+            <div className="flex items-center gap-1">
+              {/* Hidden while locked: resetting would otherwise clear discreet
+                  mode without ever asking for the password. */}
+              {!isDefault && !(discreet && guarded) && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  title="Reset to defaults"
+                  aria-label="Reset appearance to defaults"
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <RotateCcw className="size-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close appearance panel"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Section label="Discreet mode" />
+
+            <Toggle
+              label="Discreet mode"
+              hint={
+                discreet && guarded
+                  ? "Blurs every image. Unlocking asks for your privacy password."
+                  : `Blurs every image. ${DISCREET_SHORTCUT} turns it on from anywhere.`
+              }
+              checked={discreet}
+              onChange={toggleDiscreet}
+            />
+
+            {discreet && (
+              <div className="space-y-3 rounded-lg bg-secondary/40 p-3">
+                <Slider
+                  label="Blur strength"
+                  value={discreetBlurPercent}
+                  min={BLUR_MIN}
+                  max={BLUR_MAX}
+                  step={5}
+                  suffix="%"
+                  hint="Everything behind this panel is blurred at it right now."
+                  onChange={(next) => set({ discreetBlurPercent: next })}
+                />
+                <Toggle
+                  label="Blur names too"
+                  hint="Titles, performers and studios. Navigation stays readable."
+                  checked={discreetText}
+                  onChange={(next) => set({ discreetText: next })}
+                />
+              </div>
+            )}
+
+            {unlocking && (
+              <div className="space-y-2 rounded-lg bg-secondary/60 p-3">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <EyeOff className="size-3.5" />
+                  Privacy password
+                </span>
+                <PrivacyUnlockForm
+                  onUnlocked={() => {
+                    set({ discreet: false });
+                    setUnlocking(false);
+                  }}
+                  onCancel={() => setUnlocking(false)}
+                />
+              </div>
+            )}
+
+            <Section label="Tiles" />
+
+            <Slider
+              label="Tile size"
+              value={tileSizePercent}
+              min={TILE_MIN}
+              max={TILE_MAX}
+              step={5}
+              suffix="%"
+              hint="Applies to every row and grid in the app."
+              onChange={(next) => set({ tileSizePercent: next })}
+            />
+
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">Tile labels</span>
+              <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                {TILE_INFO_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set({ tileInfo: option.value })}
+                    aria-pressed={tileInfo === option.value}
+                    className={cn(
+                      "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                      tileInfo === option.value
+                        ? "bg-background font-medium text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                Performer and title, title alone, or artwork with neither.
+              </span>
+            </div>
+
+
+            <Toggle
+              label="Zoom on hover"
+              hint={
+                discreet
+                  ? "Off while discreet mode is on."
+                  : "Expand a tile into a preview card when you hover it."
+              }
+              checked={!discreet && hoverZoom}
+              disabled={discreet}
+              onChange={(next) => set({ hoverZoom: next })}
+            />
+
+            <Toggle
+              label="Play preview on hover"
+              hint={
+                discreet
+                  ? "Off while discreet mode is on — nothing autoplays."
+                  : hoverZoom
+                    ? "Autoplay the video's clip in that card, instead of holding the still."
+                    : "With zoom off, the clip plays in the tile itself."
+              }
+              checked={!discreet && hoverPreview}
+              disabled={discreet}
+              onChange={(next) => set({ hoverPreview: next })}
+            />
+
+            <Section label="Banner" />
+
+            <Slider
+              label="Banner height"
+              value={bannerHeight}
+              min={BANNER_MIN}
+              max={BANNER_MAX}
+              suffix="%"
+              hint="The homepage hero and the performer and studio headers."
+              onChange={(next) => set({ bannerHeight: next })}
+            />
+
+            {/* Both are held off while discreet mode is on, and shown that
+                way rather than left looking live but inert. The stored values
+                are untouched, so turning discreet off restores whatever you
+                had before it. */}
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
+/**
+ * A group heading.
+ *
+ * The panel reached eight controls covering three unrelated things — hiding
+ * the library, drawing tiles, and sizing banners — and a flat list of eight
+ * makes you read all of them to find one.
+ */
+function Section({ label }: { label: string }) {
+  return (
+    <h3 className="border-t border-border pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground first:border-0 first:pt-0">
+      {label}
+    </h3>
+  );
+}

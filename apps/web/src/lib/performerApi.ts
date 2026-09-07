@@ -5,6 +5,8 @@ export type PerformerSummary = {
   name: string;
   hasImage: boolean;
   hasBanner: boolean;
+  /** Pins them to the top of the performers page. */
+  isFavorite: boolean;
   videoCount: number;
   representativeItemId: number | null;
   /** Portrait framing. Defaults are 50 / 0 / 100 — centred, top-aligned. */
@@ -26,6 +28,7 @@ export type YearGroup = { year: number | null; count: number };
 export type CoPerformer = {
   id: number;
   name: string;
+  isFavorite: boolean;
   hasImage: boolean;
   hasBanner: boolean;
   representativeItemId: number | null;
@@ -62,12 +65,19 @@ export type PerformerImageKind = "avatar" | "banner";
  * call site so a performer with nothing uploaded yields null, and callers
  * render their video-frame fallback instead of requesting a known 404.
  */
+import { IMAGE_EPOCH } from "./mediaItemApi";
+
 export function performerImageUrl(
   performer: { id: number; hasImage: boolean; hasBanner: boolean },
   kind: PerformerImageKind
 ): string | null {
   const present = kind === "banner" ? performer.hasBanner : performer.hasImage;
-  return present ? `/api/performers/${performer.id}/image?kind=${kind}` : null;
+  // The filename already carries a random suffix, so a replaced image is a new
+  // URL — but the filename isn't exposed here, so the epoch is what retires a
+  // cached failure for this one.
+  return present
+    ? `/api/performers/${performer.id}/image?kind=${kind}&e=${IMAGE_EPOCH}`
+    : null;
 }
 
 /**
@@ -143,6 +153,15 @@ export async function savePortraitFraming(
     body: JSON.stringify(framing),
   });
   if (!res.ok) throw new Error(`Failed to save portrait framing: ${res.status}`);
+}
+
+export async function setPerformerFavorite(id: number, isFavorite: boolean): Promise<void> {
+  const res = await fetch(`/api/performers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isFavorite }),
+  });
+  if (!res.ok) throw new Error(`Failed to save favourite: ${res.status}`);
 }
 
 export async function saveBannerPosition(id: number, bannerPositionY: number): Promise<void> {

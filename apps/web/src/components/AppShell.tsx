@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
+import { Search } from "lucide-react";
+import { SEARCH_SHORTCUT } from "@/lib/appearance";
+import { AppearanceMenu } from "./AppearanceMenu";
+import { DiscreetUnlockDialog } from "./DiscreetUnlockDialog";
+import { SpotlightSearch, openSpotlight } from "./SpotlightSearch";
 import { AppFooter } from "./AppFooter";
-import { SearchBar } from "./SearchBar";
 import { Sidebar } from "./Sidebar";
 import { UserMenu } from "./UserMenu";
+import { cn } from "@/lib/utils";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
@@ -20,15 +25,16 @@ function readCollapsed(): boolean {
 
 export function AppShell({
   children,
-  searchValue,
   title,
   subtitle,
+  centeredHeader = false,
   actions,
 }: {
   children: React.ReactNode;
-  searchValue?: string;
   title?: string;
   subtitle?: string;
+  /** For pages whose content is a centred column, so the two agree. */
+  centeredHeader?: boolean;
   actions?: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -49,19 +55,28 @@ export function AppShell({
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Three columns with equal 1fr sides, so the search sits on the
-            header's true centre rather than wherever the actions leave it. */}
-        <header className="sticky top-0 z-30 grid grid-cols-[1fr_minmax(0,28rem)_1fr] items-center gap-4 border-b border-border bg-background/85 px-6 py-3 backdrop-blur-md">
-          <div />
-          <SearchBar initialValue={searchValue} />
-          <div className="flex items-center gap-3 justify-self-end">
+        {/* The search field used to hold the centre column; with search on
+            ⌘K there's nothing to centre, so the header is just its actions. */}
+        <header className="sticky top-0 z-30 flex items-center justify-end gap-4 border-b border-border bg-background/85 px-6 py-3 backdrop-blur-md">
+          <div className="flex items-center gap-3">
             {actions}
+            <button
+              type="button"
+              onClick={openSpotlight}
+              aria-label="Search"
+              title={`Search (${SEARCH_SHORTCUT})`}
+              className="flex size-9 items-center justify-center rounded-full bg-secondary text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Search className="size-4" />
+            </button>
             <UserMenu />
           </div>
         </header>
 
         {(title || subtitle) && (
-          <div className="px-6 pt-6">
+          // Centred only where the page beneath it is centred too — a heading
+          // on a different axis to its own content reads as a mistake.
+          <div className={cn("px-6 pt-6", centeredHeader && "text-center")}>
             {title && <h1 className="text-2xl font-bold tracking-tight">{title}</h1>}
             {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
           </div>
@@ -73,6 +88,14 @@ export function AppShell({
 
         <AppFooter />
       </div>
+
+      {/* Rendered here rather than in the header: it has no trigger any more,
+          and it portals itself, so it only needs to exist somewhere that's on
+          every page. */}
+      <AppearanceMenu />
+      <DiscreetUnlockDialog />
+      <SpotlightSearch />
+
     </div>
   );
 }

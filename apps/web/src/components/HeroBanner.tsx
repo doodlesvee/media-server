@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Info, Play } from "lucide-react";
 import { useAccentColor } from "@/lib/dominantColor";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
+import { fetchStudios } from "@/lib/studioApi";
+import { useAppearance } from "@/lib/appearance";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
 
@@ -52,6 +56,19 @@ function HeroSlide({
   const accent = useAccentColor(imageSrc);
   const duration = formatDuration(item.durationSeconds);
   const badge = resolutionBadge(item);
+  const { hoverPreview, discreet } = useAppearance();
+
+  // The item carries a studio name, but the page is keyed by id — so renaming
+  // a studio doesn't break links. Shares the ["studios"] key with the studios
+  // page and the detail modal, so this is usually served from cache.
+  const { data: studios } = useQuery({
+    queryKey: ["studios"],
+    queryFn: fetchStudios,
+    enabled: Boolean(item.studio),
+  });
+  const studioId =
+    studios?.studios.find((row) => row.name.toLowerCase() === item.studio?.toLowerCase())?.id ??
+    null;
 
   return (
     <>
@@ -64,7 +81,7 @@ function HeroSlide({
         className="absolute inset-0 h-full w-full object-cover"
       />
 
-      {hovering && item.itemType === "video" && (
+      {hovering && hoverPreview && !discreet && item.itemType === "video" && (
         // eslint-disable-next-line jsx-a11y/media-has-caption -- silent ambient preview
         <video
           src={`/api/media-items/${item.id}/preview`}
@@ -101,7 +118,7 @@ function HeroSlide({
           Featured
         </span>
 
-        <h1 className="max-w-2xl text-4xl font-bold leading-tight tracking-tight text-balance sm:text-5xl">
+        <h1 className="sensitive max-w-2xl text-4xl font-bold leading-tight tracking-tight text-balance sm:text-5xl">
           {item.title}
         </h1>
 
@@ -119,14 +136,27 @@ function HeroSlide({
               {badge}
             </span>
           )}
-          {item.studio && (
-            <span
-              className="font-medium transition-colors duration-500"
-              style={{ color: accent ?? undefined }}
-            >
-              {item.studio}
-            </span>
-          )}
+          {item.studio &&
+            (studioId != null ? (
+              <Link
+                to="/studio/$studioId"
+                params={{ studioId: String(studioId) }}
+                className="font-medium transition-colors duration-500 hover:underline"
+                style={{ color: accent ?? undefined }}
+              >
+                {item.studio}
+              </Link>
+            ) : (
+              // Plain text until the id is known — the studios list may not
+              // have loaded yet, and a dead link is worse than an unlinked
+              // name.
+              <span
+                className="font-medium transition-colors duration-500"
+                style={{ color: accent ?? undefined }}
+              >
+                {item.studio}
+              </span>
+            ))}
           {item.tags?.slice(0, 3).map((t) => (
             <span key={t.id} className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs">
               {t.name}
@@ -135,7 +165,7 @@ function HeroSlide({
         </div>
 
         {item.description && (
-          <p className="line-clamp-2 max-w-xl text-sm text-muted-foreground">
+          <p className="sensitive line-clamp-2 max-w-xl text-sm text-muted-foreground">
             {item.description}
           </p>
         )}
@@ -143,12 +173,21 @@ function HeroSlide({
         {item.performers && item.performers.length > 0 && (
           <p className="text-sm text-muted-foreground">
             <span className="text-muted-foreground/60">Starring </span>
-            <span
-              className="font-medium transition-colors duration-500"
-              style={{ color: accent ?? undefined }}
-            >
-              {item.performers.map((p) => p.name).join(", ")}
-            </span>
+            {/* Linked individually rather than as one joined string, so a
+                two-performer video takes you to whichever name you clicked. */}
+            {item.performers.map((performer, index) => (
+              <span key={performer.id}>
+                {index > 0 && <span className="text-muted-foreground/60">, </span>}
+                <Link
+                  to="/performer/$performerId"
+                  params={{ performerId: String(performer.id) }}
+                  className="font-medium transition-colors duration-500 hover:underline"
+                  style={{ color: accent ?? undefined }}
+                >
+                  {performer.name}
+                </Link>
+              </span>
+            ))}
           </p>
         )}
 
@@ -200,6 +239,8 @@ export function HeroBanner({
     return () => clearTimeout(timer);
   }, [index, items.length, hovering]);
 
+  const { bannerHeight } = useAppearance();
+
   function go(direction: 1 | -1) {
     setIndex((i) => (i + direction + items.length) % items.length);
   }
@@ -210,7 +251,11 @@ export function HeroBanner({
 
   return (
     <section
-      className="relative h-[70vh] min-h-[500px] w-full overflow-hidden"
+      // Height in vh rather than a pixel floor: the slider is a percentage of
+      // the screen, and a min-height in pixels would quietly ignore it at the
+      // low end.
+      style={{ height: `${bannerHeight}vh` }}
+      className="relative w-full overflow-hidden"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >

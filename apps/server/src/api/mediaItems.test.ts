@@ -367,6 +367,34 @@ describe("GET /api/media-items/:id/gallery", () => {
     expect(body.images.map((i: { title: string }) => i.title)).toEqual(["still-1"]);
   });
 
+  it("previews the folder rather than returning all of it", async () => {
+    // The modal used to render every photo — 121 <img> elements for one of
+    // the real albums. It shows a taste now and links through for the rest.
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Studio/scene.mp4");
+    for (let i = 0; i < 20; i++) {
+      const photo = await makePhoto(libraryId, `still-${i}`);
+      await attachFile(photo, rootId, `/media/Alice/Studio/${i}.jpg`);
+    }
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images).toHaveLength(8);
+    expect(body.total).toBe(20);
+  });
+
+  it("reports total as what it returned when the folder fits", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Studio/scene.mp4");
+    for (let i = 0; i < 3; i++) {
+      const photo = await makePhoto(libraryId, `still-${i}`);
+      await attachFile(photo, rootId, `/media/Alice/Studio/${i}.jpg`);
+    }
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images).toHaveLength(3);
+    expect(body.total).toBe(3);
+  });
+
   it("does not treat _ in a folder name as a wildcard", async () => {
     const video = await makeItem(libraryId, { title: "Scene" });
     await attachFile(video, rootId, "/media/Alice/A_B/scene.mp4");

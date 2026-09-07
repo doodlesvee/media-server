@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Move, X } from "lucide-react";
 import { saveBannerPosition } from "@/lib/performerApi";
+import { useAppearance } from "@/lib/appearance";
 import { framingAfterDrag } from "@/lib/reposition";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ export function PerformerBanner({
   editRequest?: number;
   children?: React.ReactNode;
 }) {
+  const { bannerHeight } = useAppearance();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(positionY);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,7 +106,8 @@ export function PerformerBanner({
   return (
     <div
       ref={containerRef}
-      className="relative h-[52vh] min-h-[380px] w-full overflow-hidden"
+      style={{ height: `${bannerHeight}vh` }}
+      className="relative w-full overflow-hidden"
     >
       {src ? (
         <img

@@ -1,0 +1,254 @@
+import { and, eq } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+import { db } from "../db/client.js";
+import { users, webauthnCredentials } from "../db/schema.js";
+
+/**
+ * Touch ID for discreet mode.
+ *
+ * The alternative to typing the privacy password, which is worth having for
+ * exactly the situation the mode exists for: there's no secret to be seen
+ * over your shoulder, and nothing to mistype in a hurry.
+ *
+ * WebAuthn needs a secure context. `http://localhost` counts as one, which is
+ * why this works here without certificates — reaching the app over the
+ * network by IP would not, and the browser would simply refuse.
+ */
+
+// Where the browser thinks it is. Both must match what's in the address bar
+// or the browser rejects the ceremony before the server ever sees it.
+const ORIGIN = process.env.WEBAUTHN_ORIGIN ?? "http://localhost:5173";
+const RP_ID = new URL(ORIGIN).hostname;
+const RP_NAME = "Media Server";
+
+/**
+ * Pending challenges, per session.
+ *
+ * In memory rather than a table: a challenge is valid for one ceremony over a
+ * few seconds, and a restart in the middle of one costing a retry is a better
+ * trade than a row that has to be swept.
+ */
+const challenges = new Map<string, { value: string; expires: number }>();
+const CHALLENGE_TTL_MS = 120_000;
+
+function putChallenge(sessionId: string, value: string): void {
+  challenges.set(sessionId, { value, expires: Date.now() + CHALLENGE_TTL_MS });
+}
+
+function takeChallenge(sessionId: string): string | null {
+  const entry = challenges.get(sessionId);
+  // Single use, always: a replayed challenge is the thing signatures are
+  // meant to prevent.
+  challenges.delete(sessionId);
+  if (!entry || entry.expires < Date.now()) return null;
+  return entry.value;
+}
+
+export async function webauthnRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/api/webauthn/credentials", async (request) => {
+    if (!request.user) return { credentials: [] };
+    const rows = await db
+      .select({ id: webauthnCredentials.id, label: webauthnCredentials.label })
+      .from(webauthnCredentials)
+      .where(eq(webauthnCredentials.userId, request.user.id));
+    return { credentials: rows };
+  });
+
+  app.post("/api/webauthn/register/options", async (request, reply) => {
+    if (!request.user) {
+      reply.code(401);
+      return { error: "Not signed in" };
+    }
+    const [account] = await db.select().from(users).where(eq(users.id, request.user.id));
+
+    const existing = await db
+      .select({ id: webauthnCredentials.id })
+      .from(webauthnCredentials)
+      .where(eq(webauthnCredentials.userId, request.user.id));
+
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME,
+      rpID: RP_ID,
+      userName: account?.username ?? "user",
+      // Excluded so registering twice in the same browser replaces nothing and
+      // silently piles up duplicates.
+      excludeCredentials: existing.map((row) => ({ id: row.id })),
+      authenticatorSelection: {
+        // The built-in authenticator — Touch ID — rather than a USB key.
+        authenticatorAttachment: "platform",
+        residentKey: "preferred",
+        // What actually makes it ask for a fingerprint instead of just
+        // confirming presence.
+        userVerification: "required",
+      },
+    });
+
+    putChallenge(request.user.sessionId, options.challenge);
+    return options;
+  });
+
+  app.post<{ Body: { response?: unknown; label?: string } }>(
+    "/api/webauthn/register",
+    async (request, reply) => {
+      if (!request.user) {
+        reply.code(401);
+        return { error: "Not signed in" };
+      }
+      const expected = takeChallenge(request.user.sessionId);
+      if (!expected) {
+        reply.code(400);
+        return { error: "That took too long — try again" };
+      }
+
+      let verification;
+      try {
+        verification = await verifyRegistrationResponse({
+          // The library validates the shape; a malformed body throws below.
+          response: request.body?.response as never,
+          expectedChallenge: expected,
+          expectedOrigin: ORIGIN,
+          expectedRPID: RP_ID,
+          requireUserVerification: true,
+        });
+      } catch {
+        reply.code(400);
+        return { error: "That didn't verify" };
+      }
+
+      if (!verification.verified || !verification.registrationInfo) {
+        reply.code(400);
+        return { error: "That didn't verify" };
+      }
+
+      const { credential } = verification.registrationInfo;
+      await db
+        .insert(webauthnCredentials)
+        .values({
+          id: credential.id,
+          userId: request.user.id,
+          publicKey: Buffer.from(credential.publicKey).toString("base64"),
+          counter: credential.counter,
+          label: (request.body?.label ?? "This browser").slice(0, 60),
+        })
+        .onConflictDoNothing();
+
+      return { ok: true };
+    }
+  );
+
+  app.post("/api/webauthn/auth/options", async (request, reply) => {
+    if (!request.user) {
+      reply.code(401);
+      return { error: "Not signed in" };
+    }
+    const existing = await db
+      .select({ id: webauthnCredentials.id })
+      .from(webauthnCredentials)
+      .where(eq(webauthnCredentials.userId, request.user.id));
+
+    if (existing.length === 0) {
+      reply.code(404);
+      return { error: "No passkey registered" };
+    }
+
+    const options = await generateAuthenticationOptions({
+      rpID: RP_ID,
+      allowCredentials: existing.map((row) => ({ id: row.id })),
+      userVerification: "required",
+    });
+
+    putChallenge(request.user.sessionId, options.challenge);
+    return options;
+  });
+
+  /**
+   * Verifies an assertion. Success is the same thing a correct privacy
+   * password is: proof the person at the machine is you.
+   */
+  app.post<{ Body: { response?: { id?: string } } }>(
+    "/api/webauthn/auth",
+    async (request, reply) => {
+      if (!request.user) {
+        reply.code(401);
+        return { error: "Not signed in" };
+      }
+      const expected = takeChallenge(request.user.sessionId);
+      const credentialId = request.body?.response?.id;
+      if (!expected || !credentialId) {
+        reply.code(400);
+        return { ok: false, error: "That took too long — try again" };
+      }
+
+      const [stored] = await db
+        .select()
+        .from(webauthnCredentials)
+        .where(
+          and(
+            eq(webauthnCredentials.id, credentialId),
+            // Scoped to this account, so a credential belonging to someone
+            // else can't be presented here.
+            eq(webauthnCredentials.userId, request.user.id)
+          )
+        );
+      if (!stored) {
+        reply.code(403);
+        return { ok: false, error: "Unknown passkey" };
+      }
+
+      let verification;
+      try {
+        verification = await verifyAuthenticationResponse({
+          response: request.body?.response as never,
+          expectedChallenge: expected,
+          expectedOrigin: ORIGIN,
+          expectedRPID: RP_ID,
+          requireUserVerification: true,
+          credential: {
+            id: stored.id,
+            publicKey: new Uint8Array(Buffer.from(stored.publicKey, "base64")),
+            counter: stored.counter,
+          },
+        });
+      } catch {
+        reply.code(403);
+        return { ok: false, error: "That didn't verify" };
+      }
+
+      if (!verification.verified) {
+        reply.code(403);
+        return { ok: false, error: "That didn't verify" };
+      }
+
+      // Stored back so a counter that goes backwards — the signature of a
+      // cloned authenticator — can be spotted next time.
+      await db
+        .update(webauthnCredentials)
+        .set({ counter: verification.authenticationInfo.newCounter })
+        .where(eq(webauthnCredentials.id, stored.id));
+
+      return { ok: true };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/webauthn/credentials/:id", async (request, reply) => {
+    if (!request.user) {
+      reply.code(401);
+      return { error: "Not signed in" };
+    }
+    await db
+      .delete(webauthnCredentials)
+      .where(
+        and(
+          eq(webauthnCredentials.id, request.params.id),
+          eq(webauthnCredentials.userId, request.user.id)
+        )
+      );
+    return { ok: true };
+  });
+}

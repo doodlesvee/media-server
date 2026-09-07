@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Images } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
 
@@ -9,18 +9,18 @@ type GalleryImage = { id: number; title: string; thumbnailFile: string | null };
 
 async function fetchGallery(
   itemId: number
-): Promise<{ albumId: number | null; images: GalleryImage[] }> {
+): Promise<{ albumId: number | null; total: number; images: GalleryImage[] }> {
   const res = await fetch(`/api/media-items/${itemId}/gallery`);
   if (!res.ok) throw new Error(`Failed to load gallery: ${res.status}`);
   return res.json();
 }
 
 /**
- * The stills that live in the same folder as this video.
+ * A preview of the stills that live in the same folder as this video.
  *
- * A strip rather than a grid, because the modal is about the video — the full
- * set is one click away on the album page, which is where you'd go to actually
- * look through 121 photos.
+ * The server caps what comes back, so this is a taste rather than the set —
+ * the album page is where you actually look through 121 photos, and the tile
+ * at the end of the row is how you get there.
  */
 export function GalleryStrip({ itemId }: { itemId: number }) {
   const { data } = useQuery({
@@ -28,6 +28,10 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
     queryFn: () => fetchGallery(itemId),
   });
   const images = data?.images ?? [];
+  // Older responses had no `total`; falling back to what we were given keeps
+  // the count honest rather than reading "See all 0".
+  const total = data?.total ?? images.length;
+  const hidden = total - images.length;
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   // Reset when the modal swaps to another item, or the lightbox would reopen
@@ -42,17 +46,7 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Gallery
         </h3>
-        <span className="text-[11px] text-muted-foreground/70">{images.length} images</span>
-        {data?.albumId != null && (
-          <Link
-            to="/album/$albumId"
-            params={{ albumId: String(data.albumId) }}
-            className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Images className="size-3.5" />
-            Open album
-          </Link>
-        )}
+        <span className="text-[11px] text-muted-foreground/70">{total} images</span>
       </div>
 
       <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
@@ -61,6 +55,8 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
             <button
               type="button"
               onClick={() => setOpenIndex(index)}
+              // Counts the previewed set, not the album — that's what the
+              // lightbox actually pages through from here.
               aria-label={`Open image ${index + 1} of ${images.length}`}
               className="group w-full"
             >
@@ -68,11 +64,28 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
                 src={thumbnailUrl(image)}
                 alt=""
                 loading="lazy"
-                className="aspect-video w-full rounded object-cover ring-1 ring-border transition-all group-hover:ring-white/40"
+                className="aspect-[3/2] w-full rounded object-cover ring-1 ring-border transition-all group-hover:ring-white/40"
               />
             </button>
           </li>
         ))}
+
+        {/* Only worth a tile when there's genuinely more behind it. */}
+        {hidden > 0 && data?.albumId != null && (
+          <li className="w-48 shrink-0 snap-start sm:w-56">
+            <Link
+              to="/album/$albumId"
+              params={{ albumId: String(data.albumId) }}
+              className="group flex aspect-[3/2] w-full flex-col items-center justify-center gap-1 rounded bg-secondary/60 ring-1 ring-border transition-colors hover:bg-secondary"
+            >
+              <span className="text-sm font-medium">See all {total}</span>
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                {hidden} more
+                <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          </li>
+        )}
       </ul>
 
       {openIndex !== null && (

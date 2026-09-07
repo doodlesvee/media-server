@@ -29,6 +29,7 @@ import { TagEditor } from "./TagEditor";
 import { TechnicalInfoPanel } from "./TechnicalInfoPanel";
 import { ThumbnailPicker } from "./ThumbnailPicker";
 import { FramingEditor, type FramingValue } from "./FramingEditor";
+import { useAppearance } from "@/lib/appearance";
 import { useAccentColor } from "@/lib/dominantColor";
 import { fetchCategories } from "@/lib/categoryApi";
 import { fetchItem, savePlaybackPosition, setWatched, updateItem } from "@/lib/mediaItemApi";
@@ -112,6 +113,7 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
+  const { discreet } = useAppearance();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
   const [addedToList, setAddedToList] = useState(false);
   const [seeked, setSeeked] = useState(false);
@@ -448,10 +450,15 @@ export function MediaDetailModal({
               // Preview mode plays the pre-cut clip (instant, already at the
               // poster frame); real playback streams the full file.
               key={mode}
+              // Discreet mode opens on the poster with nothing running.
+              // Blurred motion still reads as motion across a room, and this
+              // clip used to start the instant an item was opened.
               src={
                 mode === "playing"
                   ? `/api/stream/${item.id}`
-                  : `/api/media-items/${item.id}/preview`
+                  : discreet
+                    ? undefined
+                    : `/api/media-items/${item.id}/preview`
               }
               poster={thumbnailUrl(item)}
               onLoadedMetadata={handleLoadedMetadata}
@@ -461,17 +468,24 @@ export function MediaDetailModal({
               onEnded={handleEnded}
               onVolumeChange={handleVolumeChange}
               muted={mode === "preview"}
-              autoPlay
+              autoPlay={mode === "playing" || !discreet}
               loop={mode === "preview"}
               playsInline
               controls={mode === "playing"}
-              style={{ opacity: seeked ? 1 : 0, transition: "opacity 300ms ease-out" }}
+              style={{
+                opacity: seeked || (discreet && mode === "preview") ? 1 : 0,
+                transition: "opacity 300ms ease-out",
+              }}
               className={cn(
                 "absolute inset-0 h-full w-full",
                 // The preview is deliberately cropped to fill the frame, but
                 // cropping actual playback cuts the sides off anything that
                 // isn't 16:9 — letterbox it instead.
-                mode === "playing" ? "object-contain" : "object-cover"
+                mode === "playing" ? "object-contain" : "object-cover",
+                // Discreet mode blurs every image and clip in the app, but
+                // blurring something you deliberately pressed play on would
+                // just be broken.
+                mode === "playing" && "discreet-exempt"
               )}
             />
           ) : item ? (
@@ -489,7 +503,7 @@ export function MediaDetailModal({
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
 
               <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-4 p-6">
-                <h2 className="max-w-2xl text-2xl font-bold tracking-tight drop-shadow-md sm:text-3xl">
+                <h2 className="sensitive max-w-2xl text-2xl font-bold tracking-tight drop-shadow-md sm:text-3xl">
                   {item?.title ?? "Loading…"}
                 </h2>
 

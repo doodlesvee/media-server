@@ -14,7 +14,7 @@ export function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="max-w-lg space-y-4 rounded-lg border border-border bg-card/40 p-5">
+    <section className="w-full space-y-4 rounded-lg border border-border bg-card/40 p-5">
       <div className="space-y-1">
         <h2 className="font-semibold tracking-tight">{title}</h2>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
