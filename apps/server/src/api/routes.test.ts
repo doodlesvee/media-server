@@ -4,7 +4,13 @@ import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
-import { attachFile, makeFolder, makeItem, makeLibrary, makeLibraryAt } from "../test/fixtures.js";
+import {
+  attachFile,
+  makeFolder,
+  makeItem,
+  makeLibrary,
+  makeLibraryAt,
+} from "../test/fixtures.js";
 import { isScanRunning } from "../scanner/pipeline.js";
 import { seed } from "../db/seed.js";
 
@@ -45,17 +51,29 @@ afterEach(async () => {
 
 const get = (url: string, headers: Record<string, string> = {}) =>
   app.inject({ method: "GET", url, headers: { cookie, ...headers } });
-const send = (method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, payload?: unknown) =>
+const send = (
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  url: string,
+  payload?: unknown,
+) =>
   app.inject({ method, url, headers: { cookie }, payload: payload as object });
 
 describe("collections", () => {
   it("creates a manual collection and lists its items in a stable order", async () => {
-    const created = (await send("POST", "/api/collections", { name: "My List", type: "manual" }))
-      .json();
+    const created = (
+      await send("POST", "/api/collections", {
+        name: "My List",
+        type: "manual",
+      })
+    ).json();
     const a = await makeItem(libraryId, { title: "A" });
     const b = await makeItem(libraryId, { title: "B" });
-    await send("POST", `/api/collections/${created.id}/items`, { mediaItemId: a });
-    await send("POST", `/api/collections/${created.id}/items`, { mediaItemId: b });
+    await send("POST", `/api/collections/${created.id}/items`, {
+      mediaItemId: a,
+    });
+    await send("POST", `/api/collections/${created.id}/items`, {
+      mediaItemId: b,
+    });
 
     const body = (await get(`/api/collections/${created.id}/items`)).json();
     expect(body.items).toHaveLength(2);
@@ -63,12 +81,15 @@ describe("collections", () => {
     // Paged queries must be ordered, or rows repeat and vanish between pages.
     const again = (await get(`/api/collections/${created.id}/items`)).json();
     expect(again.items.map((i: { id: number }) => i.id)).toEqual(
-      body.items.map((i: { id: number }) => i.id)
+      body.items.map((i: { id: number }) => i.id),
     );
   });
 
   it("requires a rule for a smart collection", async () => {
-    const res = await send("POST", "/api/collections", { name: "Smart", type: "smart" });
+    const res = await send("POST", "/api/collections", {
+      name: "Smart",
+      type: "smart",
+    });
     expect(res.statusCode).toBe(400);
   });
 
@@ -79,12 +100,17 @@ describe("collections", () => {
       await send("POST", "/api/collections", {
         name: "Smart",
         type: "smart",
-        smartRule: { op: "AND", conditions: [{ field: "title", op: "contains", value: "Keep" }] },
+        smartRule: {
+          op: "AND",
+          conditions: [{ field: "title", op: "contains", value: "Keep" }],
+        },
       })
     ).json();
 
     const body = (await get(`/api/collections/${created.id}/items`)).json();
-    expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Keep me"]);
+    expect(body.items.map((i: { title: string }) => i.title)).toEqual([
+      "Keep me",
+    ]);
   });
 
   it("404s for a collection that does not exist", async () => {
@@ -96,31 +122,46 @@ describe("collections", () => {
     // deleting from collection_items alone — a table the statement never
     // joins. Postgres rejected it outright, so the sidebar's delete button
     // silently did nothing for any non-empty collection.
-    const created = (await send("POST", "/api/collections", { name: "My List", type: "manual" }))
-      .json();
+    const created = (
+      await send("POST", "/api/collections", {
+        name: "My List",
+        type: "manual",
+      })
+    ).json();
     const item = await makeItem(libraryId, { title: "In the list" });
-    await send("POST", `/api/collections/${created.id}/items`, { mediaItemId: item });
+    await send("POST", `/api/collections/${created.id}/items`, {
+      mediaItemId: item,
+    });
 
-    expect((await send("DELETE", `/api/collections/${created.id}`)).statusCode).toBe(200);
+    expect(
+      (await send("DELETE", `/api/collections/${created.id}`)).statusCode,
+    ).toBe(200);
     expect((await get("/api/collections")).json().collections).toEqual([]);
     // The video itself survives — a collection is a grouping, not ownership.
     expect((await get(`/api/media-items/${item}`)).statusCode).toBe(200);
   });
 
   it("still deletes an empty collection", async () => {
-    const created = (await send("POST", "/api/collections", { name: "Empty", type: "manual" }))
-      .json();
-    expect((await send("DELETE", `/api/collections/${created.id}`)).statusCode).toBe(200);
+    const created = (
+      await send("POST", "/api/collections", { name: "Empty", type: "manual" })
+    ).json();
+    expect(
+      (await send("DELETE", `/api/collections/${created.id}`)).statusCode,
+    ).toBe(200);
   });
 
   it("404s when deleting a collection that does not exist", async () => {
-    expect((await send("DELETE", "/api/collections/999999")).statusCode).toBe(404);
+    expect((await send("DELETE", "/api/collections/999999")).statusCode).toBe(
+      404,
+    );
   });
 });
 
 describe("folders", () => {
   it("creates a folder and moves an item into it", async () => {
-    const folder = (await send("POST", "/api/folders", { title: "Box" })).json();
+    const folder = (
+      await send("POST", "/api/folders", { title: "Box" })
+    ).json();
     const item = await makeItem(libraryId, { title: "X" });
     await send("PATCH", `/api/media-items/${item}`, { parentId: folder.id });
 
@@ -131,7 +172,9 @@ describe("folders", () => {
   it("lists folders for the move picker", async () => {
     await makeFolder(libraryId, "Existing");
     const body = (await get("/api/folders")).json();
-    expect(body.folders.map((f: { title: string }) => f.title)).toContain("Existing");
+    expect(body.folders.map((f: { title: string }) => f.title)).toContain(
+      "Existing",
+    );
   });
 });
 
@@ -145,7 +188,9 @@ describe("settings", () => {
 
   it("saves a hero selection", async () => {
     const item = await makeItem(libraryId, { title: "Featured" });
-    await send("PATCH", "/api/settings", { hero: { source: "manual", itemIds: [item] } });
+    await send("PATCH", "/api/settings", {
+      hero: { source: "manual", itemIds: [item] },
+    });
 
     const body = (await get("/api/settings")).json();
     expect(body.hero).toEqual({ source: "manual", itemIds: [item] });
@@ -155,22 +200,30 @@ describe("settings", () => {
     // Coerced rather than rejected: the UI only offers valid values, so a
     // stray one is a hand-edited request, and a sane default beats a 500 on
     // the next boot from a nonsense stored interval.
-    const res = await send("PATCH", "/api/settings", { scan: { intervalMinutes: 7 } });
+    const res = await send("PATCH", "/api/settings", {
+      scan: { intervalMinutes: 7 },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().scan.intervalMinutes).not.toBe(7);
   });
 
   it("accepts an interval that is on the allow-list", async () => {
-    const res = await send("PATCH", "/api/settings", { scan: { intervalMinutes: 30 } });
+    const res = await send("PATCH", "/api/settings", {
+      scan: { intervalMinutes: 30 },
+    });
     expect(res.json().scan.intervalMinutes).toBe(30);
   });
 
   it("resolves the hero setting into real items", async () => {
     const item = await makeItem(libraryId, { title: "Featured" });
-    await send("PATCH", "/api/settings", { hero: { source: "manual", itemIds: [item] } });
+    await send("PATCH", "/api/settings", {
+      hero: { source: "manual", itemIds: [item] },
+    });
 
     const body = (await get("/api/hero-items")).json();
-    expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Featured"]);
+    expect(body.items.map((i: { title: string }) => i.title)).toEqual([
+      "Featured",
+    ]);
   });
 });
 
@@ -219,7 +272,9 @@ describe("library roots", () => {
   });
 
   it("rejects adding a folder that does not exist", async () => {
-    const res = await send("POST", "/api/library/roots", { path: "/definitely/not/here" });
+    const res = await send("POST", "/api/library/roots", {
+      path: "/definitely/not/here",
+    });
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
   });
 });

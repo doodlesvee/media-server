@@ -1,18 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bell, CheckCircle2, Copy, FileWarning, ScanLine, Trash2, X } from "lucide-react";
+import {
+  Bell,
+  CheckCircle2,
+  Copy,
+  FileWarning,
+  ScanLine,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
- type HealthStats = {
+type HealthStats = {
   missing: number;
   duplicateGroups: number;
-  lastScan: { status: string; finishedAt: string | null; startedAt: string } | null;
+  lastScan: {
+    status: string;
+    finishedAt: string | null;
+    startedAt: string;
+  } | null;
   lastBackup: string | null;
 };
 
 async function fetchHealth(): Promise<HealthStats> {
   const response = await fetch("/api/stats");
-  if (!response.ok) throw new Error(`Health request failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Health request failed: ${response.status}`);
   return response.json();
 }
 
@@ -20,9 +33,13 @@ const DISMISSED_KEY = "dismissed-notifications";
 
 function readDismissed(): Set<string> {
   try {
-    const value = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]") as unknown;
+    const value = JSON.parse(
+      localStorage.getItem(DISMISSED_KEY) ?? "[]",
+    ) as unknown;
     return new Set(
-      Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []
+      Array.isArray(value)
+        ? value.filter((id): id is string => typeof id === "string")
+        : [],
     );
   } catch {
     return new Set();
@@ -49,20 +66,50 @@ export function NotificationCenter() {
   const notifications = data
     ? [
         ...(data.lastScan?.status === "failed"
-          ? [{ id: `scan:${data.lastScan.startedAt}`, label: "Library scan failed", icon: ScanLine, href: "/settings" as const }]
+          ? [
+              {
+                id: `scan:${data.lastScan.startedAt}`,
+                label: "Library scan failed",
+                icon: ScanLine,
+                href: "/settings" as const,
+              },
+            ]
           : []),
         ...(data.missing > 0
-          ? [{ id: `missing:${data.missing}`, label: `${data.missing} missing file${data.missing === 1 ? "" : "s"}`, icon: FileWarning, href: "/settings" as const }]
+          ? [
+              {
+                id: `missing:${data.missing}`,
+                label: `${data.missing} missing file${data.missing === 1 ? "" : "s"}`,
+                icon: FileWarning,
+                href: "/settings" as const,
+              },
+            ]
           : []),
         ...(data.duplicateGroups > 0
-          ? [{ id: `duplicates:${data.duplicateGroups}`, label: `${data.duplicateGroups} duplicate group${data.duplicateGroups === 1 ? "" : "s"} found`, icon: Copy, href: "/settings" as const }]
+          ? [
+              {
+                id: `duplicates:${data.duplicateGroups}`,
+                label: `${data.duplicateGroups} duplicate group${data.duplicateGroups === 1 ? "" : "s"} found`,
+                icon: Copy,
+                href: "/settings" as const,
+              },
+            ]
           : []),
         ...(!data.lastBackup
-          ? [{ id: "backup:none", label: "No backup has been created", icon: Bell, href: "/settings" as const }]
+          ? [
+              {
+                id: "backup:none",
+                label: "No backup has been created",
+                icon: Bell,
+                href: "/settings" as const,
+              },
+            ]
           : []),
       ]
     : [];
-  const visibleNotifications = notifications.filter((notification) => !dismissed.has(notification.id));
+  const visibleNotifications = notifications.filter(
+    (notification) => !dismissed.has(notification.id),
+  );
   const count = visibleNotifications.length;
 
   function clearNotifications() {
@@ -95,7 +142,9 @@ export function NotificationCenter() {
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <span className="text-sm font-semibold">Notifications</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">{count} open</span>
+              <span className="text-xs text-muted-foreground">
+                {count} open
+              </span>
               {visibleNotifications.length > 0 && (
                 <button
                   type="button"
@@ -109,7 +158,8 @@ export function NotificationCenter() {
           </div>
           {visibleNotifications.length === 0 ? (
             <div className="flex items-center gap-2 px-4 py-5 text-sm text-muted-foreground">
-              <CheckCircle2 className="size-4 text-emerald-500" /> Library healthy
+              <CheckCircle2 className="size-4 text-emerald-500" /> Library
+              healthy
             </div>
           ) : (
             <div className="p-2">

@@ -14,12 +14,15 @@ export function StudiosPage() {
     window.addEventListener(pinsChangedEvent(), refresh);
     return () => window.removeEventListener(pinsChangedEvent(), refresh);
   }, []);
-  const { data, isLoading } = useQuery({ queryKey: ["studios"], queryFn: fetchStudios });
+  const { data, isLoading } = useQuery({
+    queryKey: ["studios"],
+    queryFn: fetchStudios,
+  });
   const studios = data?.studios ?? [];
   const pinnedIds = new Set(
     readPins()
       .filter((pin) => pin.type === "studio")
-      .map((pin) => pin.studioId)
+      .map((pin) => pin.studioId),
   );
 
   // Zero-video studios are kept, matching the performers page: one exists
@@ -29,7 +32,7 @@ export function StudiosPage() {
     (a, b) =>
       Number(pinnedIds.has(b.id)) - Number(pinnedIds.has(a.id)) ||
       b.videoCount - a.videoCount ||
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
   );
   const visibleStudios = letter
     ? orderedStudios.filter((studio) => {
@@ -37,8 +40,12 @@ export function StudiosPage() {
         return letter === "#" ? !/^[A-Z]$/.test(initial) : initial === letter;
       })
     : orderedStudios;
-  const visibleWithVideos = visibleStudios.filter((studio) => studio.videoCount > 0);
-  const visibleEmpty = visibleStudios.filter((studio) => studio.videoCount === 0);
+  const visibleWithVideos = visibleStudios.filter(
+    (studio) => studio.videoCount > 0,
+  );
+  const visibleEmpty = visibleStudios.filter(
+    (studio) => studio.videoCount === 0,
+  );
 
   return (
     <AppShell
@@ -65,8 +72,8 @@ export function StudiosPage() {
 
         {!isLoading && visibleStudios.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No studios yet. They're picked up from a filename's leading [Studio] tag, or from
-            the folder above your videos, when you scan.
+            No studios yet. They're picked up from a filename's leading [Studio]
+            tag, or from the folder above your videos, when you scan.
           </p>
         )}
 
@@ -84,7 +91,8 @@ export function StudiosPage() {
               No videos right now
             </h2>
             <p className="max-w-prose text-xs text-muted-foreground/70">
-              Their folder isn't currently being scanned. Nothing about them is lost.
+              Their folder isn't currently being scanned. Nothing about them is
+              lost.
             </p>
             <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
               {visibleEmpty.map((studio) => (

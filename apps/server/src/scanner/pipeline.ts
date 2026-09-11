@@ -18,7 +18,12 @@ import { probeVideo } from "../metadata/videoProbe.js";
 import { probePhoto } from "../metadata/photoExif.js";
 import { ensurePosterFrame, generatePosterFrame } from "../media/poster.js";
 import { ensurePreviewClip } from "../media/preview.js";
-import { classifyByExtension, mimeTypeFor, titleFromFilename, type MediaKind } from "./classify.js";
+import {
+  classifyByExtension,
+  mimeTypeFor,
+  titleFromFilename,
+  type MediaKind,
+} from "./classify.js";
 import {
   hasWordBoundaryMatch,
   isUsableMatchKey,
@@ -30,7 +35,11 @@ import {
   studioNameFromPath,
   studioNameFromFilename,
 } from "./performerNames.js";
-import { purgeEmptyEntities, recomputeScope, sweepOrphanedArtwork } from "../library/scope.js";
+import {
+  purgeEmptyEntities,
+  recomputeScope,
+  sweepOrphanedArtwork,
+} from "../library/scope.js";
 import { partialContentHash } from "./hash.js";
 import { walk } from "./walk.js";
 import { logActivity } from "../activity/log.js";
@@ -78,7 +87,11 @@ async function runScan(jobId: number): Promise<void> {
     const itemTypeIdByKind = new Map(typeRows.map((t) => [t.name, t.id]));
 
     const roots = await db
-      .select({ id: libraryRoots.id, libraryId: libraryRoots.libraryId, path: libraryRoots.path })
+      .select({
+        id: libraryRoots.id,
+        libraryId: libraryRoots.libraryId,
+        path: libraryRoots.path,
+      })
       .from(libraryRoots);
 
     const seenPaths = new Set<string>();
@@ -109,7 +122,7 @@ async function runScan(jobId: number): Promise<void> {
               .update(scanJobs)
               .set({ filesScanned: sql`${scanJobs.filesScanned} + 1` })
               .where(eq(scanJobs.id, jobId));
-          })
+          }),
         );
       }
     }
@@ -125,7 +138,10 @@ async function runScan(jobId: number): Promise<void> {
     // yet, so deciding per-file would give different answers depending on the
     // order things happened to be visited.
     await assignAlbums(roots);
-    await markMissingFiles(seenPaths, roots.map((r) => r.path));
+    await markMissingFiles(
+      seenPaths,
+      roots.map((r) => r.path),
+    );
     // Reconciles anything the per-file writes above couldn't know about — a
     // file whose folder was removed mid-scan, say.
     await recomputeScope();
@@ -158,12 +174,15 @@ async function processFile(
   filePath: string,
   kind: MediaKind,
   root: { id: number; libraryId: number; path: string },
-  itemTypeIdByKind: Map<string, number>
+  itemTypeIdByKind: Map<string, number>,
 ): Promise<void> {
   const libraryId = root.libraryId;
   const stats = await stat(filePath);
 
-  const [existingFile] = await db.select().from(mediaFiles).where(eq(mediaFiles.path, filePath));
+  const [existingFile] = await db
+    .select()
+    .from(mediaFiles)
+    .where(eq(mediaFiles.path, filePath));
 
   if (existingFile) {
     await clearMissingSince(existingFile.mediaItemId);
@@ -178,7 +197,11 @@ async function processFile(
     await syncReleaseDateWithFilename(existingFile.mediaItemId, filePath);
 
     if (kind === "video") {
-      await ensureArtworkForItem(existingFile.mediaItemId, filePath, existingFile.contentHash);
+      await ensureArtworkForItem(
+        existingFile.mediaItemId,
+        filePath,
+        existingFile.contentHash,
+      );
     }
 
     const unchanged =
@@ -206,7 +229,12 @@ async function processFile(
   if (movedFile) {
     await db
       .update(mediaFiles)
-      .set({ path: filePath, sizeBytes: stats.size, mtime: stats.mtime, rootId: root.id })
+      .set({
+        path: filePath,
+        sizeBytes: stats.size,
+        mtime: stats.mtime,
+        rootId: root.id,
+      })
       .where(eq(mediaFiles.id, movedFile.id));
     await clearMissingSince(movedFile.mediaItemId);
     await syncTitleWithFilename(movedFile.mediaItemId, filePath);
@@ -220,7 +248,9 @@ async function processFile(
 
   const itemTypeId = itemTypeIdByKind.get(kind);
   if (!itemTypeId) {
-    throw new Error(`Missing media_item_types row for "${kind}" — did seeding run?`);
+    throw new Error(
+      `Missing media_item_types row for "${kind}" — did seeding run?`,
+    );
   }
 
   const title = titleFromFilename(filePath);
@@ -246,7 +276,14 @@ async function processFile(
 
   const [item] = await db
     .insert(mediaItems)
-    .values({ libraryId, itemTypeId, title, durationSeconds, takenAt, extraMetadata })
+    .values({
+      libraryId,
+      itemTypeId,
+      title,
+      durationSeconds,
+      takenAt,
+      extraMetadata,
+    })
     .returning();
 
   await db.insert(mediaFiles).values({
@@ -321,7 +358,11 @@ async function ensureStudioId(rawName: string): Promise<number> {
   const existing = await findId();
   if (existing !== null) return existing;
 
-  const [created] = await db.insert(studios).values({ name }).onConflictDoNothing().returning();
+  const [created] = await db
+    .insert(studios)
+    .values({ name })
+    .onConflictDoNothing()
+    .returning();
   if (created) return created.id;
 
   const raced = await findId();
@@ -343,10 +384,11 @@ async function ensureStudioId(rawName: string): Promise<number> {
  */
 async function syncReleaseDateWithFilename(
   mediaItemId: number,
-  filePath: string
+  filePath: string,
 ): Promise<void> {
   const declared = parseDeclaredName(filePath);
-  const releaseDate = declared?.releaseDate ?? releaseDateFromFilename(filePath);
+  const releaseDate =
+    declared?.releaseDate ?? releaseDateFromFilename(filePath);
   if (!releaseDate) return; // nothing in the name — leave whatever is there
 
   const [item] = await db
@@ -384,9 +426,12 @@ async function syncReleaseDateWithFilename(
 async function syncStudioWithFilename(
   mediaItemId: number,
   filePath: string,
-  rootPath: string
+  rootPath: string,
 ): Promise<void> {
-  const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
+  const [item] = await db
+    .select()
+    .from(mediaItems)
+    .where(eq(mediaItems.id, mediaItemId));
   if (!item || item.studioSource !== "scanner") return;
 
   const name =
@@ -427,16 +472,21 @@ async function syncStudioWithFilename(
 async function syncPerformersWithPath(
   mediaItemId: number,
   filePath: string,
-  rootPath: string
+  rootPath: string,
 ): Promise<void> {
-  const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
+  const [item] = await db
+    .select()
+    .from(mediaItems)
+    .where(eq(mediaItems.id, mediaItemId));
   if (!item || item.performersSource !== "scanner") return;
 
   const declared = parseDeclaredName(filePath);
   const names =
     declared && declared.performerNames.length > 0
       ? declared.performerNames
-      : ([performerNameFromPath(rootPath, filePath)].filter(Boolean) as string[]);
+      : ([performerNameFromPath(rootPath, filePath)].filter(
+          Boolean,
+        ) as string[]);
 
   if (names.length === 0) return; // root-level file — the filename pass handles these
 
@@ -457,12 +507,15 @@ async function syncPerformersWithPath(
   // (as this once did) meant a two-performer item never matched and rewrote
   // added_at on every row on every scan.
   const unchanged =
-    current.length === wanted.size && current.every((row) => wanted.has(row.performerId));
+    current.length === wanted.size &&
+    current.every((row) => wanted.has(row.performerId));
   if (unchanged) return;
 
   // Replace rather than add: a file moved out of a performer's folder, or
   // dropped from a declared list, must stop being credited to them.
-  await db.delete(mediaItemPerformers).where(eq(mediaItemPerformers.mediaItemId, mediaItemId));
+  await db
+    .delete(mediaItemPerformers)
+    .where(eq(mediaItemPerformers.mediaItemId, mediaItemId));
   await db
     .insert(mediaItemPerformers)
     .values([...wanted].map((performerId) => ({ mediaItemId, performerId })))
@@ -512,21 +565,28 @@ async function assignAlbums(roots: { path: string }[]): Promise<void> {
     //
     // Only album *creation* is gated this way: items already linked keep
     // their albumId, so an album on a temporarily absent drive survives.
-    if (!items.some((i) => i.typeName === "photo" && i.missing === null)) continue;
+    if (!items.some((i) => i.typeName === "photo" && i.missing === null))
+      continue;
 
     const root = roots.find(
-      (r) => directory === r.path || directory.startsWith(r.path + "/")
+      (r) => directory === r.path || directory.startsWith(r.path + "/"),
     );
     const title = normalizeName(basename(directory)) || directory;
-    const performerName = root ? performerNameFromPath(root.path, `${directory}/x`) : null;
-    const studioName = root ? studioNameFromPath(root.path, `${directory}/x`) : null;
+    const performerName = root
+      ? performerNameFromPath(root.path, `${directory}/x`)
+      : null;
+    const studioName = root
+      ? studioNameFromPath(root.path, `${directory}/x`)
+      : null;
 
     const [album] = await db
       .insert(albums)
       .values({
         path: directory,
         title,
-        performerId: performerName ? await ensurePerformerId(performerName) : null,
+        performerId: performerName
+          ? await ensurePerformerId(performerName)
+          : null,
         studioId: studioName ? await ensureStudioId(studioName) : null,
       })
       // Unique on path, so a rescan updates the derived fields instead of
@@ -534,7 +594,9 @@ async function assignAlbums(roots: { path: string }[]): Promise<void> {
       .onConflictDoUpdate({ target: albums.path, set: { title } })
       .returning();
 
-    const needsLinking = items.filter((i) => i.albumId !== album.id).map((i) => i.itemId);
+    const needsLinking = items
+      .filter((i) => i.albumId !== album.id)
+      .map((i) => i.itemId);
     if (needsLinking.length > 0) {
       await db
         .update(mediaItems)
@@ -555,10 +617,14 @@ async function assignAlbums(roots: { path: string }[]): Promise<void> {
  * replaced instead, renaming a performer would silently strip every
  * root-level link on the next scan.
  */
-async function assignPerformersFromFilenames(filePaths: string[]): Promise<void> {
+async function assignPerformersFromFilenames(
+  filePaths: string[],
+): Promise<void> {
   if (filePaths.length === 0) return;
 
-  const all = await db.select({ id: performers.id, name: performers.name }).from(performers);
+  const all = await db
+    .select({ id: performers.id, name: performers.name })
+    .from(performers);
   const candidates = all
     .map((p) => ({ id: p.id, key: matchKey(p.name) }))
     .filter((p) => isUsableMatchKey(p.key));
@@ -578,18 +644,28 @@ async function assignPerformersFromFilenames(filePaths: string[]): Promise<void>
     if (row.performersSource !== "scanner") continue;
 
     const haystack = matchKey(basename(row.path).replace(/\.[^./]+$/, ""));
-    let matched = candidates.filter((c) => hasWordBoundaryMatch(haystack, c.key));
+    let matched = candidates.filter((c) =>
+      hasWordBoundaryMatch(haystack, c.key),
+    );
 
     // Drop any match wholly contained in another, so "Dani Daniels" wins over
     // a separate performer named "Dani".
     matched = matched.filter(
-      (m) => !matched.some((other) => other.id !== m.id && other.key.includes(m.key))
+      (m) =>
+        !matched.some(
+          (other) => other.id !== m.id && other.key.includes(m.key),
+        ),
     );
     if (matched.length === 0) continue;
 
     await db
       .insert(mediaItemPerformers)
-      .values(matched.map((m) => ({ mediaItemId: row.mediaItemId, performerId: m.id })))
+      .values(
+        matched.map((m) => ({
+          mediaItemId: row.mediaItemId,
+          performerId: m.id,
+        })),
+      )
       .onConflictDoNothing();
   }
 }
@@ -601,12 +677,25 @@ async function assignPerformersFromFilenames(filePaths: string[]): Promise<void>
 async function ensureArtworkForItem(
   mediaItemId: number,
   filePath: string,
-  contentHash: string | null
+  contentHash: string | null,
 ): Promise<void> {
-  const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
+  const [item] = await db
+    .select()
+    .from(mediaItems)
+    .where(eq(mediaItems.id, mediaItemId));
   if (!item) return;
-  await ensurePosterFrame(filePath, mediaItemId, contentHash, item.durationSeconds);
-  await ensurePreviewClip(filePath, mediaItemId, contentHash, item.durationSeconds);
+  await ensurePosterFrame(
+    filePath,
+    mediaItemId,
+    contentHash,
+    item.durationSeconds,
+  );
+  await ensurePreviewClip(
+    filePath,
+    mediaItemId,
+    contentHash,
+    item.durationSeconds,
+  );
 }
 
 /**
@@ -614,8 +703,14 @@ async function ensureArtworkForItem(
  * title is still the one the scanner derived. Once it's been edited in the
  * app (`titleSource === 'user'`) the filename stops being authoritative.
  */
-async function syncTitleWithFilename(mediaItemId: number, filePath: string): Promise<void> {
-  const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaItemId));
+async function syncTitleWithFilename(
+  mediaItemId: number,
+  filePath: string,
+): Promise<void> {
+  const [item] = await db
+    .select()
+    .from(mediaItems)
+    .where(eq(mediaItems.id, mediaItemId));
   if (!item || item.titleSource !== "filename") return;
 
   const derived = titleFromFilename(filePath);
@@ -628,7 +723,10 @@ async function syncTitleWithFilename(mediaItemId: number, filePath: string): Pro
 }
 
 async function clearMissingSince(mediaItemId: number): Promise<void> {
-  await db.update(mediaItems).set({ missingSince: null }).where(eq(mediaItems.id, mediaItemId));
+  await db
+    .update(mediaItems)
+    .set({ missingSince: null })
+    .where(eq(mediaItems.id, mediaItemId));
 }
 
 /**
@@ -641,21 +739,29 @@ async function clearMissingSince(mediaItemId: number): Promise<void> {
  */
 async function markMissingFiles(
   seenPaths: Set<string>,
-  rootPaths: string[]
+  rootPaths: string[],
 ): Promise<void> {
   const allFiles = await db.select().from(mediaFiles);
   const now = new Date();
 
   const isWatched = (filePath: string): boolean =>
-    rootPaths.some((root) => filePath === root || filePath.startsWith(root + "/"));
+    rootPaths.some(
+      (root) => filePath === root || filePath.startsWith(root + "/"),
+    );
 
   for (const file of allFiles) {
     if (seenPaths.has(file.path)) continue;
     if (!isWatched(file.path)) continue;
 
-    const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, file.mediaItemId));
+    const [item] = await db
+      .select()
+      .from(mediaItems)
+      .where(eq(mediaItems.id, file.mediaItemId));
     if (item && !item.missingSince) {
-      await db.update(mediaItems).set({ missingSince: now }).where(eq(mediaItems.id, item.id));
+      await db
+        .update(mediaItems)
+        .set({ missingSince: now })
+        .where(eq(mediaItems.id, item.id));
     }
   }
 }

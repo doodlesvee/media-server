@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Circle, Film, Folder, Image as ImageIcon, Pin } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Film,
+  Folder,
+  Image as ImageIcon,
+  Pin,
+} from "lucide-react";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
 import { cn } from "@/lib/utils";
@@ -51,7 +58,9 @@ export function MediaCard({
 
   const { hoverZoom, hoverPreview, discreet, tileInfo } = useAppearance();
   const [previewing, setPreviewing] = useState(false);
-  const [pinned, setPinned] = useState(() => item.itemType === "folder" && isPinned(`folder:${item.id}`));
+  const [pinned, setPinned] = useState(
+    () => item.itemType === "folder" && isPinned(`folder:${item.id}`),
+  );
 
   const showImage = item.itemType !== "folder" && !thumbFailed;
   // Turned off in the Appearance panel, a tile stays a tile — it still opens,
@@ -63,11 +72,18 @@ export function MediaCard({
   // Never while discreet: a blurred still is quiet, but movement under the
   // pointer is the thing someone across the room actually notices.
   const canPreviewInline =
-    hoverPreview && !discreet && !hoverZoom && !selectable && item.itemType === "video";
+    hoverPreview &&
+    !discreet &&
+    !hoverZoom &&
+    !selectable &&
+    item.itemType === "video";
 
   const progressPercent =
     item.lastPositionSeconds && item.durationSeconds
-      ? Math.min(100, Math.round((item.lastPositionSeconds / item.durationSeconds) * 100))
+      ? Math.min(
+          100,
+          Math.round((item.lastPositionSeconds / item.durationSeconds) * 100),
+        )
       : null;
 
   useEffect(() => {
@@ -86,7 +102,10 @@ export function MediaCard({
     // a dozen cards.
     if (canExpand) hoverTimer.current = setTimeout(expand, HOVER_DELAY_MS);
     else if (canPreviewInline)
-      hoverTimer.current = setTimeout(() => setPreviewing(true), HOVER_DELAY_MS);
+      hoverTimer.current = setTimeout(
+        () => setPreviewing(true),
+        HOVER_DELAY_MS,
+      );
   }
 
   // Keyboard focus expands immediately — a dwell delay only makes sense for
@@ -141,7 +160,7 @@ export function MediaCard({
         className={cn(
           "group relative w-full shrink-0 rounded-md text-left",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          className
+          className,
         )}
       >
         <div
@@ -155,7 +174,7 @@ export function MediaCard({
             "relative aspect-[16/10] w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
-            item.missingSince && "opacity-50"
+            item.missingSince && "opacity-50",
           )}
         >
           {showImage ? (
@@ -174,7 +193,9 @@ export function MediaCard({
                 /* eslint-disable-next-line jsx-a11y/media-has-caption -- silent hover preview */
                 <video
                   src={`/api/media-items/${item.id}/preview`}
-                  onCanPlay={(event) => (event.currentTarget.style.opacity = "1")}
+                  onCanPlay={(event) =>
+                    (event.currentTarget.style.opacity = "1")
+                  }
                   muted
                   loop
                   autoPlay
@@ -218,11 +239,18 @@ export function MediaCard({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  togglePin({ id: `folder:${item.id}`, type: "folder", label: item.title, folderId: item.id });
+                  togglePin({
+                    id: `folder:${item.id}`,
+                    type: "folder",
+                    label: item.title,
+                    folderId: item.id,
+                  });
                   setPinned((value) => !value);
                 }}
                 aria-pressed={pinned}
-                aria-label={pinned ? `Unpin ${item.title}` : `Pin ${item.title}`}
+                aria-label={
+                  pinned ? `Unpin ${item.title}` : `Pin ${item.title}`
+                }
                 title={pinned ? "Unpin folder" : "Pin folder"}
                 className="flex size-7 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20"
               >
@@ -241,13 +269,15 @@ export function MediaCard({
               already started would be a real cost rather than less clutter. */}
           {tileInfo !== "none" && (
             <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2.5 pb-2 pt-8">
-              {tileInfo === "full" && item.performers && item.performers.length > 0 && (
-                // One line only: with the title clamped to two below it, a
-                // wrapping cast list would push the title off the tile.
-                <span className="sensitive block truncate text-[10px] font-medium uppercase tracking-wide text-white/70">
-                  {item.performers.map((p) => p.name).join(", ")}
-                </span>
-              )}
+              {tileInfo === "full" &&
+                item.performers &&
+                item.performers.length > 0 && (
+                  // One line only: with the title clamped to two below it, a
+                  // wrapping cast list would push the title off the tile.
+                  <span className="sensitive block truncate text-[10px] font-medium uppercase tracking-wide text-white/70">
+                    {item.performers.map((p) => p.name).join(", ")}
+                  </span>
+                )}
               <span className="sensitive line-clamp-2 text-xs font-medium leading-snug text-white drop-shadow">
                 {item.title}
               </span>
@@ -256,11 +286,13 @@ export function MediaCard({
 
           {progressPercent !== null && (
             <span className="absolute inset-x-0 bottom-0 h-1 bg-white/25">
-              <span className="block h-full bg-white" style={{ width: `${progressPercent}%` }} />
+              <span
+                className="block h-full bg-white"
+                style={{ width: `${progressPercent}%` }}
+              />
             </span>
           )}
         </div>
-
       </button>
 
       {anchorRect && (

@@ -3,7 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Heart } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { PerformerCard, type PerformerSummary } from "@/components/PerformerCard";
+import {
+  PerformerCard,
+  type PerformerSummary,
+} from "@/components/PerformerCard";
 import { AlphabetIndex } from "@/components/AlphabetIndex";
 import { pinsChangedEvent, readPins } from "@/lib/pinned";
 
@@ -26,7 +29,8 @@ export function PerformersPage() {
 
   const { data } = useQuery({
     queryKey: ["performers"],
-    queryFn: () => fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
+    queryFn: () =>
+      fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
   });
 
   // Favourites first, then alphabetical — so a performer stays put as their
@@ -37,13 +41,13 @@ export function PerformersPage() {
   const pinnedIds = new Set(
     readPins()
       .filter((pin) => pin.type === "performer")
-      .map((pin) => pin.performerId)
+      .map((pin) => pin.performerId),
   );
   const performers = [...(data?.performers ?? [])].sort(
     (a, b) =>
       Number(pinnedIds.has(b.id)) - Number(pinnedIds.has(a.id)) ||
       Number(b.isFavorite) - Number(a.isFavorite) ||
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
   );
 
   // Unlike the homepage row, zero-video performers are kept: this is the page
@@ -58,9 +62,12 @@ export function PerformersPage() {
       })
     : performers;
   const visibleFavorites = visiblePerformers.filter((p) => p.isFavorite);
-  const visibleWithVideos = visiblePerformers.filter((p) => !p.isFavorite && p.videoCount > 0);
-  const visibleEmpty = visiblePerformers.filter((p) => !p.isFavorite && p.videoCount === 0);
-
+  const visibleWithVideos = visiblePerformers.filter(
+    (p) => !p.isFavorite && p.videoCount > 0,
+  );
+  const visibleEmpty = visiblePerformers.filter(
+    (p) => !p.isFavorite && p.videoCount === 0,
+  );
 
   return (
     <AppShell
@@ -79,8 +86,8 @@ export function PerformersPage() {
         />
         {visiblePerformers.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No performers yet. They're created automatically from your folder names when you
-            scan.
+            No performers yet. They're created automatically from your folder
+            names when you scan.
           </p>
         )}
 
@@ -130,8 +137,8 @@ export function PerformersPage() {
               No videos right now
             </h2>
             <p className="max-w-prose text-xs text-muted-foreground/70">
-              Either added by hand, or their folder isn't currently being scanned. Their
-              details are kept either way.
+              Either added by hand, or their folder isn't currently being
+              scanned. Their details are kept either way.
             </p>
             <div className="stagger flex flex-wrap gap-x-6 gap-y-7">
               {visibleEmpty.map((performer) => (

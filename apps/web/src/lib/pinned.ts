@@ -9,7 +9,9 @@ const CHANGE_EVENT = "media-server:pins-changed";
 
 export function readPins(): Pin[] {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as unknown;
+    const value = JSON.parse(
+      localStorage.getItem(STORAGE_KEY) ?? "[]",
+    ) as unknown;
     return Array.isArray(value) ? (value as Pin[]) : [];
   } catch {
     return [];
@@ -31,7 +33,11 @@ export function isPinned(id: string): boolean {
 
 export function togglePin(pin: Pin): void {
   const pins = readPins();
-  writePins(pins.some((entry) => entry.id === pin.id) ? pins.filter((entry) => entry.id !== pin.id) : [...pins, pin]);
+  writePins(
+    pins.some((entry) => entry.id === pin.id)
+      ? pins.filter((entry) => entry.id !== pin.id)
+      : [...pins, pin],
+  );
 }
 
 export function removePin(id: string): void {

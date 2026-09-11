@@ -21,5 +21,5 @@ createRoot(document.getElementById("root")!).render(
         </AppearanceProvider>
       </AuthGate>
     </QueryClientProvider>
-  </StrictMode>
+  </StrictMode>,
 );

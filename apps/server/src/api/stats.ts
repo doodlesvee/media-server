@@ -28,15 +28,23 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
     // losing precision. Number() is safe at this magnitude (exact to 9PB) but
     // the cast should be visible rather than implied.
     const [totalSize] = await db
-      .select({ bytes: sql<string>`coalesce(sum(${mediaFiles.sizeBytes}), 0)::bigint` })
+      .select({
+        bytes: sql<string>`coalesce(sum(${mediaFiles.sizeBytes}), 0)::bigint`,
+      })
       .from(mediaFiles)
       .innerJoin(mediaItems, eq(mediaItems.id, mediaFiles.mediaItemId))
       // Matches what the counts above report: a folder you stopped scanning
       // shouldn't still be adding terabytes to the total.
-      .where(and(eq(mediaItems.inScope, true), isNull(mediaItems.missingSince)));
+      .where(
+        and(eq(mediaItems.inScope, true), isNull(mediaItems.missingSince)),
+      );
 
-    const [{ total: tagCount }] = await db.select({ total: count() }).from(tags);
-    const [{ total: collectionCount }] = await db.select({ total: count() }).from(collections);
+    const [{ total: tagCount }] = await db
+      .select({ total: count() })
+      .from(tags);
+    const [{ total: collectionCount }] = await db
+      .select({ total: count() })
+      .from(collections);
     const [{ total: itemCount }] = await db
       .select({ total: count() })
       .from(mediaItems)
@@ -44,7 +52,12 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
     const [{ total: missingCount }] = await db
       .select({ total: count() })
       .from(mediaItems)
-      .where(and(eq(mediaItems.inScope, true), sql`${mediaItems.missingSince} is not null`));
+      .where(
+        and(
+          eq(mediaItems.inScope, true),
+          sql`${mediaItems.missingSince} is not null`,
+        ),
+      );
     const duplicateRows = await db.execute<{ total: number }>(sql`
       select count(*)::int as total
       from (
@@ -56,7 +69,11 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
       ) duplicate_groups
     `);
     const [lastScan] = await db
-      .select({ status: scanJobs.status, finishedAt: scanJobs.finishedAt, startedAt: scanJobs.startedAt })
+      .select({
+        status: scanJobs.status,
+        finishedAt: scanJobs.finishedAt,
+        startedAt: scanJobs.startedAt,
+      })
       .from(scanJobs)
       .orderBy(desc(scanJobs.id))
       .limit(1);

@@ -29,28 +29,41 @@ function formatDuration(seconds: number): string | null {
  */
 function StudioStats({ studio }: { studio: StudioDetail }) {
   const duration = formatDuration(studio.totalDurationSeconds);
-  const years = studio.years.map((y) => y.year).filter((y): y is number => y !== null);
+  const years = studio.years
+    .map((y) => y.year)
+    .filter((y): y is number => y !== null);
   const [from, to] = [Math.min(...years), Math.max(...years)];
 
-  const parts: string[] = [`${studio.videoCount} ${studio.videoCount === 1 ? "video" : "videos"}`];
+  const parts: string[] = [
+    `${studio.videoCount} ${studio.videoCount === 1 ? "video" : "videos"}`,
+  ];
   if (duration) parts.push(duration);
   if (studio.performers.length > 0) {
     parts.push(
-      `${studio.performers.length} ${studio.performers.length === 1 ? "performer" : "performers"}`
+      `${studio.performers.length} ${studio.performers.length === 1 ? "performer" : "performers"}`,
     );
   }
   if (studio.albumCount > 0) {
-    parts.push(`${studio.albumCount} ${studio.albumCount === 1 ? "album" : "albums"}`);
+    parts.push(
+      `${studio.albumCount} ${studio.albumCount === 1 ? "album" : "albums"}`,
+    );
   }
   if (years.length > 0) parts.push(from === to ? `${from}` : `${from}–${to}`);
-  if (studio.watch.unwatched > 0) parts.push(`${studio.watch.unwatched} unwatched`);
+  if (studio.watch.unwatched > 0)
+    parts.push(`${studio.watch.unwatched} unwatched`);
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
       {parts.map((part, index) => (
         <span key={part} className="flex items-center gap-2">
           {index > 0 && <span className="text-muted-foreground/40">·</span>}
-          <span className={index === 0 ? "font-medium text-foreground/90" : undefined}>{part}</span>
+          <span
+            className={
+              index === 0 ? "font-medium text-foreground/90" : undefined
+            }
+          >
+            {part}
+          </span>
         </span>
       ))}
     </div>
@@ -60,7 +73,9 @@ function StudioStats({ studio }: { studio: StudioDetail }) {
 export function StudioPage() {
   const { studioId } = routeApi.useParams();
   const id = Number(studioId);
-  const [folder, setFolder] = useState<{ id: number; title: string } | null>(null);
+  const [folder, setFolder] = useState<{ id: number; title: string } | null>(
+    null,
+  );
 
   const { data: studio, isError } = useQuery({
     queryKey: ["studio", id],
@@ -71,7 +86,8 @@ export function StudioPage() {
     return (
       <AppShell title="Studio not found">
         <p className="px-6 text-sm text-muted-foreground">
-          That studio doesn’t exist — it may have been removed when its last video went away.
+          That studio doesn’t exist — it may have been removed when its last
+          video went away.
         </p>
       </AppShell>
     );
@@ -81,7 +97,9 @@ export function StudioPage() {
   // own — there's no external metadata source here to fetch a logo from, and
   // nothing to upload one against yet.
   const backdrop =
-    studio?.bannerItemId != null ? thumbnailUrl({ id: studio.bannerItemId }) : null;
+    studio?.bannerItemId != null
+      ? thumbnailUrl({ id: studio.bannerItemId })
+      : null;
 
   return (
     <AppShell>
@@ -140,12 +158,17 @@ export function StudioPage() {
 
       {studio && (
         <div className="space-y-8 px-6 py-8">
-          <PerformerCoPerformers performers={studio.performers} title="Featuring" />
+          <PerformerCoPerformers
+            performers={studio.performers}
+            title="Featuring"
+          />
 
           <AlbumRow studio={studio.name} />
 
           <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Videos</h2>
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              Videos
+            </h2>
             {/* The grid brings its own Sort and Year controls, and pages as
                 you scroll — so a studio with hundreds of scenes costs one
                 page of requests rather than all of them. */}
@@ -159,7 +182,9 @@ export function StudioPage() {
                 q: null,
                 parentId: folder?.id ?? null,
               }}
-              onOpenFolder={(folderId, title) => setFolder({ id: folderId, title })}
+              onOpenFolder={(folderId, title) =>
+                setFolder({ id: folderId, title })
+              }
             />
           </section>
         </div>

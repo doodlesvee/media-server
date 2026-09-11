@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Eye, Heart, X } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import { fetchPerformer, performerPortraitUrl, portraitStyle } from "@/lib/performerApi";
+import {
+  fetchPerformer,
+  performerPortraitUrl,
+  portraitStyle,
+} from "@/lib/performerApi";
 import { PlaySurface } from "./PlaySurface";
 import { Portal } from "./Portal";
 import type { PerformerSummary } from "./PerformerCard";
@@ -18,7 +22,9 @@ export function PerformerPeekPanel({
     queryKey: ["performer", performer.id],
     queryFn: () => fetchPerformer(performer.id),
   });
-  const portrait = data ? performerPortraitUrl(data) : performerPortraitUrl(performer);
+  const portrait = data
+    ? performerPortraitUrl(data)
+    : performerPortraitUrl(performer);
   const detail = data;
 
   return (
@@ -78,14 +84,32 @@ export function PerformerPeekPanel({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => void navigate({ to: "/performer/$performerId", params: { performerId: String(performer.id) } })}
+                onClick={() =>
+                  void navigate({
+                    to: "/performer/$performerId",
+                    params: { performerId: String(performer.id) },
+                  })
+                }
                 className="flex items-center gap-2 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:bg-foreground/85"
               >
                 <Eye className="size-4" /> Open performer
               </button>
-              {performer.isFavorite && <Heart className="size-4 fill-red-500 text-red-500" aria-label="Favourite performer" />}
+              {performer.isFavorite && (
+                <Heart
+                  className="size-4 fill-red-500 text-red-500"
+                  aria-label="Favourite performer"
+                />
+              )}
               <PlaySurface
-                source={{ type: "library", performer: performer.name, tag: null, studio: null, kind: null, q: null, parentId: null }}
+                source={{
+                  type: "library",
+                  performer: performer.name,
+                  tag: null,
+                  studio: null,
+                  kind: null,
+                  q: null,
+                  parentId: null,
+                }}
                 label="Performer playback"
               />
             </div>

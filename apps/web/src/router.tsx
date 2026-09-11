@@ -1,4 +1,8 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
 import { AccountPage } from "@/pages/AccountPage";
 import { AlbumPage } from "@/pages/AlbumPage";
 import { AlbumsPage } from "@/pages/AlbumsPage";
@@ -23,7 +27,7 @@ const browseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/browse",
   validateSearch: (
-    search: Record<string, unknown>
+    search: Record<string, unknown>,
   ): {
     tag?: string;
     performer?: string;
@@ -36,10 +40,12 @@ const browseRoute = createRoute({
     q?: string;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
-    performer: typeof search.performer === "string" ? search.performer : undefined,
+    performer:
+      typeof search.performer === "string" ? search.performer : undefined,
     studio: typeof search.studio === "string" ? search.studio : undefined,
     kind: typeof search.kind === "string" ? search.kind : undefined,
-    collectionId: search.collectionId != null ? Number(search.collectionId) : undefined,
+    collectionId:
+      search.collectionId != null ? Number(search.collectionId) : undefined,
     parentId: search.parentId != null ? Number(search.parentId) : undefined,
     sort: typeof search.sort === "string" ? search.sort : undefined,
     year: search.year != null ? Number(search.year) : undefined,

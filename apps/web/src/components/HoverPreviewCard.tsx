@@ -61,8 +61,8 @@ export function HoverPreviewCard({
     VIEWPORT_MARGIN,
     Math.min(
       anchorRect.left + anchorRect.width / 2 - width / 2,
-      window.innerWidth - width - VIEWPORT_MARGIN
-    )
+      window.innerWidth - width - VIEWPORT_MARGIN,
+    ),
   );
   // Centre the expanded video over the original thumbnail (both 16:9) so the
   // card appears to grow out of the card you're pointing at, rather than
@@ -142,7 +142,7 @@ export function HoverPreviewCard({
       aria-hidden="true"
       className={cn(
         "fixed z-40 overflow-hidden rounded-lg bg-card shadow-2xl ring-1 ring-white/10",
-        !visible && "pointer-events-none"
+        !visible && "pointer-events-none",
       )}
       onMouseLeave={dismiss}
       onClick={onOpen}
@@ -169,7 +169,10 @@ export function HoverPreviewCard({
             loop
             autoPlay
             playsInline
-            style={{ opacity: ready ? 1 : 0, transition: "opacity 300ms ease-out" }}
+            style={{
+              opacity: ready ? 1 : 0,
+              transition: "opacity 300ms ease-out",
+            }}
             className="absolute inset-0 h-full w-full object-cover"
           />
         </div>
@@ -208,7 +211,11 @@ export function HoverPreviewCard({
                 className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white disabled:opacity-50"
                 disabled={queued}
               >
-                {queued ? <Check className="size-4" /> : <ListPlus className="size-4" />}
+                {queued ? (
+                  <Check className="size-4" />
+                ) : (
+                  <ListPlus className="size-4" />
+                )}
               </button>
               <button
                 type="button"
@@ -243,14 +250,18 @@ export function HoverPreviewCard({
         </p>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {duration && <span className="font-medium text-foreground/80">{duration}</span>}
+          {duration && (
+            <span className="font-medium text-foreground/80">{duration}</span>
+          )}
           {badge && (
             <span className="rounded border border-border px-1 py-px text-[10px] tracking-wide">
               {badge}
             </span>
           )}
           {item.studio && <span>{item.studio}</span>}
-          {item.missingSince && <span className="text-destructive">missing</span>}
+          {item.missingSince && (
+            <span className="text-destructive">missing</span>
+          )}
         </div>
 
         {(item.performers?.length || item.tags?.length) && (
@@ -262,6 +273,6 @@ export function HoverPreviewCard({
         )}
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

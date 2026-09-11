@@ -7,16 +7,27 @@ import type { GridSource } from "./MediaGrid";
 const MIN_RESUMABLE_SECONDS = 15;
 const PLAY_EVENT = "media-server:play-item";
 
-type PageItem = Pick<MediaCardItem, "id" | "title" | "thumbnailFile" | "durationSeconds" | "itemType"> & {
+type PageItem = Pick<
+  MediaCardItem,
+  "id" | "title" | "thumbnailFile" | "durationSeconds" | "itemType"
+> & {
   lastPositionSeconds?: number;
 };
 
-type Response = { items: PageItem[]; page: number; pageSize: number; hasMore?: boolean };
+type Response = {
+  items: PageItem[];
+  page: number;
+  pageSize: number;
+  hasMore?: boolean;
+};
 
 async function fetchPage(source: GridSource, page: number): Promise<Response> {
   if (source.type === "collection") {
-    const response = await fetch(`/api/collections/${source.id}/items?page=${page}`);
-    if (!response.ok) throw new Error(`Failed to load collection: ${response.status}`);
+    const response = await fetch(
+      `/api/collections/${source.id}/items?page=${page}`,
+    );
+    if (!response.ok)
+      throw new Error(`Failed to load collection: ${response.status}`);
     return response.json();
   }
 
@@ -52,7 +63,8 @@ export function PlaySurface({
       while (true) {
         const response = await fetchPage(source, page);
         all.push(...response.items);
-        const hasMore = response.hasMore ?? response.items.length === response.pageSize;
+        const hasMore =
+          response.hasMore ?? response.items.length === response.pageSize;
         if (!hasMore) return all;
         page += 1;
       }
@@ -66,7 +78,8 @@ export function PlaySurface({
     (item) =>
       (item.lastPositionSeconds ?? 0) > MIN_RESUMABLE_SECONDS &&
       (item.durationSeconds == null ||
-        (item.lastPositionSeconds ?? 0) < item.durationSeconds - MIN_RESUMABLE_SECONDS)
+        (item.lastPositionSeconds ?? 0) <
+          item.durationSeconds - MIN_RESUMABLE_SECONDS),
   );
 
   function toQueueItem(item: PageItem): QueueItem {
@@ -89,7 +102,9 @@ export function PlaySurface({
     if (!resumeItem) return;
     clear();
     window.dispatchEvent(
-      new CustomEvent(PLAY_EVENT, { detail: { id: resumeItem.id, resume: true } })
+      new CustomEvent(PLAY_EVENT, {
+        detail: { id: resumeItem.id, resume: true },
+      }),
     );
   }
 

@@ -13,12 +13,20 @@ describe("queue ordering", () => {
   });
 
   it("puts Play Next items first without duplicates", () => {
-    expect(prependUnique([second, third], first)).toEqual([first, second, third]);
+    expect(prependUnique([second, third], first)).toEqual([
+      first,
+      second,
+      third,
+    ]);
     expect(prependUnique([first, second], first)).toEqual([first, second]);
   });
 
   it("moves an item and leaves boundary moves unchanged", () => {
-    expect(moveQueueItem([first, second, third], third.id, -1)).toEqual([first, third, second]);
+    expect(moveQueueItem([first, second, third], third.id, -1)).toEqual([
+      first,
+      third,
+      second,
+    ]);
     const items = [first, second, third];
     expect(moveQueueItem(items, first.id, -1)).toBe(items);
     expect(moveQueueItem(items, third.id, 1)).toBe(items);

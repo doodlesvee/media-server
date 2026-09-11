@@ -30,7 +30,9 @@ export function AlphabetIndex({
         aria-pressed={value === null}
         className={cn(
           "min-w-8 rounded px-2 py-1 text-xs font-medium transition-colors",
-          selected === null ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          selected === null
+            ? "bg-foreground text-background"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         All
@@ -46,7 +48,11 @@ export function AlphabetIndex({
             aria-pressed={value === letter}
             className={cn(
               "min-w-7 rounded px-1.5 py-1 text-xs font-medium transition-colors",
-              selected === letter ? "bg-foreground text-background" : enabled ? "text-muted-foreground hover:bg-accent hover:text-foreground" : "cursor-not-allowed text-muted-foreground/25"
+              selected === letter
+                ? "bg-foreground text-background"
+                : enabled
+                  ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  : "cursor-not-allowed text-muted-foreground/25",
             )}
           >
             {letter}

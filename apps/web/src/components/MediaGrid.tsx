@@ -141,12 +141,12 @@ export function MediaGrid({
   const pinnedFolderIds = new Set(
     readPins()
       .filter((pin) => pin.type === "folder")
-      .map((pin) => pin.folderId)
+      .map((pin) => pin.folderId),
   );
   const items = (data?.pages.flatMap((p) => p.items) ?? []).sort(
     (a, b) =>
       Number(b.itemType === "folder" && pinnedFolderIds.has(b.id)) -
-        Number(a.itemType === "folder" && pinnedFolderIds.has(a.id))
+      Number(a.itemType === "folder" && pinnedFolderIds.has(a.id)),
   );
 
   // Neither call site owns a scroll container — the page itself scrolls — so
@@ -209,9 +209,10 @@ export function MediaGrid({
             title: item.title,
             thumbnailFile: item.thumbnailFile,
             durationSeconds: item.durationSeconds,
-          }))
+          })),
       );
-      const hasMore = response.hasMore ?? response.items.length === response.pageSize;
+      const hasMore =
+        response.hasMore ?? response.items.length === response.pageSize;
       if (!hasMore) return all;
       page += 1;
     }
@@ -294,45 +295,45 @@ export function MediaGrid({
           </button>
           {source.type === "library" && (
             <>
-            {years.length > 0 && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Year</span>
-                <select
-                  value={year}
-                  onChange={(e) => {
-                    setYear(e.target.value);
-                    onViewStateChange?.({ sort, year: e.target.value });
-                  }}
-                  className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
-                >
-                  <option value="">All</option>
-                  {years.map((entry) => (
-                    <option key={entry.year} value={String(entry.year)}>
-                      {entry.year} ({entry.total})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+              {years.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Year</span>
+                  <select
+                    value={year}
+                    onChange={(e) => {
+                      setYear(e.target.value);
+                      onViewStateChange?.({ sort, year: e.target.value });
+                    }}
+                    className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
+                  >
+                    <option value="">All</option>
+                    {years.map((entry) => (
+                      <option key={entry.year} value={String(entry.year)}>
+                        {entry.year} ({entry.total})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Sort</span>
-              <select
-                value={sort}
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Sort</span>
+                <select
+                  value={sort}
                   onChange={(e) => {
                     const next = e.target.value as SortValue;
                     setSort(next);
                     onViewStateChange?.({ sort: next, year });
                   }}
-                className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                  className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </>
           )}
         </div>

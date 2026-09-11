@@ -2,15 +2,23 @@ import { desc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { activityEvents } from "../db/schema.js";
 
-export type ActivityType = "scan" | "backup" | "metadata" | "collection" | "privacy" | "cache";
+export type ActivityType =
+  | "scan"
+  | "backup"
+  | "metadata"
+  | "collection"
+  | "privacy"
+  | "cache";
 
 export async function logActivity(
   type: ActivityType,
   message: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await db.insert(activityEvents).values({ type, message, metadata: metadata ?? null });
+    await db
+      .insert(activityEvents)
+      .values({ type, message, metadata: metadata ?? null });
   } catch {
     // Activity is observability, never a reason to fail the operation being observed.
   }

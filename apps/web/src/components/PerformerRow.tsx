@@ -22,7 +22,8 @@ export function PerformerRow() {
 
   const { data } = useQuery({
     queryKey: ["performers"],
-    queryFn: () => fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
+    queryFn: () =>
+      fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
   });
 
   // The API deliberately returns performers with no videos — you can create
@@ -34,9 +35,16 @@ export function PerformerRow() {
     // two orders on two screens is worse than either order on its own.
     .sort(
       (a, b) =>
-        Number(readPins().some((pin) => pin.type === "performer" && pin.performerId === b.id)) -
-          Number(readPins().some((pin) => pin.type === "performer" && pin.performerId === a.id)) ||
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        Number(
+          readPins().some(
+            (pin) => pin.type === "performer" && pin.performerId === b.id,
+          ),
+        ) -
+          Number(
+            readPins().some(
+              (pin) => pin.type === "performer" && pin.performerId === a.id,
+            ),
+          ) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
 
   return (

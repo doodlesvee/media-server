@@ -22,7 +22,7 @@ export function Breadcrumbs({
         "flex min-w-0 items-center gap-1 text-sm",
         overlay
           ? "pointer-events-auto text-white/85 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]"
-          : "text-muted-foreground"
+          : "text-muted-foreground",
       )}
     >
       <Link
@@ -30,18 +30,21 @@ export function Breadcrumbs({
         search={{}}
         className={cn(
           "flex shrink-0 items-center gap-1",
-          overlay ? "hover:text-white" : "hover:text-foreground"
+          overlay ? "hover:text-white" : "hover:text-foreground",
         )}
       >
         <Library className="size-3.5" />
         Library
       </Link>
       {items.map((item, index) => (
-        <span key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1">
+        <span
+          key={`${item.label}-${index}`}
+          className="flex min-w-0 items-center gap-1"
+        >
           <ChevronRight
             className={cn(
               "size-3 shrink-0",
-              overlay ? "text-white/60" : "text-muted-foreground/50"
+              overlay ? "text-white/60" : "text-muted-foreground/50",
             )}
           />
           {item.to ? (
@@ -51,7 +54,8 @@ export function Breadcrumbs({
               className={cn(
                 "max-w-48 truncate",
                 overlay ? "hover:text-white" : "hover:text-foreground",
-                index === items.length - 1 && (overlay ? "text-white" : "text-foreground")
+                index === items.length - 1 &&
+                  (overlay ? "text-white" : "text-foreground"),
               )}
             >
               {item.label}
@@ -60,7 +64,7 @@ export function Breadcrumbs({
             <span
               className={cn(
                 "max-w-48 truncate",
-                overlay ? "text-white" : "text-foreground"
+                overlay ? "text-white" : "text-foreground",
               )}
             >
               {item.label}

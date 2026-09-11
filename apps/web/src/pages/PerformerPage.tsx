@@ -33,7 +33,9 @@ export function PerformerPage() {
   const [reframing, setReframing] = useState(false);
   // Opening a video from here shows the modal in place, rather than
   // navigating away and losing your position on the profile.
-  const [open, setOpen] = useState<{ id: number; autoPlay: boolean } | null>(null);
+  const [open, setOpen] = useState<{ id: number; autoPlay: boolean } | null>(
+    null,
+  );
   const openItem = (id: number, autoPlay: boolean) => setOpen({ id, autoPlay });
   const [bannerEditRequest, setBannerEditRequest] = useState(0);
   const queryClient = useQueryClient();
@@ -79,7 +81,9 @@ export function PerformerPage() {
     );
   }
 
-  const uploadedBanner = performer ? performerImageUrl(performer, "banner") : null;
+  const uploadedBanner = performer
+    ? performerImageUrl(performer, "banner")
+    : null;
 
   // Falls back to a frame from one of their videos until something is
   // uploaded, so a performer never renders as an empty grey slab.
@@ -96,7 +100,7 @@ export function PerformerPage() {
     <AppShell>
       <section className="relative">
         {performer && (
-           <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-4">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-4">
             <Breadcrumbs
               overlay
               items={[
@@ -169,14 +173,22 @@ export function PerformerPage() {
                   disabled={favorite.isPending}
                   aria-pressed={performer.isFavorite}
                   aria-label={
-                    performer.isFavorite ? "Remove from favourites" : "Add to favourites"
+                    performer.isFavorite
+                      ? "Remove from favourites"
+                      : "Add to favourites"
                   }
-                  title={performer.isFavorite ? "Remove from favourites" : "Add to favourites"}
+                  title={
+                    performer.isFavorite
+                      ? "Remove from favourites"
+                      : "Add to favourites"
+                  }
                   className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                 >
                   <Heart
                     className={
-                      performer.isFavorite ? "size-5 fill-red-500 text-red-500" : "size-5"
+                      performer.isFavorite
+                        ? "size-5 fill-red-500 text-red-500"
+                        : "size-5"
                     }
                   />
                 </button>
@@ -234,7 +246,10 @@ export function PerformerPage() {
       {performer && (
         <div className="space-y-8 px-6 py-8">
           {/* What you most likely came back for, before anything to browse. */}
-          <PerformerContinueWatching performer={performer} onSelect={openItem} />
+          <PerformerContinueWatching
+            performer={performer}
+            onSelect={openItem}
+          />
 
           <PerformerCoPerformers performers={performer.coPerformers} />
 
@@ -251,7 +266,6 @@ export function PerformerPage() {
           onClose={() => setOpen(null)}
         />
       )}
-
     </AppShell>
   );
 }

@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { appendUnique, moveQueueItem, prependUnique } from "./queueUtils";
 
 export type QueueItem = {
@@ -22,14 +29,16 @@ const STORAGE_KEY = "playback-queue";
 
 function readQueue(): QueueItem[] {
   try {
-    const parsed = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(
+      sessionStorage.getItem(STORAGE_KEY) ?? "[]",
+    ) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (item): item is QueueItem =>
         typeof item === "object" &&
         item !== null &&
         typeof (item as QueueItem).id === "number" &&
-        typeof (item as QueueItem).title === "string"
+        typeof (item as QueueItem).title === "string",
     );
   } catch {
     return [];
@@ -73,10 +82,12 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
 
   const store = useMemo(
     () => ({ items, add, addNext, remove, move, clear, takeNext }),
-    [items, add, addNext, remove, move, clear, takeNext]
+    [items, add, addNext, remove, move, clear, takeNext],
   );
 
-  return <QueueContext.Provider value={store}>{children}</QueueContext.Provider>;
+  return (
+    <QueueContext.Provider value={store}>{children}</QueueContext.Provider>
+  );
 }
 
 export function useQueue(): QueueStore {

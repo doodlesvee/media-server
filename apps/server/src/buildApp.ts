@@ -39,9 +39,9 @@ import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
  * the scan schedule are the entry point's job, because a test wants to control
  * when those happen.
  */
-export async function buildApp({ logger = false }: { logger?: boolean } = {}): Promise<
-  FastifyInstance
-> {
+export async function buildApp({
+  logger = false,
+}: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger });
 
   await app.register(cookie);
@@ -77,7 +77,7 @@ export async function buildApp({ logger = false }: { logger?: boolean } = {}): P
     async () => {
       const dbOk = await checkDbConnection();
       return { status: "ok", db: dbOk };
-    }
+    },
   );
 
   await app.register(authRoutes);

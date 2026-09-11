@@ -50,7 +50,9 @@ export function AppShell({
   const [focusMode, setFocusMode] = useState(false);
   // Keying the main region on the path re-runs its entry animation on every
   // navigation, so pages fade in rather than snapping into place.
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
 
   useEffect(() => {
     try {
@@ -62,7 +64,9 @@ export function AppShell({
 
   useEffect(() => {
     function resumeItem(event: Event) {
-      const detail = (event as CustomEvent<number | { id: number; resume?: boolean }>).detail;
+      const detail = (
+        event as CustomEvent<number | { id: number; resume?: boolean }>
+      ).detail;
       const id = typeof detail === "number" ? detail : detail?.id;
       if (typeof id !== "number") return;
       setPlayingId(id);
@@ -70,7 +74,8 @@ export function AppShell({
       setResumePlayer(typeof detail !== "number" && detail.resume === true);
     }
     window.addEventListener("media-server:play-item", resumeItem);
-    return () => window.removeEventListener("media-server:play-item", resumeItem);
+    return () =>
+      window.removeEventListener("media-server:play-item", resumeItem);
   }, []);
 
   useEffect(() => {
@@ -80,7 +85,8 @@ export function AppShell({
         setFocusMode(false);
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey)
+        return;
       if (event.code !== "KeyF") return;
       event.preventDefault();
       setFocusMode((active) => !active);
@@ -97,7 +103,12 @@ export function AppShell({
   }, [focusMode]);
 
   return (
-    <div className={cn("flex min-h-screen bg-background text-foreground", focusMode && "focus-mode")}>
+    <div
+      className={cn(
+        "flex min-h-screen bg-background text-foreground",
+        focusMode && "focus-mode",
+      )}
+    >
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
@@ -138,8 +149,14 @@ export function AppShell({
               <ArrowLeft className="size-4" />
             </button>
             <div className="min-w-0 flex-1 px-2">
-              <p className="truncate text-sm font-medium">{title ?? "Library"}</p>
-              {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
+              <p className="truncate text-sm font-medium">
+                {title ?? "Library"}
+              </p>
+              {subtitle && (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {subtitle}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -181,8 +198,12 @@ export function AppShell({
           // Centred only where the page beneath it is centred too — a heading
           // on a different axis to its own content reads as a mistake.
           <div className={cn("px-6 pt-6", centeredHeader && "text-center")}>
-            {title && <h1 className="text-2xl font-bold tracking-tight">{title}</h1>}
-            {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+            {title && (
+              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+            )}
+            {subtitle && (
+              <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+            )}
           </div>
         )}
 
@@ -229,7 +250,6 @@ export function AppShell({
       <AppearanceMenu />
       <DiscreetUnlockDialog />
       <SpotlightSearch />
-
     </div>
   );
 }

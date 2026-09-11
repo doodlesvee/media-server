@@ -75,7 +75,10 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
         placeholder="Folder name"
         className="rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
       />
-      <button type="submit" className="text-xs text-muted-foreground hover:text-foreground">
+      <button
+        type="submit"
+        className="text-xs text-muted-foreground hover:text-foreground"
+      >
         Create
       </button>
     </form>
@@ -83,13 +86,24 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
-  const { tag, performer, studio, kind, collectionId, parentId, q, sort, year } = routeApi.useSearch();
+  const {
+    tag,
+    performer,
+    studio,
+    kind,
+    collectionId,
+    parentId,
+    q,
+    sort,
+    year,
+  } = routeApi.useSearch();
   const navigate = useNavigate();
   const { data: folderData } = useQuery({
     queryKey: ["folders"],
     queryFn: async () => {
       const response = await fetch("/api/folders");
-      if (!response.ok) throw new Error(`Failed to load folders: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Failed to load folders: ${response.status}`);
       return response.json() as Promise<{ folders: Folder[] }>;
     },
   });
@@ -97,18 +111,25 @@ export function BrowsePage() {
   const breadcrumb = useMemo(() => {
     const entries: BreadcrumbEntry[] = [];
     const seen = new Set<number>();
-    let current = parentId == null ? undefined : folders.find((folder) => folder.id === parentId);
+    let current =
+      parentId == null
+        ? undefined
+        : folders.find((folder) => folder.id === parentId);
     while (current && !seen.has(current.id)) {
       seen.add(current.id);
       entries.unshift({ id: current.id, title: current.title });
-      current = current.parentId == null ? undefined : folders.find((folder) => folder.id === current!.parentId);
+      current =
+        current.parentId == null
+          ? undefined
+          : folders.find((folder) => folder.id === current!.parentId);
     }
     return entries;
   }, [folders, parentId]);
 
   useEffect(() => {
     const key = `browse-scroll:${window.location.search}`;
-    const restore = () => window.scrollTo({ top: Number(sessionStorage.getItem(key) ?? 0) });
+    const restore = () =>
+      window.scrollTo({ top: Number(sessionStorage.getItem(key) ?? 0) });
     const save = () => sessionStorage.setItem(key, String(window.scrollY));
     window.addEventListener("scroll", save, { passive: true });
     requestAnimationFrame(restore);
@@ -142,13 +163,12 @@ export function BrowsePage() {
     : studio
       ? `Studio: ${studio}`
       : performer
-      ? `Performer: ${performer}`
-      : kind
-        ? kind.charAt(0).toUpperCase() + kind.slice(1) + "s"
-        : q
-          ? `Search: “${q}”`
-          : null;
-
+        ? `Performer: ${performer}`
+        : kind
+          ? kind.charAt(0).toUpperCase() + kind.slice(1) + "s"
+          : q
+            ? `Search: “${q}”`
+            : null;
 
   return (
     <AppShell>
@@ -163,20 +183,30 @@ export function BrowsePage() {
               >
                 Library
               </button>
-              {performer && <BreadcrumbText value={`Performer: ${performer}`} />}
+              {performer && (
+                <BreadcrumbText value={`Performer: ${performer}`} />
+              )}
               {studio && <BreadcrumbText value={`Studio: ${studio}`} />}
               {collectionId != null && <BreadcrumbText value="Collection" />}
               {kind && <BreadcrumbText value={kind} />}
               {q && <BreadcrumbText value={`Search: ${q}`} />}
               {breadcrumb.map((crumb, i) => (
-                <span key={crumb.id} className="flex min-w-0 items-center gap-1">
+                <span
+                  key={crumb.id}
+                  className="flex min-w-0 items-center gap-1"
+                >
                   <span className="text-muted-foreground/50">/</span>
                   <button
                     type="button"
-                    onClick={() => void navigate({ to: "/browse", search: { parentId: crumb.id } })}
+                    onClick={() =>
+                      void navigate({
+                        to: "/browse",
+                        search: { parentId: crumb.id },
+                      })
+                    }
                     className={cn(
                       "max-w-40 truncate hover:text-foreground",
-                      i === breadcrumb.length - 1 && "text-foreground"
+                      i === breadcrumb.length - 1 && "text-foreground",
                     )}
                   >
                     {crumb.title}
@@ -206,12 +236,14 @@ export function BrowsePage() {
                 <X className="size-3" />
               </button>
             )}
-
           </div>
 
-          {source.type === "library" && !tag && !performer && !studio && !kind && !q && (
-            <NewFolderButton parentId={currentParentId} />
-          )}
+          {source.type === "library" &&
+            !tag &&
+            !performer &&
+            !studio &&
+            !kind &&
+            !q && <NewFolderButton parentId={currentParentId} />}
         </div>
 
         {collectionId != null && (
@@ -227,10 +259,16 @@ export function BrowsePage() {
           onViewStateChange={(state) =>
             void navigate({
               to: "/browse",
-              search: (current) => ({ ...current, sort: state.sort, year: state.year ? Number(state.year) : undefined }),
+              search: (current) => ({
+                ...current,
+                sort: state.sort,
+                year: state.year ? Number(state.year) : undefined,
+              }),
             })
           }
-          onOpenFolder={(id) => void navigate({ to: "/browse", search: { parentId: id } })}
+          onOpenFolder={(id) =>
+            void navigate({ to: "/browse", search: { parentId: id } })
+          }
         />
       </div>
     </AppShell>

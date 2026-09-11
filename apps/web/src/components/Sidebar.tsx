@@ -21,7 +21,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateCollectionModal } from "./CreateCollectionModal";
-import { isPinned, pinsChangedEvent, readPins, removePin, togglePin, type Pin as PinnedItem } from "@/lib/pinned";
+import {
+  isPinned,
+  pinsChangedEvent,
+  readPins,
+  removePin,
+  togglePin,
+  type Pin as PinnedItem,
+} from "@/lib/pinned";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 type TagRow = { id: number; name: string };
@@ -77,7 +84,8 @@ export function Sidebar({
   });
   const { data: health } = useQuery({
     queryKey: ["library-health"],
-    queryFn: () => fetchJson<{ missing: number; duplicateGroups: number }>("/api/stats"),
+    queryFn: () =>
+      fetchJson<{ missing: number; duplicateGroups: number }>("/api/stats"),
     staleTime: 30_000,
   });
 
@@ -86,32 +94,40 @@ export function Sidebar({
       const res = await fetch(`/api/collections/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete collection");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["collections"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["collections"] }),
   });
 
   // Collapsed, every row becomes a centred icon with no room for a label.
   const navItemClass = cn(
     "flex items-center rounded-md py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-    collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+    collapsed ? "justify-center px-0" : "gap-2.5 px-3",
   );
 
   return (
     <aside
       className={cn(
         "cinema-hide focus-hide sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 ease-out",
-        collapsed ? "w-16" : "w-60"
+        collapsed ? "w-16" : "w-60",
       )}
     >
       <div
         className={cn(
           "flex py-5",
-          collapsed ? "flex-col items-center gap-3" : "items-center gap-2 px-5"
+          collapsed ? "flex-col items-center gap-3" : "items-center gap-2 px-5",
         )}
       >
-        <div className={cn("flex min-w-0 items-center gap-2", !collapsed && "flex-1")}>
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-2",
+            !collapsed && "flex-1",
+          )}
+        >
           <Clapperboard className="size-5 shrink-0" />
           {!collapsed && (
-            <span className="truncate text-base font-bold tracking-tight">Media Server</span>
+            <span className="truncate text-base font-bold tracking-tight">
+              Media Server
+            </span>
           )}
         </div>
         <button
@@ -122,7 +138,11 @@ export function Sidebar({
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          {collapsed ? (
+            <PanelLeftOpen className="size-4" />
+          ) : (
+            <PanelLeftClose className="size-4" />
+          )}
         </button>
       </div>
 
@@ -208,11 +228,23 @@ export function Sidebar({
                 </Link>
                 <button
                   type="button"
-                  onClick={() => togglePin({ id: `collection:${c.id}`, type: "collection", label: c.name, collectionId: c.id })}
+                  onClick={() =>
+                    togglePin({
+                      id: `collection:${c.id}`,
+                      type: "collection",
+                      label: c.name,
+                      collectionId: c.id,
+                    })
+                  }
                   aria-label={`${isPinned(`collection:${c.id}`) ? "Unpin" : "Pin"} ${c.name}`}
                   className="hidden rounded p-1 text-muted-foreground hover:text-foreground group-hover:block"
                 >
-                  <Pin className={cn("size-3.5", isPinned(`collection:${c.id}`) && "fill-current")} />
+                  <Pin
+                    className={cn(
+                      "size-3.5",
+                      isPinned(`collection:${c.id}`) && "fill-current",
+                    )}
+                  />
                 </button>
                 <button
                   type="button"
@@ -227,7 +259,9 @@ export function Sidebar({
 
             <SectionLabel>Tags</SectionLabel>
             {tagData?.tags.length === 0 && (
-              <p className="px-3 text-xs text-muted-foreground/60">No tags yet</p>
+              <p className="px-3 text-xs text-muted-foreground/60">
+                No tags yet
+              </p>
             )}
             {tagData?.tags.map((t) => (
               <Link
@@ -248,12 +282,22 @@ export function Sidebar({
                 {pins.map((pin) => (
                   <div key={pin.id} className="group flex items-center">
                     {pin.type === "performer" ? (
-                      <Link to="/performer/$performerId" params={{ performerId: String(pin.performerId) }} className={cn(navItemClass, "min-w-0 flex-1 truncate")}>
-                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                      <Link
+                        to="/performer/$performerId"
+                        params={{ performerId: String(pin.performerId) }}
+                        className={cn(navItemClass, "min-w-0 flex-1 truncate")}
+                      >
+                        <Pin className="size-4 shrink-0" />{" "}
+                        <span className="truncate">{pin.label}</span>
                       </Link>
                     ) : pin.type === "studio" ? (
-                      <Link to="/studio/$studioId" params={{ studioId: String(pin.studioId) }} className={cn(navItemClass, "min-w-0 flex-1 truncate")}>
-                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                      <Link
+                        to="/studio/$studioId"
+                        params={{ studioId: String(pin.studioId) }}
+                        className={cn(navItemClass, "min-w-0 flex-1 truncate")}
+                      >
+                        <Pin className="size-4 shrink-0" />{" "}
+                        <span className="truncate">{pin.label}</span>
                       </Link>
                     ) : (
                       <Link
@@ -265,17 +309,22 @@ export function Sidebar({
                         }
                         className={cn(navItemClass, "min-w-0 flex-1 truncate")}
                       >
-                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                        <Pin className="size-4 shrink-0" />{" "}
+                        <span className="truncate">{pin.label}</span>
                       </Link>
                     )}
-                    <button type="button" onClick={() => removePin(pin.id)} aria-label={`Unpin ${pin.label}`} className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block">
+                    <button
+                      type="button"
+                      onClick={() => removePin(pin.id)}
+                      aria-label={`Unpin ${pin.label}`}
+                      className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                    >
                       <Trash2 className="size-3.5" />
                     </button>
                   </div>
                 ))}
               </>
             )}
-
           </>
         )}
       </nav>
@@ -304,10 +353,16 @@ export function Sidebar({
         <button
           type="button"
           onClick={onQueueToggle}
-          aria-label={queueOpen ? "Close playback queue" : "Open playback queue"}
+          aria-label={
+            queueOpen ? "Close playback queue" : "Open playback queue"
+          }
           aria-expanded={queueOpen}
           title={collapsed ? "Playback queue" : undefined}
-          className={cn(navItemClass, "relative w-full", queueOpen && "bg-accent text-foreground")}
+          className={cn(
+            navItemClass,
+            "relative w-full",
+            queueOpen && "bg-accent text-foreground",
+          )}
         >
           <List className="size-4 shrink-0" />
           {!collapsed && "Playback queue"}
@@ -315,7 +370,7 @@ export function Sidebar({
             <span
               className={cn(
                 "flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground",
-                collapsed ? "absolute right-1 top-1" : "ml-auto"
+                collapsed ? "absolute right-1 top-1" : "ml-auto",
               )}
             >
               {queueCount}
@@ -333,7 +388,9 @@ export function Sidebar({
         </Link>
       </div>
 
-      {showCreate && <CreateCollectionModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateCollectionModal onClose={() => setShowCreate(false)} />
+      )}
     </aside>
   );
 }

@@ -82,7 +82,7 @@ export function SpotlightSearch() {
           const id = data.items?.[0]?.id;
           if (id) {
             window.dispatchEvent(
-              new CustomEvent(PLAY_EVENT, { detail: { id, resume: true } })
+              new CustomEvent(PLAY_EVENT, { detail: { id, resume: true } }),
             );
           }
         },
@@ -130,23 +130,68 @@ export function SpotlightSearch() {
         label: "Appearance",
         icon: Palette,
         group: "Actions",
-        run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "Comma", ctrlKey: true, shiftKey: true })),
+        run: () =>
+          window.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: ",",
+              code: "Comma",
+              ctrlKey: true,
+              shiftKey: true,
+            }),
+          ),
       },
-      { id: "home", label: "Home", group: "Navigate", icon: Home, run: () => void navigate({ to: "/" }) },
-      { id: "library", label: "Library", group: "Navigate", icon: Library, run: () => void navigate({ to: "/browse", search: {} }) },
-      { id: "performers", label: "Performers", group: "Navigate", icon: Users, run: () => void navigate({ to: "/performers" }) },
-      { id: "studios", label: "Studios", group: "Navigate", icon: Aperture, run: () => void navigate({ to: "/studios" }) },
-      { id: "collections", label: "Collections", group: "Navigate", icon: Bookmark, run: () => void navigate({ to: "/browse", search: {} }) },
-      { id: "settings", label: "Settings", group: "Navigate", icon: Settings, run: () => void navigate({ to: "/settings" }) },
+      {
+        id: "home",
+        label: "Home",
+        group: "Navigate",
+        icon: Home,
+        run: () => void navigate({ to: "/" }),
+      },
+      {
+        id: "library",
+        label: "Library",
+        group: "Navigate",
+        icon: Library,
+        run: () => void navigate({ to: "/browse", search: {} }),
+      },
+      {
+        id: "performers",
+        label: "Performers",
+        group: "Navigate",
+        icon: Users,
+        run: () => void navigate({ to: "/performers" }),
+      },
+      {
+        id: "studios",
+        label: "Studios",
+        group: "Navigate",
+        icon: Aperture,
+        run: () => void navigate({ to: "/studios" }),
+      },
+      {
+        id: "collections",
+        label: "Collections",
+        group: "Navigate",
+        icon: Bookmark,
+        run: () => void navigate({ to: "/browse", search: {} }),
+      },
+      {
+        id: "settings",
+        label: "Settings",
+        group: "Navigate",
+        icon: Settings,
+        run: () => void navigate({ to: "/settings" }),
+      },
     ],
-    [appearance, navigate]
+    [appearance, navigate],
   );
 
   const { rows, ready } = useSuggestionRows(value);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey)
+        return;
       if (event.code !== "KeyK") return;
       // Chrome puts its address bar on this too; preventDefault is what stops
       // the omnibox opening over the top of us.
@@ -176,7 +221,9 @@ export function SpotlightSearch() {
   }, [open]);
 
   const visibleCommands = value.trim()
-    ? commands.filter((command) => command.label.toLowerCase().includes(value.trim().toLowerCase()))
+    ? commands.filter((command) =>
+        command.label.toLowerCase().includes(value.trim().toLowerCase()),
+      )
     : commands;
   const entries = value.trim() ? rows : [];
   const totalEntries = visibleCommands.length + entries.length;
@@ -211,7 +258,9 @@ export function SpotlightSearch() {
       setActive((i) => (totalEntries ? (i + 1) % totalEntries : 0));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((i) => (totalEntries ? (i - 1 + totalEntries) % totalEntries : 0));
+      setActive((i) =>
+        totalEntries ? (i - 1 + totalEntries) % totalEntries : 0,
+      );
     } else if (event.key === "Enter") {
       event.preventDefault();
       // Falls back to the plain query when nothing is highlighted yet, so
@@ -220,7 +269,8 @@ export function SpotlightSearch() {
       const row = entries[active - visibleCommands.length];
       if (command) chooseCommand(command);
       else if (row) choose(row);
-      else if (value.trim()) void navigate({ to: "/browse", search: { q: value.trim() } });
+      else if (value.trim())
+        void navigate({ to: "/browse", search: { q: value.trim() } });
     }
   }
 
@@ -261,7 +311,8 @@ export function SpotlightSearch() {
             <ul ref={listRef} className="max-h-[60vh] overflow-y-auto p-1.5">
               {visibleCommands.map((command, index) => (
                 <li key={command.id}>
-                  {(index === 0 || visibleCommands[index - 1]?.group !== command.group) && (
+                  {(index === 0 ||
+                    visibleCommands[index - 1]?.group !== command.group) && (
                     <div className="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                       {command.group}
                     </div>
@@ -272,12 +323,18 @@ export function SpotlightSearch() {
                     onMouseMove={() => setActive(index)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                      active === index ? "bg-accent" : "hover:bg-accent/50"
+                      active === index ? "bg-accent" : "hover:bg-accent/50",
                     )}
                   >
                     <command.icon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{command.label}</span>
-                    {command.shortcut && <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">{command.shortcut}</kbd>}
+                    <span className="min-w-0 flex-1 truncate">
+                      {command.label}
+                    </span>
+                    {command.shortcut && (
+                      <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {command.shortcut}
+                      </kbd>
+                    )}
                   </button>
                 </li>
               ))}
@@ -288,16 +345,24 @@ export function SpotlightSearch() {
                     onClick={() => choose(row)}
                     // Highlight follows the pointer as well as the keyboard,
                     // so the two never disagree about what Enter would open.
-                    onMouseMove={() => setActive(visibleCommands.length + index)}
+                    onMouseMove={() =>
+                      setActive(visibleCommands.length + index)
+                    }
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                      active === visibleCommands.length + index ? "bg-accent" : "hover:bg-accent/50"
+                      active === visibleCommands.length + index
+                        ? "bg-accent"
+                        : "hover:bg-accent/50",
                     )}
                   >
-                    {row.kind === "performer" && <PerformerRowContent performer={row.performer} />}
+                    {row.kind === "performer" && (
+                      <PerformerRowContent performer={row.performer} />
+                    )}
                     {row.kind === "item" && <ItemRowContent item={row.item} />}
                     {row.kind === "studio" && (
-                      <span className="min-w-0 flex-1 truncate font-medium">{row.label}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {row.label}
+                      </span>
                     )}
                     {row.kind === "query" && (
                       <span className="min-w-0 flex-1 truncate text-muted-foreground">

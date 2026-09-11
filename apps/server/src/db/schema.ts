@@ -143,7 +143,7 @@ export const mediaItemTags = pgTable(
       .references(() => tags.id),
     addedAt: timestamp("added_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.mediaItemId, table.tagId] })]
+  (table) => [primaryKey({ columns: [table.mediaItemId, table.tagId] })],
 );
 
 export const performers = pgTable(
@@ -183,7 +183,9 @@ export const performers = pgTable(
   // Unique on lower(name) rather than a plain .unique(): Postgres unique
   // constraints are case-sensitive, so a folder named "Alice Smith" and a
   // hand-typed "alice smith" would otherwise become two separate performers.
-  (table) => [uniqueIndex("performers_name_lower_idx").on(sql`lower(${table.name})`)]
+  (table) => [
+    uniqueIndex("performers_name_lower_idx").on(sql`lower(${table.name})`),
+  ],
 );
 
 export const studios = pgTable(
@@ -195,7 +197,9 @@ export const studios = pgTable(
   },
   // Case-insensitive, same reasoning as performers: "[Vixen]" and a typed
   // "vixen" are one studio, not two.
-  (table) => [uniqueIndex("studios_name_lower_idx").on(sql`lower(${table.name})`)]
+  (table) => [
+    uniqueIndex("studios_name_lower_idx").on(sql`lower(${table.name})`),
+  ],
 );
 
 export const mediaItemPerformers = pgTable(
@@ -209,7 +213,7 @@ export const mediaItemPerformers = pgTable(
       .references(() => performers.id),
     addedAt: timestamp("added_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.mediaItemId, table.performerId] })]
+  (table) => [primaryKey({ columns: [table.mediaItemId, table.performerId] })],
 );
 
 export const collections = pgTable("collections", {
@@ -234,7 +238,7 @@ export const collectionItems = pgTable(
     position: integer("position"),
     addedAt: timestamp("added_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.collectionId, table.mediaItemId] })]
+  (table) => [primaryKey({ columns: [table.collectionId, table.mediaItemId] })],
 );
 
 // Generic key/value so a new setting is a new key rather than a migration.
@@ -279,7 +283,9 @@ export const albums = pgTable("albums", {
   // A photo picked by hand as the album's face. Null means "use the first
   // one", which is what every album starts as — so this is an override, and
   // clearing it goes back to automatic rather than to no cover at all.
-  coverItemId: integer("cover_item_id").references((): AnyPgColumn => mediaItems.id),
+  coverItemId: integer("cover_item_id").references(
+    (): AnyPgColumn => mediaItems.id,
+  ),
   // Which part of the cover the card shows, exactly as categories store it:
   // position as a percentage, zoom as 100 = the untouched object-cover fit.
   // The photo is never cropped, so this stays adjustable forever and costs no

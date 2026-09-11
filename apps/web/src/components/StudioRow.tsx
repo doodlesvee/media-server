@@ -31,16 +31,28 @@ export function StudioRow() {
     .filter((s) => s.videoCount > 0)
     .sort(
       (a, b) =>
-        Number(readPins().some((pin) => pin.type === "studio" && pin.studioId === b.id)) -
-          Number(readPins().some((pin) => pin.type === "studio" && pin.studioId === a.id)) ||
+        Number(
+          readPins().some(
+            (pin) => pin.type === "studio" && pin.studioId === b.id,
+          ),
+        ) -
+          Number(
+            readPins().some(
+              (pin) => pin.type === "studio" && pin.studioId === a.id,
+            ),
+          ) ||
         b.videoCount - a.videoCount ||
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
 
   return (
     <ScrollRow title="Studios" itemCount={studios.length}>
       {studios.map((studio) => (
-        <StudioCard key={studio.id} studio={studio} className="w-64 shrink-0 sm:w-72" />
+        <StudioCard
+          key={studio.id}
+          studio={studio}
+          className="w-64 shrink-0 sm:w-72"
+        />
       ))}
     </ScrollRow>
   );
