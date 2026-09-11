@@ -320,6 +320,14 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const activityEvents = pgTable("activity_events", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),

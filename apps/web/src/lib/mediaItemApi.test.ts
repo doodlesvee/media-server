@@ -6,15 +6,15 @@ describe("thumbnailUrl", () => {
     // The endpoint is served immutable for a year; without a changing token
     // every browser would keep showing the old picture.
     expect(thumbnailUrl({ id: 7, thumbnailFile: "7-abc123.jpg" })).toBe(
-      "/api/media-items/7/thumbnail?v=7-abc123.jpg"
+      "/api/media-items/7/thumbnail?v=7-abc123.jpg&e=2"
     );
   });
 
   it("uses a stable token when there is no upload", () => {
     expect(thumbnailUrl({ id: 7, thumbnailFile: null })).toBe(
-      "/api/media-items/7/thumbnail?v=auto"
+      "/api/media-items/7/thumbnail?v=auto&e=2"
     );
-    expect(thumbnailUrl({ id: 7 })).toBe("/api/media-items/7/thumbnail?v=auto");
+    expect(thumbnailUrl({ id: 7 })).toBe("/api/media-items/7/thumbnail?v=auto&e=2");
   });
 });
 

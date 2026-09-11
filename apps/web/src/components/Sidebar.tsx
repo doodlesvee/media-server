@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -7,6 +7,10 @@ import {
   Home,
   Images,
   Layers,
+  List,
+  CheckCircle2,
+  TriangleAlert,
+  Pin,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -17,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateCollectionModal } from "./CreateCollectionModal";
+import { isPinned, pinsChangedEvent, readPins, removePin, togglePin, type Pin as PinnedItem } from "@/lib/pinned";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 type TagRow = { id: number; name: string };
@@ -38,12 +43,29 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar({
   collapsed,
   onToggle,
+  queueCount,
+  queueOpen,
+  onQueueToggle,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  queueCount: number;
+  queueOpen: boolean;
+  onQueueToggle: () => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [pins, setPins] = useState<PinnedItem[]>(readPins);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const refresh = () => setPins(readPins());
+    window.addEventListener(pinsChangedEvent(), refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(pinsChangedEvent(), refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
 
   const { data: collections } = useQuery({
     queryKey: ["collections"],
@@ -52,6 +74,11 @@ export function Sidebar({
   const { data: tagData } = useQuery({
     queryKey: ["tags"],
     queryFn: () => fetchJson<{ tags: TagRow[] }>("/api/tags"),
+  });
+  const { data: health } = useQuery({
+    queryKey: ["library-health"],
+    queryFn: () => fetchJson<{ missing: number; duplicateGroups: number }>("/api/stats"),
+    staleTime: 30_000,
   });
 
   const deleteCollection = useMutation({
@@ -71,7 +98,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 ease-out",
+        "cinema-hide focus-hide sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 ease-out",
         collapsed ? "w-16" : "w-60"
       )}
     >
@@ -181,6 +208,14 @@ export function Sidebar({
                 </Link>
                 <button
                   type="button"
+                  onClick={() => togglePin({ id: `collection:${c.id}`, type: "collection", label: c.name, collectionId: c.id })}
+                  aria-label={`${isPinned(`collection:${c.id}`) ? "Unpin" : "Pin"} ${c.name}`}
+                  className="hidden rounded p-1 text-muted-foreground hover:text-foreground group-hover:block"
+                >
+                  <Pin className={cn("size-3.5", isPinned(`collection:${c.id}`) && "fill-current")} />
+                </button>
+                <button
+                  type="button"
                   onClick={() => deleteCollection.mutate(c.id)}
                   aria-label={`Delete ${c.name}`}
                   className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
@@ -206,11 +241,87 @@ export function Sidebar({
                 <span className="truncate">{t.name}</span>
               </Link>
             ))}
+
+            {pins.length > 0 && (
+              <>
+                <SectionLabel>Pinned</SectionLabel>
+                {pins.map((pin) => (
+                  <div key={pin.id} className="group flex items-center">
+                    {pin.type === "performer" ? (
+                      <Link to="/performer/$performerId" params={{ performerId: String(pin.performerId) }} className={cn(navItemClass, "min-w-0 flex-1 truncate")}>
+                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                      </Link>
+                    ) : pin.type === "studio" ? (
+                      <Link to="/studio/$studioId" params={{ studioId: String(pin.studioId) }} className={cn(navItemClass, "min-w-0 flex-1 truncate")}>
+                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        to="/browse"
+                        search={
+                          pin.type === "collection"
+                            ? { collectionId: pin.collectionId }
+                            : { parentId: pin.folderId }
+                        }
+                        className={cn(navItemClass, "min-w-0 flex-1 truncate")}
+                      >
+                        <Pin className="size-4 shrink-0" /> <span className="truncate">{pin.label}</span>
+                      </Link>
+                    )}
+                    <button type="button" onClick={() => removePin(pin.id)} aria-label={`Unpin ${pin.label}`} className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+
           </>
         )}
       </nav>
 
       <div className="border-t border-border p-2">
+        <Link
+          to="/settings"
+          search={{ tab: "library" }}
+          title={collapsed ? "Library health" : undefined}
+          className={cn(navItemClass, "mb-1")}
+          activeProps={{ className: "bg-accent text-foreground font-medium" }}
+        >
+          {health && (health.missing > 0 || health.duplicateGroups > 0) ? (
+            <TriangleAlert className="size-4 shrink-0 text-amber-500" />
+          ) : (
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+          )}
+          {!collapsed && (
+            <span className="min-w-0 flex-1 truncate">
+              {health && (health.missing > 0 || health.duplicateGroups > 0)
+                ? `${health.missing + health.duplicateGroups} library issues`
+                : "Library healthy"}
+            </span>
+          )}
+        </Link>
+        <button
+          type="button"
+          onClick={onQueueToggle}
+          aria-label={queueOpen ? "Close playback queue" : "Open playback queue"}
+          aria-expanded={queueOpen}
+          title={collapsed ? "Playback queue" : undefined}
+          className={cn(navItemClass, "relative w-full", queueOpen && "bg-accent text-foreground")}
+        >
+          <List className="size-4 shrink-0" />
+          {!collapsed && "Playback queue"}
+          {queueCount > 0 && (
+            <span
+              className={cn(
+                "flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground",
+                collapsed ? "absolute right-1 top-1" : "ml-auto"
+              )}
+            >
+              {queueCount}
+            </span>
+          )}
+        </button>
         <Link
           to="/settings"
           className={navItemClass}

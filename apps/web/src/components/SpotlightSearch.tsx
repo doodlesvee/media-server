@@ -1,8 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import {
+  Aperture,
+  Bookmark,
+  Focus,
+  Heart,
+  Home,
+  Library,
+  Palette,
+  Play,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Portal } from "./Portal";
+import { useAppearance } from "@/lib/appearance";
 import {
   GROUP_LABEL,
   ItemRowContent,
@@ -28,10 +45,20 @@ import {
  * context provider wrapping the whole app to carry it.
  */
 const OPEN_EVENT = "media-server:open-search";
+const PLAY_EVENT = "media-server:play-item";
 
 export function openSpotlight(): void {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
+
+type CommandItem = {
+  id: string;
+  label: string;
+  group: "Actions" | "Navigate";
+  shortcut?: string;
+  icon: LucideIcon;
+  run: () => void;
+};
 
 export function SpotlightSearch() {
   const [open, setOpen] = useState(false);
@@ -39,6 +66,81 @@ export function SpotlightSearch() {
   const [active, setActive] = useState(0);
   const navigate = useNavigate();
   const listRef = useRef<HTMLUListElement>(null);
+  const appearance = useAppearance();
+
+  const commands = useMemo<CommandItem[]>(
+    () => [
+      {
+        id: "resume",
+        label: "Resume last video",
+        group: "Actions",
+        shortcut: "R",
+        icon: Play,
+        run: async () => {
+          const response = await fetch("/api/continue-watching");
+          const data = (await response.json()) as { items?: { id: number }[] };
+          const id = data.items?.[0]?.id;
+          if (id) {
+            window.dispatchEvent(
+              new CustomEvent(PLAY_EVENT, { detail: { id, resume: true } })
+            );
+          }
+        },
+      },
+      {
+        id: "surprise",
+        label: "Surprise me",
+        group: "Actions",
+        shortcut: "S",
+        icon: Sparkles,
+        run: () => void navigate({ to: "/browse", search: {} }),
+      },
+      {
+        id: "favorites",
+        label: "Open favorites",
+        icon: Heart,
+        group: "Actions",
+        run: () => void navigate({ to: "/browse", search: {} }),
+      },
+      {
+        id: "scan",
+        label: "Scan library",
+        shortcut: "⇧S",
+        icon: RefreshCw,
+        group: "Actions",
+        run: () => void fetch("/api/scan", { method: "POST" }),
+      },
+      {
+        id: "discreet",
+        label: "Toggle discreet mode",
+        icon: Shield,
+        group: "Actions",
+        run: () => appearance.set({ discreet: !appearance.discreet }),
+      },
+      {
+        id: "focus",
+        label: "Toggle focus mode",
+        shortcut: "⌘F",
+        icon: Focus,
+        group: "Actions",
+        run: () => window.dispatchEvent(new Event("media-server:toggle-focus")),
+      },
+      {
+        id: "appearance",
+        label: "Appearance",
+        icon: Palette,
+        group: "Actions",
+        run: () => window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "Comma", ctrlKey: true, shiftKey: true })),
+      },
+      { id: "home", label: "Home", group: "Navigate", icon: Home, run: () => void navigate({ to: "/" }) },
+      { id: "library", label: "Library", group: "Navigate", icon: Library, run: () => void navigate({ to: "/browse", search: {} }) },
+      { id: "performers", label: "Performers", group: "Navigate", icon: Users, run: () => void navigate({ to: "/performers" }) },
+      { id: "studios", label: "Studios", group: "Navigate", icon: Aperture, run: () => void navigate({ to: "/studios" }) },
+      { id: "collections", label: "Collections", group: "Navigate", icon: Bookmark, run: () => void navigate({ to: "/browse", search: {} }) },
+      { id: "settings", label: "Settings", group: "Navigate", icon: Settings, run: () => void navigate({ to: "/settings" }) },
+    ],
+    [appearance, navigate]
+  );
 
   const { rows, ready } = useSuggestionRows(value);
 
@@ -73,15 +175,26 @@ export function SpotlightSearch() {
     }
   }, [open]);
 
+  const visibleCommands = value.trim()
+    ? commands.filter((command) => command.label.toLowerCase().includes(value.trim().toLowerCase()))
+    : commands;
+  const entries = value.trim() ? rows : [];
+  const totalEntries = visibleCommands.length + entries.length;
+
   // The highlight is an index into a list that changes as you type, so it has
   // to go back to the top whenever the results do.
-  useEffect(() => setActive(0), [rows.length]);
+  useEffect(() => setActive(0), [rows.length, visibleCommands.length]);
 
   // Keeps the highlighted row on screen when arrowing past the fold.
   useEffect(() => {
     const node = listRef.current?.children[active];
     node?.scrollIntoView({ block: "nearest" });
   }, [active]);
+
+  function chooseCommand(command: CommandItem) {
+    setOpen(false);
+    void command.run();
+  }
 
   function choose(row: Row) {
     setOpen(false);
@@ -95,16 +208,18 @@ export function SpotlightSearch() {
       setOpen(false);
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((i) => (rows.length ? (i + 1) % rows.length : 0));
+      setActive((i) => (totalEntries ? (i + 1) % totalEntries : 0));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0));
+      setActive((i) => (totalEntries ? (i - 1 + totalEntries) % totalEntries : 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
       // Falls back to the plain query when nothing is highlighted yet, so
       // typing and hitting Enter always does something.
-      const row = rows[active];
-      if (row) choose(row);
+      const command = visibleCommands[active];
+      const row = entries[active - visibleCommands.length];
+      if (command) chooseCommand(command);
+      else if (row) choose(row);
       else if (value.trim()) void navigate({ to: "/browse", search: { q: value.trim() } });
     }
   }
@@ -124,7 +239,7 @@ export function SpotlightSearch() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Search"
+          aria-label="Command palette"
           className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
         >
           <div className="flex items-center gap-3 border-b border-border px-4">
@@ -134,7 +249,7 @@ export function SpotlightSearch() {
               autoFocus
               onChange={(event) => setValue(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Search performers, studios, titles…"
+              placeholder="Search or run a command…"
               className="w-full bg-transparent py-4 text-base outline-none placeholder:text-muted-foreground"
             />
             <kbd className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -142,19 +257,41 @@ export function SpotlightSearch() {
             </kbd>
           </div>
 
-          {ready && (
-            <ul ref={listRef} className="max-h-[50vh] overflow-y-auto p-1.5">
-              {rows.map((row, index) => (
+          {(!value.trim() || ready || visibleCommands.length > 0) && (
+            <ul ref={listRef} className="max-h-[60vh] overflow-y-auto p-1.5">
+              {visibleCommands.map((command, index) => (
+                <li key={command.id}>
+                  {(index === 0 || visibleCommands[index - 1]?.group !== command.group) && (
+                    <div className="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                      {command.group}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => chooseCommand(command)}
+                    onMouseMove={() => setActive(index)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                      active === index ? "bg-accent" : "hover:bg-accent/50"
+                    )}
+                  >
+                    <command.icon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{command.label}</span>
+                    {command.shortcut && <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">{command.shortcut}</kbd>}
+                  </button>
+                </li>
+              ))}
+              {entries.map((row, index) => (
                 <li key={`${row.kind}-${row.label}-${index}`}>
                   <button
                     type="button"
                     onClick={() => choose(row)}
                     // Highlight follows the pointer as well as the keyboard,
                     // so the two never disagree about what Enter would open.
-                    onMouseMove={() => setActive(index)}
+                    onMouseMove={() => setActive(visibleCommands.length + index)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                      active === index ? "bg-accent" : "hover:bg-accent/50"
+                      active === visibleCommands.length + index ? "bg-accent" : "hover:bg-accent/50"
                     )}
                   >
                     {row.kind === "performer" && <PerformerRowContent performer={row.performer} />}

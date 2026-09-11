@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { ITEM_THUMBNAILS_DIR, PERFORMER_IMAGES_DIR } from "../media/cache.js";
+import { logActivity } from "../activity/log.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,9 +140,12 @@ export async function createBackup(): Promise<BackupFile> {
     await pruneOldBackups();
 
     const info = await stat(finalPath);
-    return { name, sizeBytes: info.size, createdAt: info.mtime.toISOString() };
+    const backup = { name, sizeBytes: info.size, createdAt: info.mtime.toISOString() };
+    await logActivity("backup", "Backup created", { name, sizeBytes: info.size });
+    return backup;
   } catch (err) {
     await rm(partialPath, { force: true });
+    await logActivity("backup", "Backup failed");
     throw err;
   } finally {
     await rm(workDir, { recursive: true, force: true });

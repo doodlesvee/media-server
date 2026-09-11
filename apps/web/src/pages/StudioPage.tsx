@@ -8,6 +8,8 @@ import { MediaGrid } from "@/components/MediaGrid";
 import { PerformerCoPerformers } from "@/components/PerformerCoPerformers";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { fetchStudio, type StudioDetail } from "@/lib/studioApi";
+import { PlaySurface } from "@/components/PlaySurface";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 const routeApi = getRouteApi("/studio/$studioId");
 
@@ -107,9 +109,34 @@ export function StudioPage() {
               {studio?.name ?? " "}
             </h1>
             {studio && <StudioStats studio={studio} />}
+            {studio && (
+              <PlaySurface
+                source={{
+                  type: "library",
+                  studio: studio.name,
+                  tag: null,
+                  performer: null,
+                  kind: null,
+                  q: null,
+                  parentId: null,
+                }}
+                label="Studio playback"
+              />
+            )}
           </div>
         </div>
       </section>
+
+      {studio && (
+        <div className="px-6 pt-5">
+          <Breadcrumbs
+            items={[
+              { label: "Studios", to: "/studios" },
+              { label: studio.name },
+            ]}
+          />
+        </div>
+      )}
 
       {studio && (
         <div className="space-y-8 px-6 py-8">

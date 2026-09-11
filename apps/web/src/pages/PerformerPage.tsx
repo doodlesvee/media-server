@@ -14,6 +14,8 @@ import { PerformerBanner } from "@/components/PerformerBanner";
 import { PerformerBio } from "@/components/PerformerBio";
 import { PerformerImageMenu } from "@/components/PerformerImageMenu";
 import { PerformerImagePicker } from "@/components/PerformerImagePicker";
+import { PlaySurface } from "@/components/PlaySurface";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import {
   fetchPerformer,
   performerImageUrl,
@@ -93,14 +95,21 @@ export function PerformerPage() {
   return (
     <AppShell>
       <section className="relative">
+        {performer && (
+           <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-4">
+            <Breadcrumbs
+              overlay
+              items={[
+                { label: "Performers", to: "/performers" },
+                { label: performer.name },
+              ]}
+            />
+          </div>
+        )}
         <PerformerBanner
           performerId={performer?.id ?? 0}
           src={bannerSrc}
           positionY={performer?.bannerPositionY ?? 50}
-          // Only meaningful for an uploaded image: a video-frame fallback is
-          // regenerated from the poster, so a saved framing wouldn't stick to
-          // anything.
-          canReposition={Boolean(performer?.hasBanner)}
           editRequest={bannerEditRequest}
         >
           {performer && (
@@ -174,6 +183,20 @@ export function PerformerPage() {
               )}
             </div>
             {performer && <PerformerStats performer={performer} />}
+            {performer && (
+              <PlaySurface
+                source={{
+                  type: "library",
+                  performer: performer.name,
+                  tag: null,
+                  studio: null,
+                  kind: null,
+                  q: null,
+                  parentId: null,
+                }}
+                label="Performer playback"
+              />
+            )}
             {performer && (
               <div className="space-y-2">
                 {reframing && avatarSrc && (

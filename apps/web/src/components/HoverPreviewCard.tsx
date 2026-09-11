@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Check, Play, Plus } from "lucide-react";
-import { addToMyList } from "@/lib/myList";
+import { ChevronDown, Check, ListPlus, Play } from "lucide-react";
 import { useAppearance } from "@/lib/appearance";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
+import { useQueue } from "@/lib/queue";
 
 const EXPANDED_SCALE = 1.85;
 const VIEWPORT_MARGIN = 8;
@@ -51,11 +50,11 @@ export function HoverPreviewCard({
 }) {
   const { hoverPreview, discreet } = useAppearance();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [added, setAdded] = useState(false);
+  const { add, addNext, items: queueItems } = useQueue();
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryClient = useQueryClient();
+  const queued = queueItems.some((queueItem) => queueItem.id === item.id);
 
   const width = anchorRect.width * EXPANDED_SCALE;
   const left = Math.max(
@@ -109,12 +108,17 @@ export function HoverPreviewCard({
     return () => window.removeEventListener("scroll", onScroll, true);
   });
 
-  async function handleAdd(e: React.MouseEvent) {
+  function handleQueue(e: React.MouseEvent, next: boolean) {
     e.stopPropagation();
-    await addToMyList(item.id);
-    setAdded(true);
-    void queryClient.invalidateQueries({ queryKey: ["collections"] });
-    void queryClient.invalidateQueries({ queryKey: ["collection-items"] });
+    if (item.itemType !== "video") return;
+    const queueItem = {
+      id: item.id,
+      title: item.title,
+      thumbnailFile: item.thumbnailFile,
+      durationSeconds: item.durationSeconds,
+    };
+    if (next) addNext(queueItem);
+    else add(queueItem);
   }
 
   const duration = formatDuration(item.durationSeconds);
@@ -193,15 +197,32 @@ export function HoverPreviewCard({
             <Play className="size-4 translate-x-px fill-black" />
           </button>
 
-          <button
-            type="button"
-            onClick={handleAdd}
-            aria-label="Add to My List"
-            tabIndex={-1}
-            className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white"
-          >
-            {added ? <Check className="size-4" /> : <Plus className="size-4" />}
-          </button>
+          {item.itemType === "video" && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => handleQueue(e, false)}
+                aria-label={queued ? "Already in queue" : "Add to queue"}
+                title={queued ? "Already in queue" : "Add to queue"}
+                tabIndex={-1}
+                className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white disabled:opacity-50"
+                disabled={queued}
+              >
+                {queued ? <Check className="size-4" /> : <ListPlus className="size-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleQueue(e, true)}
+                aria-label={queued ? "Already in queue" : "Play next"}
+                title={queued ? "Already in queue" : "Play next"}
+                tabIndex={-1}
+                className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white disabled:opacity-50"
+                disabled={queued}
+              >
+                <ListPlus className="size-4" />
+              </button>
+            </>
+          )}
 
           <button
             type="button"

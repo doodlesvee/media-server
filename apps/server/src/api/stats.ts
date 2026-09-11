@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import {
@@ -6,8 +6,10 @@ import {
   mediaFiles,
   mediaItems,
   mediaItemTypes,
+  scanJobs,
   tags,
 } from "../db/schema.js";
+import { listBackups } from "../backup/create.js";
 
 export async function statsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/stats", async () => {
@@ -35,6 +37,30 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
 
     const [{ total: tagCount }] = await db.select({ total: count() }).from(tags);
     const [{ total: collectionCount }] = await db.select({ total: count() }).from(collections);
+    const [{ total: itemCount }] = await db
+      .select({ total: count() })
+      .from(mediaItems)
+      .where(eq(mediaItems.inScope, true));
+    const [{ total: missingCount }] = await db
+      .select({ total: count() })
+      .from(mediaItems)
+      .where(and(eq(mediaItems.inScope, true), sql`${mediaItems.missingSince} is not null`));
+    const duplicateRows = await db.execute<{ total: number }>(sql`
+      select count(*)::int as total
+      from (
+        select content_hash
+        from media_files
+        where content_hash is not null
+        group by content_hash
+        having count(*) > 1
+      ) duplicate_groups
+    `);
+    const [lastScan] = await db
+      .select({ status: scanJobs.status, finishedAt: scanJobs.finishedAt, startedAt: scanJobs.startedAt })
+      .from(scanJobs)
+      .orderBy(desc(scanJobs.id))
+      .limit(1);
+    const [lastBackup] = await listBackups();
 
     const counts = Object.fromEntries(byType.map((r) => [r.type, r.total]));
 
@@ -45,6 +71,11 @@ export async function statsRoutes(app: FastifyInstance): Promise<void> {
       totalBytes: Number(totalSize?.bytes ?? 0),
       tags: tagCount,
       collections: collectionCount,
+      totalItems: itemCount,
+      missing: missingCount,
+      duplicateGroups: duplicateRows.rows[0]?.total ?? 0,
+      lastScan: lastScan ?? null,
+      lastBackup: lastBackup?.createdAt ?? null,
     };
   });
 }

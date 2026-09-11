@@ -7,6 +7,7 @@ import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { albumRoutes } from "./api/albums.js";
+import { activityRoutes } from "./api/activity.js";
 import { appearanceRoutes } from "./api/appearance.js";
 import { backupRoutes } from "./api/backups.js";
 import { categoryRoutes } from "./api/categories.js";
@@ -98,6 +99,7 @@ export async function buildApp({ logger = false }: { logger?: boolean } = {}): P
   await app.register(backupRoutes);
   await app.register(categoryRoutes);
   await app.register(albumRoutes);
+  await app.register(activityRoutes);
 
   // In the production Docker image the built frontend is copied to ../web-dist
   // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

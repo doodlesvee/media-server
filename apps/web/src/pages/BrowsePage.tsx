@@ -1,13 +1,25 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { FolderPlus, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MediaGrid, type GridSource } from "@/components/MediaGrid";
+import { PlaySurface } from "@/components/PlaySurface";
+import { cn } from "@/lib/utils";
 
 const routeApi = getRouteApi("/browse");
 
 type BreadcrumbEntry = { id: number; title: string };
+type Folder = { id: number; title: string; parentId: number | null };
+
+function BreadcrumbText({ value }: { value: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <span className="text-muted-foreground/50">/</span>
+      <span className="max-w-40 truncate">{value}</span>
+    </span>
+  );
+}
 
 async function createFolder(title: string, parentId: number | null) {
   const res = await fetch("/api/folders", {
@@ -71,11 +83,42 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
-  const { tag, performer, studio, kind, collectionId, q } = routeApi.useSearch();
+  const { tag, performer, studio, kind, collectionId, parentId, q, sort, year } = routeApi.useSearch();
   const navigate = useNavigate();
-  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
+  const { data: folderData } = useQuery({
+    queryKey: ["folders"],
+    queryFn: async () => {
+      const response = await fetch("/api/folders");
+      if (!response.ok) throw new Error(`Failed to load folders: ${response.status}`);
+      return response.json() as Promise<{ folders: Folder[] }>;
+    },
+  });
+  const folders = folderData?.folders ?? [];
+  const breadcrumb = useMemo(() => {
+    const entries: BreadcrumbEntry[] = [];
+    const seen = new Set<number>();
+    let current = parentId == null ? undefined : folders.find((folder) => folder.id === parentId);
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      entries.unshift({ id: current.id, title: current.title });
+      current = current.parentId == null ? undefined : folders.find((folder) => folder.id === current!.parentId);
+    }
+    return entries;
+  }, [folders, parentId]);
 
-  const currentParentId = breadcrumb.length > 0 ? breadcrumb[breadcrumb.length - 1].id : null;
+  useEffect(() => {
+    const key = `browse-scroll:${window.location.search}`;
+    const restore = () => window.scrollTo({ top: Number(sessionStorage.getItem(key) ?? 0) });
+    const save = () => sessionStorage.setItem(key, String(window.scrollY));
+    window.addEventListener("scroll", save, { passive: true });
+    requestAnimationFrame(restore);
+    return () => {
+      save();
+      window.removeEventListener("scroll", save);
+    };
+  }, [parentId, tag, performer, studio, kind, collectionId, q, sort, year]);
+
+  const currentParentId = parentId ?? null;
 
   const source: GridSource =
     collectionId != null
@@ -91,7 +134,6 @@ export function BrowsePage() {
         };
 
   function clearFilters() {
-    setBreadcrumb([]);
     void navigate({ to: "/browse", search: {} });
   }
 
@@ -107,36 +149,41 @@ export function BrowsePage() {
           ? `Search: “${q}”`
           : null;
 
+
   return (
     <AppShell>
       <div className="space-y-5 px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
-            {source.type === "library" && !tag && !performer && !studio && !kind && !q && (
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={() => setBreadcrumb([])}
-                  className={breadcrumb.length === 0 ? "text-foreground" : "hover:text-foreground"}
-                >
-                  Library
-                </button>
-                {breadcrumb.map((crumb, i) => (
-                  <span key={crumb.id} className="flex items-center gap-1">
-                    <span className="text-muted-foreground/50">/</span>
-                    <button
-                      type="button"
-                      onClick={() => setBreadcrumb(breadcrumb.slice(0, i + 1))}
-                      className={
-                        i === breadcrumb.length - 1 ? "text-foreground" : "hover:text-foreground"
-                      }
-                    >
-                      {crumb.title}
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+            <div className="flex min-w-0 items-center gap-1 text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/browse", search: {} })}
+                className="shrink-0 hover:text-foreground"
+              >
+                Library
+              </button>
+              {performer && <BreadcrumbText value={`Performer: ${performer}`} />}
+              {studio && <BreadcrumbText value={`Studio: ${studio}`} />}
+              {collectionId != null && <BreadcrumbText value="Collection" />}
+              {kind && <BreadcrumbText value={kind} />}
+              {q && <BreadcrumbText value={`Search: ${q}`} />}
+              {breadcrumb.map((crumb, i) => (
+                <span key={crumb.id} className="flex min-w-0 items-center gap-1">
+                  <span className="text-muted-foreground/50">/</span>
+                  <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/browse", search: { parentId: crumb.id } })}
+                    className={cn(
+                      "max-w-40 truncate hover:text-foreground",
+                      i === breadcrumb.length - 1 && "text-foreground"
+                    )}
+                  >
+                    {crumb.title}
+                  </button>
+                </span>
+              ))}
+            </div>
 
             {activeFilter && (
               <button
@@ -159,6 +206,7 @@ export function BrowsePage() {
                 <X className="size-3" />
               </button>
             )}
+
           </div>
 
           {source.type === "library" && !tag && !performer && !studio && !kind && !q && (
@@ -166,9 +214,23 @@ export function BrowsePage() {
           )}
         </div>
 
+        {collectionId != null && (
+          <PlaySurface
+            source={{ type: "collection", id: collectionId }}
+            label="Collection playback"
+          />
+        )}
         <MediaGrid
           source={source}
-          onOpenFolder={(id, title) => setBreadcrumb([...breadcrumb, { id, title }])}
+          sort={sort as Parameters<typeof MediaGrid>[0]["sort"]}
+          year={year != null ? String(year) : ""}
+          onViewStateChange={(state) =>
+            void navigate({
+              to: "/browse",
+              search: (current) => ({ ...current, sort: state.sort, year: state.year ? Number(state.year) : undefined }),
+            })
+          }
+          onOpenFolder={(id) => void navigate({ to: "/browse", search: { parentId: id } })}
         />
       </div>
     </AppShell>

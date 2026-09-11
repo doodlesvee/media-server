@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { AuthGate } from "@/components/AuthGate";
 import { AppearanceProvider } from "@/lib/appearance";
+import { QueueProvider } from "@/lib/queue";
 import "./index.css";
 import { router } from "./router";
 
@@ -14,7 +15,9 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <AuthGate>
         <AppearanceProvider>
-          <RouterProvider router={router} />
+          <QueueProvider>
+            <RouterProvider router={router} />
+          </QueueProvider>
         </AppearanceProvider>
       </AuthGate>
     </QueryClientProvider>

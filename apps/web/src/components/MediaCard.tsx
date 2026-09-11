@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Circle, Film, Folder, Image as ImageIcon } from "lucide-react";
+import { CheckCircle2, Circle, Film, Folder, Image as ImageIcon, Pin } from "lucide-react";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
+import { isPinned, togglePin } from "@/lib/pinned";
 
 export type MediaCardItem = {
   id: number;
@@ -50,6 +51,7 @@ export function MediaCard({
 
   const { hoverZoom, hoverPreview, discreet, tileInfo } = useAppearance();
   const [previewing, setPreviewing] = useState(false);
+  const [pinned, setPinned] = useState(() => item.itemType === "folder" && isPinned(`folder:${item.id}`));
 
   const showImage = item.itemType !== "folder" && !thumbFailed;
   // Turned off in the Appearance panel, a tile stays a tile — it still opens,
@@ -147,6 +149,9 @@ export function MediaCard({
             // 16:10 rather than 16:9. The frames themselves are widescreen, so this
             // crops a sliver off each side — the tile reads as slightly taller
             // without the artwork losing anything that matters.
+            // 16:10 rather than 16:9. The frames themselves are widescreen, so this
+            // crops a sliver off each side — the tile reads as slightly taller
+            // without the artwork losing anything that matters.
             "relative aspect-[16/10] w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
@@ -204,6 +209,25 @@ export function MediaCard({
               ) : (
                 <Circle className="size-5 text-white/80" />
               )}
+            </span>
+          )}
+
+          {item.itemType === "folder" && (
+            <span className="absolute left-1.5 top-1.5 z-10">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  togglePin({ id: `folder:${item.id}`, type: "folder", label: item.title, folderId: item.id });
+                  setPinned((value) => !value);
+                }}
+                aria-pressed={pinned}
+                aria-label={pinned ? `Unpin ${item.title}` : `Pin ${item.title}`}
+                title={pinned ? "Unpin folder" : "Pin folder"}
+                className="flex size-7 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20"
+              >
+                <Pin className={cn("size-3.5", pinned && "fill-white")} />
+              </button>
             </span>
           )}
 

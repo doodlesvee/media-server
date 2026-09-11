@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { fetchAppearance, saveAppearance } from "./appearanceApi";
 
 /**
@@ -48,7 +56,10 @@ function readHomeRows(value: unknown): HomeRowSetting[] {
     const key = (entry as HomeRowSetting)?.key;
     if (typeof key !== "string" || !known.has(key) || seen.has(key)) continue;
     seen.add(key);
-    out.push({ key: key as HomeRowKey, visible: (entry as HomeRowSetting).visible !== false });
+    out.push({
+      key: key as HomeRowKey,
+      visible: (entry as HomeRowSetting).visible !== false,
+    });
   }
 
   for (const row of HOME_ROWS) {
@@ -203,26 +214,45 @@ function read(): Appearance {
       // would clamp to 100% here — a bigger tile than was chosen. Re-validated
       // either way, so a hand-edited entry can't render tiles 4px wide.
       tileSizePercent:
-        typeof parsed.tileSizePercent === "number" && Number.isFinite(parsed.tileSizePercent)
-          ? Math.min(TILE_MAX, Math.max(TILE_MIN, Math.round(parsed.tileSizePercent)))
+        typeof parsed.tileSizePercent === "number" &&
+        Number.isFinite(parsed.tileSizePercent)
+          ? Math.min(
+              TILE_MAX,
+              Math.max(TILE_MIN, Math.round(parsed.tileSizePercent)),
+            )
           : DEFAULTS.tileSizePercent,
-      tileInfo: TILE_INFO_OPTIONS.some((option) => option.value === parsed.tileInfo)
+      tileInfo: TILE_INFO_OPTIONS.some(
+        (option) => option.value === parsed.tileInfo,
+      )
         ? (parsed.tileInfo as TileInfo)
         : DEFAULTS.tileInfo,
-      hoverZoom: typeof parsed.hoverZoom === "boolean" ? parsed.hoverZoom : DEFAULTS.hoverZoom,
+      hoverZoom:
+        typeof parsed.hoverZoom === "boolean"
+          ? parsed.hoverZoom
+          : DEFAULTS.hoverZoom,
       hoverPreview:
-        typeof parsed.hoverPreview === "boolean" ? parsed.hoverPreview : DEFAULTS.hoverPreview,
-      discreet: typeof parsed.discreet === "boolean" ? parsed.discreet : DEFAULTS.discreet,
+        typeof parsed.hoverPreview === "boolean"
+          ? parsed.hoverPreview
+          : DEFAULTS.hoverPreview,
+      discreet:
+        typeof parsed.discreet === "boolean"
+          ? parsed.discreet
+          : DEFAULTS.discreet,
       // Deliberately a new key: the old one held pixels, and a stored 18
       // would read as 18% here — a much weaker blur than the one that was
       // chosen. Ignoring it falls back to the equivalent default instead.
       discreetBlurPercent:
         typeof parsed.discreetBlurPercent === "number" &&
         Number.isFinite(parsed.discreetBlurPercent)
-          ? Math.min(BLUR_MAX, Math.max(BLUR_MIN, Math.round(parsed.discreetBlurPercent)))
+          ? Math.min(
+              BLUR_MAX,
+              Math.max(BLUR_MIN, Math.round(parsed.discreetBlurPercent)),
+            )
           : DEFAULTS.discreetBlurPercent,
       discreetText:
-        typeof parsed.discreetText === "boolean" ? parsed.discreetText : DEFAULTS.discreetText,
+        typeof parsed.discreetText === "boolean"
+          ? parsed.discreetText
+          : DEFAULTS.discreetText,
       bannerHeight: clampPercent(parsed.bannerHeight, DEFAULTS.bannerHeight),
       homeRows: readHomeRows(parsed.homeRows),
     };
@@ -260,7 +290,11 @@ const AppearanceContext = createContext<Store | null>(null);
  * per tick would hammer the API to save a preference nobody has finished
  * choosing yet.
  */
-export function AppearanceProvider({ children }: { children: React.ReactNode }) {
+export function AppearanceProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [value, setValue] = useState<Appearance>(read);
   // Nothing is sent until the server's copy has been read, or the first
   // change would push this browser's local state over what's stored.
@@ -291,7 +325,10 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!loaded.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => void saveAppearance(value).catch(() => {}), 500);
+    saveTimer.current = setTimeout(
+      () => void saveAppearance(value).catch(() => {}),
+      500,
+    );
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
@@ -307,7 +344,9 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
       // The arming half. Pressing the same keys while it's on is handled by
       // DiscreetUnlockDialog, which asks for the password — this handler
       // no-ops in that case rather than the two fighting over one press.
-      setValue((current) => (current.discreet ? current : { ...current, discreet: true }));
+      setValue((current) =>
+        current.discreet ? current : { ...current, discreet: true },
+      );
     }
 
     // Capture phase, so it still fires from inside a text field or with a
@@ -335,7 +374,10 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
       root.setAttribute("data-discreet", "true");
       // A custom property rather than a class per strength: the stylesheet
       // reads one variable and the slider can be any value in the range.
-      root.style.setProperty("--discreet-blur", blurLength(value.discreetBlurPercent));
+      root.style.setProperty(
+        "--discreet-blur",
+        blurLength(value.discreetBlurPercent),
+      );
       if (value.discreetText) root.setAttribute("data-discreet-text", "true");
       else root.removeAttribute("data-discreet-text");
     } else {
@@ -350,9 +392,16 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
   }, []);
   const reset = useCallback(() => setValue(DEFAULTS), []);
 
-  const store = useMemo<Store>(() => ({ ...value, set, reset }), [value, set, reset]);
+  const store = useMemo<Store>(
+    () => ({ ...value, set, reset }),
+    [value, set, reset],
+  );
 
-  return <AppearanceContext.Provider value={store}>{children}</AppearanceContext.Provider>;
+  return (
+    <AppearanceContext.Provider value={store}>
+      {children}
+    </AppearanceContext.Provider>
+  );
 }
 
 export function useAppearance(): Store {

@@ -30,6 +30,9 @@ const browseRoute = createRoute({
     studio?: string;
     kind?: string;
     collectionId?: number;
+    parentId?: number;
+    sort?: string;
+    year?: number;
     q?: string;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
@@ -37,6 +40,9 @@ const browseRoute = createRoute({
     studio: typeof search.studio === "string" ? search.studio : undefined,
     kind: typeof search.kind === "string" ? search.kind : undefined,
     collectionId: search.collectionId != null ? Number(search.collectionId) : undefined,
+    parentId: search.parentId != null ? Number(search.parentId) : undefined,
+    sort: typeof search.sort === "string" ? search.sort : undefined,
+    year: search.year != null ? Number(search.year) : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
   }),
   component: BrowsePage,

@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { ScrollRow } from "./ScrollRow";
 import { StudioCard } from "./StudioCard";
 import { fetchStudios } from "@/lib/studioApi";
+import { pinsChangedEvent, readPins } from "@/lib/pinned";
 
 /**
  * Studios, as a homepage row.
@@ -15,6 +17,12 @@ import { fetchStudios } from "@/lib/studioApi";
  * from here, and alphabetical would bury them among the one-video entries.
  */
 export function StudioRow() {
+  const [, refreshPins] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshPins((value) => value + 1);
+    window.addEventListener(pinsChangedEvent(), refresh);
+    return () => window.removeEventListener(pinsChangedEvent(), refresh);
+  }, []);
   const { data } = useQuery({ queryKey: ["studios"], queryFn: fetchStudios });
 
   // The API deliberately keeps studios with no videos — one exists because a
@@ -23,6 +31,8 @@ export function StudioRow() {
     .filter((s) => s.videoCount > 0)
     .sort(
       (a, b) =>
+        Number(readPins().some((pin) => pin.type === "studio" && pin.studioId === b.id)) -
+          Number(readPins().some((pin) => pin.type === "studio" && pin.studioId === a.id)) ||
         b.videoCount - a.videoCount ||
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );

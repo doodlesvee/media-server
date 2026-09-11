@@ -267,3 +267,19 @@ describe("backups", () => {
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
   });
 });
+
+describe("activity", () => {
+  it("lists and clears activity events", async () => {
+    const list = await get("/api/activity");
+    expect(list.statusCode).toBe(200);
+    expect(Array.isArray(list.json().events)).toBe(true);
+
+    const cleared = await app.inject({
+      method: "DELETE",
+      url: "/api/activity",
+      headers: { cookie },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toEqual({ ok: true });
+  });
+});

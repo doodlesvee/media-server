@@ -33,6 +33,7 @@ import {
 import { purgeEmptyEntities, recomputeScope, sweepOrphanedArtwork } from "../library/scope.js";
 import { partialContentHash } from "./hash.js";
 import { walk } from "./walk.js";
+import { logActivity } from "../activity/log.js";
 
 const CONCURRENCY = 4;
 
@@ -137,6 +138,7 @@ async function runScan(jobId: number): Promise<void> {
       .update(scanJobs)
       .set({ status: "completed", finishedAt: new Date() })
       .where(eq(scanJobs.id, jobId));
+    await logActivity("scan", "Library scan completed", { jobId });
   } catch (err) {
     await db
       .update(scanJobs)
@@ -146,6 +148,7 @@ async function runScan(jobId: number): Promise<void> {
         error: err instanceof Error ? err.message : String(err),
       })
       .where(eq(scanJobs.id, jobId));
+    await logActivity("scan", "Library scan failed", { jobId });
   } finally {
     runningJobId = null;
   }

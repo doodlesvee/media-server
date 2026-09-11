@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { Crop, Play, Star } from "lucide-react";
+import { Crop, Star } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { MediaDetailModal } from "@/components/MediaDetailModal";
 import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
 import { fetchAlbum, saveAlbumCover } from "@/lib/albumApi";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
+import { PlaySurface } from "@/components/PlaySurface";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 const routeApi = getRouteApi("/album/$albumId");
 
@@ -16,7 +17,6 @@ export function AlbumPage() {
   const { albumId } = routeApi.useParams();
   const id = Number(albumId);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [videoOpen, setVideoOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -87,6 +87,14 @@ export function AlbumPage() {
   return (
     <AppShell>
       <div className="space-y-6 px-6 py-8">
+        <Breadcrumbs
+          items={[
+            { label: "Albums", to: "/albums" },
+            ...(album?.performer ? [{ label: album.performer }] : []),
+            ...(album?.studio ? [{ label: album.studio }] : []),
+            ...(album ? [{ label: album.title }] : []),
+          ]}
+        />
         <div className="space-y-2">
           <h1 className="sensitive text-3xl font-bold tracking-tight sm:text-4xl">{album?.title ?? " "}</h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -111,16 +119,11 @@ export function AlbumPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {album?.video && (
-              <button
-                type="button"
-                onClick={() => setVideoOpen(true)}
-                className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm transition-colors hover:bg-accent"
-              >
-                <Play className="size-4 fill-current" />
-                Play the video
-              </button>
+              <PlaySurface
+                items={[{ ...album.video, itemType: "video", thumbnailFile: null, durationSeconds: null }]}
+                label="Album playback"
+              />
             )}
-
             {coverPhoto && !reframing && (
               <button
                 type="button"
@@ -236,9 +239,6 @@ export function AlbumPage() {
         />
       )}
 
-      {videoOpen && album?.video && (
-        <MediaDetailModal itemId={album.video.id} autoPlay onClose={() => setVideoOpen(false)} />
-      )}
     </AppShell>
   );
 }

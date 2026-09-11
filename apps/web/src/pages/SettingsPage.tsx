@@ -5,7 +5,9 @@ import { BackupSettingsSection } from "@/components/BackupSettingsSection";
 import { CategorySettings } from "@/components/CategorySettings";
 import { HeroSettingsSection } from "@/components/HeroSettingsSection";
 import { LibrarySettingsSection } from "@/components/LibrarySettingsSection";
+import { LibraryHealthSection } from "@/components/LibraryHealthSection";
 import { PrivacySettingsSection } from "@/components/PrivacySettingsSection";
+import { ActivityLogSection } from "@/components/ActivityLogSection";
 import { cn } from "@/lib/utils";
 
 const routeApi = getRouteApi("/settings");
@@ -21,6 +23,7 @@ const TABS = [
   { id: "homepage", label: "Homepage" },
   { id: "privacy", label: "Privacy" },
   { id: "backup", label: "Backup" },
+  { id: "activity", label: "Activity" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -63,6 +66,7 @@ export function SettingsPage() {
         <div key={active} className="stagger space-y-5 py-6">
           {active === "library" && (
             <>
+              <LibraryHealthSection />
               <LibrarySettingsSection />
               <CategorySettings />
             </>
@@ -75,6 +79,7 @@ export function SettingsPage() {
           )}
           {active === "privacy" && <PrivacySettingsSection />}
           {active === "backup" && <BackupSettingsSection />}
+          {active === "activity" && <ActivityLogSection />}
         </div>
       </div>
     </AppShell>
