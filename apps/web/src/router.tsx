@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { RouteErrorFallback } from "@/components/RouteErrorFallback";
 import { AccountPage } from "@/pages/AccountPage";
 import { AlbumPage } from "@/pages/AlbumPage";
 import { AlbumsPage } from "@/pages/AlbumsPage";
@@ -149,7 +150,10 @@ const routeTree = rootRoute.addChildren([
   accountRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  defaultErrorComponent: RouteErrorFallback,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
