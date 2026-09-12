@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/lib/toast";
+import { summariseBulk, type BulkResult } from "@/lib/bulkSummary";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 
@@ -12,30 +14,72 @@ async function fetchCollections(): Promise<{ collections: Collection[] }> {
 // PUT /tags replaces an item's full tag set, so adding one tag to several
 // items means merging with each item's existing tags first, not overwriting
 // them — this fetches current tags per item before adding the new one.
-async function addTagToItems(itemIds: number[], tagName: string): Promise<void> {
-  for (const id of itemIds) {
-    const res = await fetch(`/api/media-items/${id}`);
-    if (!res.ok) continue;
-    const item: { tags: { name: string }[] } = await res.json();
-    const names = item.tags.map((t) => t.name);
-    if (names.includes(tagName)) continue;
+//
+// Requests stay sequential: this points at a self-hosted box, and forty
+// parallel read-then-write pairs is a worse neighbour than forty in a row.
+async function addTagToItems(
+  itemIds: number[],
+  tagName: string,
+  onProgress: (done: number) => void,
+): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, skipped: 0 };
 
-    await fetch(`/api/media-items/${id}/tags`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tagNames: [...names, tagName] }),
-    });
+  for (const [index, id] of itemIds.entries()) {
+    try {
+      const res = await fetch(`/api/media-items/${id}`);
+      if (!res.ok) {
+        result.failed += 1;
+        continue;
+      }
+      const item: { tags: { name: string }[] } = await res.json();
+      const names = item.tags.map((t) => t.name);
+      if (names.includes(tagName)) {
+        result.skipped += 1;
+        continue;
+      }
+
+      const saved = await fetch(`/api/media-items/${id}/tags`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagNames: [...names, tagName] }),
+      });
+      if (saved.ok) result.ok += 1;
+      else result.failed += 1;
+    } catch {
+      // A dropped connection mid-run is a failure for this item only.
+      result.failed += 1;
+    } finally {
+      onProgress(index + 1);
+    }
   }
+
+  return result;
 }
 
-async function addItemsToCollection(itemIds: number[], collectionId: number): Promise<void> {
-  for (const id of itemIds) {
-    await fetch(`/api/collections/${collectionId}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mediaItemId: id }),
-    });
+async function addItemsToCollection(
+  itemIds: number[],
+  collectionId: number,
+  onProgress: (done: number) => void,
+): Promise<BulkResult> {
+  const result: BulkResult = { ok: 0, failed: 0, skipped: 0 };
+
+  for (const [index, id] of itemIds.entries()) {
+    try {
+      const res = await fetch(`/api/collections/${collectionId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaItemId: id }),
+      });
+      if (res.ok) result.ok += 1;
+      else result.failed += 1;
+    } catch {
+      result.failed += 1;
+    } finally {
+      onProgress(index + 1);
+    }
   }
+
+  return result;
 }
 
 export function BulkActionBar({
@@ -47,13 +91,53 @@ export function BulkActionBar({
 }) {
   const [tagInput, setTagInput] = useState("");
   const queryClient = useQueryClient();
+  const { toast, update } = useToast();
   const { data } = useQuery({ queryKey: ["collections"], queryFn: fetchCollections });
+
+  // A bulk run is one request per item, so on a large selection it is slow
+  // enough to look hung. The toast is opened before the work starts, updated
+  // as it goes, and resolved in place — one row start to finish, rather than
+  // a pile of them.
+  function runBulk(
+    label: string,
+    doneVerb: string,
+    run: (onProgress: (done: number) => void) => Promise<BulkResult>,
+  ): Promise<BulkResult> {
+    const total = selectedIds.length;
+    const toastId = toast({
+      title: label,
+      description: `0 of ${total}`,
+      duration: null,
+    });
+
+    return run((done) => update(toastId, { description: `${done} of ${total}` })).then(
+      (result) => {
+        update(toastId, {
+          title: result.failed > 0 ? `${label} finished with errors` : "Done",
+          description: summariseBulk(result, doneVerb),
+          variant: result.failed > 0 ? "error" : "success",
+        });
+        return result;
+      },
+      (error: unknown) => {
+        update(toastId, {
+          title: `${label} failed`,
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "error",
+        });
+        throw error;
+      },
+    );
+  }
 
   // Deliberately doesn't call onDone() on success — a selection often needs
   // more than one action applied (tag it AND add it to a collection), so the
   // bar stays open until the user explicitly cancels/finishes.
   const tagMutation = useMutation({
-    mutationFn: (tagName: string) => addTagToItems(selectedIds, tagName),
+    mutationFn: (tagName: string) =>
+      runBulk("Tagging", "Tagged", (onProgress) =>
+        addTagToItems(selectedIds, tagName, onProgress),
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["media-items"] });
       queryClient.invalidateQueries({ queryKey: ["tags"] });
@@ -62,7 +146,10 @@ export function BulkActionBar({
   });
 
   const collectionMutation = useMutation({
-    mutationFn: (collectionId: number) => addItemsToCollection(selectedIds, collectionId),
+    mutationFn: (collectionId: number) =>
+      runBulk("Adding to collection", "Added", (onProgress) =>
+        addItemsToCollection(selectedIds, collectionId, onProgress),
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["collection-items"] });
     },

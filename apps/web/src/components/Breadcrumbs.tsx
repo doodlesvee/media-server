@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 export type Breadcrumb = {
   label: string;
-  to?: "/" | "/browse" | "/performers" | "/studios" | "/albums";
+  to?: "/" | "/browse" | "/performers" | "/studios" | "/albums" | "/series";
   search?: Record<string, string | number | undefined>;
 };
 

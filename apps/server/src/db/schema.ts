@@ -34,11 +34,23 @@ export const libraryRoots = pgTable("library_roots", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const series = pgTable("series", {
+  id: serial("id").primaryKey(),
+  libraryId: integer("library_id")
+    .notNull()
+    .references(() => libraries.id),
+  name: text("name").notNull(),
+  nameSource: text("name_source").notNull().default("scanner"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("series_library_name_unique").on(table.libraryId, table.name)]);
+
 export const mediaItems = pgTable("media_items", {
   id: serial("id").primaryKey(),
   libraryId: integer("library_id")
     .notNull()
     .references(() => libraries.id),
+  seriesId: integer("series_id").references(() => series.id),
   parentId: integer("parent_id").references((): AnyPgColumn => mediaItems.id),
   itemTypeId: integer("item_type_id")
     .notNull()
@@ -90,6 +102,9 @@ export const mediaItems = pgTable("media_items", {
   // "movie" and "series" are set by hand, since nothing in a filename can
   // reliably tell them apart.
   kind: text("kind").notNull().default("video"),
+  seasonNumber: integer("season_number"),
+  episodeNumber: integer("episode_number"),
+  episodeTitle: text("episode_title"),
   durationSeconds: integer("duration_seconds"),
   takenAt: timestamp("taken_at"),
   extraMetadata: jsonb("extra_metadata"),

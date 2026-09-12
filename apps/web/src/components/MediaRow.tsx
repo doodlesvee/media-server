@@ -8,6 +8,7 @@ export function MediaRow({
   itemClassName,
   action,
   items,
+  loading = false,
   onSelectItem,
   onPlayItem,
   onOpenFolder,
@@ -24,34 +25,66 @@ export function MediaRow({
   /** Passed straight through to ScrollRow; see the note there. */
   action?: React.ReactNode;
   items: MediaCardItem[];
+  /**
+   * Holds the row open with placeholder tiles while its query is in flight.
+   * Without it the row is simply absent until the data lands, so the home page
+   * shuffles itself as each request returns.
+   */
+  loading?: boolean;
   onSelectItem: (id: number) => void;
   onPlayItem?: (id: number) => void;
   onOpenFolder: (id: number, title: string) => void;
 }) {
   const { tileSizePercent } = useAppearance();
   const tileWidth = tileWidthPx(tileSizePercent);
+  // About what a wide row shows at the default tile size — enough to read as a
+  // full row, few enough that the last ones aren't wasted work off-screen.
+  const placeholderCount = 6;
+
+  // Same width rule and aspect as a real tile, so nothing shifts when the
+  // placeholders are replaced by the cards themselves.
+  const tileStyle = itemClassName
+    ? undefined
+    : { width: `min(${tileWidth}px, 80vw)` };
 
   return (
-    <ScrollRow title={title} titleClassName={titleClassName} action={action} itemCount={items.length}>
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className={itemClassName ?? "shrink-0"}
-          // min() rather than a flat width: on a phone a 416px tile would be
-          // wider than the screen, and the row would scroll one tile at a time.
-          style={itemClassName ? undefined : { width: `min(${tileWidth}px, 80vw)` }}
-        >
-          <MediaCard
-            item={item}
-            onClick={() =>
-              item.itemType === "folder"
-                ? onOpenFolder(item.id, item.title)
-                : onSelectItem(item.id)
-            }
-            onPlay={onPlayItem ? () => onPlayItem(item.id) : undefined}
-          />
-        </div>
-      ))}
+    <ScrollRow
+      title={title}
+      titleClassName={titleClassName}
+      action={action}
+      itemCount={items.length}
+      loading={loading}
+    >
+      {loading
+        ? Array.from({ length: placeholderCount }).map((_, index) => (
+            <div
+              key={`placeholder-${index}`}
+              className={itemClassName ?? "shrink-0"}
+              style={tileStyle}
+            >
+              <div className="skeleton aspect-[16/10] w-full rounded-md" />
+            </div>
+          ))
+        : items.map((item) => (
+            <div
+              key={item.id}
+              className={itemClassName ?? "shrink-0"}
+              // min() rather than a flat width: on a phone a 416px tile would
+              // be wider than the screen, and the row would scroll one tile at
+              // a time.
+              style={tileStyle}
+            >
+              <MediaCard
+                item={item}
+                onClick={() =>
+                  item.itemType === "folder"
+                    ? onOpenFolder(item.id, item.title)
+                    : onSelectItem(item.id)
+                }
+                onPlay={onPlayItem ? () => onPlayItem(item.id) : undefined}
+              />
+            </div>
+          ))}
     </ScrollRow>
   );
 }

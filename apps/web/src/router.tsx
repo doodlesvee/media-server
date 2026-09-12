@@ -14,6 +14,8 @@ import { PerformersPage } from "@/pages/PerformersPage";
 import { StudioPage } from "@/pages/StudioPage";
 import { StudiosPage } from "@/pages/StudiosPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SeriesPage } from "@/pages/SeriesPage";
+import { SeriesPageIndex } from "@/pages/SeriesPageIndex";
 
 const rootRoute = createRootRoute();
 
@@ -73,6 +75,18 @@ const albumsRoute = createRoute({
   component: AlbumsPage,
 });
 
+const seriesIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/series",
+  component: SeriesPageIndex,
+});
+
+const seriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/series/$seriesId",
+  component: SeriesPage,
+});
+
 const albumRoute = createRoute({
   getParentRoute: () => rootRoute,
   // Keyed by id, like performers: an album's title comes from its folder
@@ -125,6 +139,8 @@ const routeTree = rootRoute.addChildren([
   performerRoute,
   performersRoute,
   albumsRoute,
+  seriesIndexRoute,
+  seriesRoute,
   albumRoute,
   studiosRoute,
   studioRoute,

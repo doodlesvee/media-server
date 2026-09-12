@@ -17,7 +17,7 @@ export function RelatedItems({
   itemId: number;
   onSelect: (id: number) => void;
 }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["related-items", itemId],
     queryFn: () => fetchRelated(itemId),
   });
@@ -25,13 +25,16 @@ export function RelatedItems({
   // Folders have no meaningful "more like this" click target inside a modal,
   // so they're dropped rather than given a dead-end card.
   const items = (data?.items ?? []).filter((i) => i.itemType !== "folder");
-  if (items.length === 0) return null;
+  // Empty and still-loading look identical from here, so only the settled
+  // empty case is allowed to remove the section.
+  if (!isLoading && items.length === 0) return null;
 
   return (
     <div className="border-t border-border px-6 py-6">
       <MediaRow
         title="More Like This"
         items={items}
+        loading={isLoading}
         onSelectItem={onSelect}
         onOpenFolder={noopOpenFolder}
       />

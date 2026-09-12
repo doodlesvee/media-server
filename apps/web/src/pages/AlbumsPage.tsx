@@ -12,7 +12,7 @@ function AlbumCard({ album }: { album: AlbumSummary }) {
     <Link
       to="/album/$albumId"
       params={{ albumId: String(album.id) }}
-      className="group block focus-visible:outline-none"
+      className="motion-card group block rounded-lg focus-visible:outline-none"
     >
       {/* 3:2, matching the photos themselves (3000x2000). At 16:9 every cover
           lost its top and bottom to the crop. */}

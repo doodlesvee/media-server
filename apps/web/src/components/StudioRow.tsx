@@ -23,7 +23,10 @@ export function StudioRow() {
     window.addEventListener(pinsChangedEvent(), refresh);
     return () => window.removeEventListener(pinsChangedEvent(), refresh);
   }, []);
-  const { data } = useQuery({ queryKey: ["studios"], queryFn: fetchStudios });
+  const { data, isLoading } = useQuery({
+    queryKey: ["studios"],
+    queryFn: fetchStudios,
+  });
 
   // The API deliberately keeps studios with no videos — one exists because a
   // filename named it — but there's nothing to show for them here.
@@ -46,14 +49,22 @@ export function StudioRow() {
     );
 
   return (
-    <ScrollRow title="Studios" itemCount={studios.length}>
-      {studios.map((studio) => (
-        <StudioCard
-          key={studio.id}
-          studio={studio}
-          className="w-64 shrink-0 sm:w-72"
-        />
-      ))}
+    <ScrollRow title="Studios" itemCount={studios.length} loading={isLoading}>
+      {isLoading
+        ? // Wider tiles than the other rows, so fewer of them reach the edge.
+          Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={`placeholder-${index}`}
+              className="skeleton aspect-video w-64 shrink-0 rounded-lg sm:w-72"
+            />
+          ))
+        : studios.map((studio) => (
+            <StudioCard
+              key={studio.id}
+              studio={studio}
+              className="w-64 shrink-0 sm:w-72"
+            />
+          ))}
     </ScrollRow>
   );
 }

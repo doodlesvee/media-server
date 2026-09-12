@@ -158,7 +158,7 @@ export function MediaCard({
           if (e.key === "Escape") setAnchorRect(null);
         }}
         className={cn(
-          "group relative w-full shrink-0 rounded-md text-left",
+          "motion-card group relative w-full shrink-0 rounded-md text-left",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           className,
         )}

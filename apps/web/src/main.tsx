@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { AuthGate } from "@/components/AuthGate";
 import { AppearanceProvider } from "@/lib/appearance";
 import { QueueProvider } from "@/lib/queue";
+import { ToastProvider } from "@/lib/toast";
 import "./index.css";
 import { router } from "./router";
 
@@ -13,13 +14,16 @@ const queryClient = new QueryClient();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthGate>
-        <AppearanceProvider>
-          <QueueProvider>
-            <RouterProvider router={router} />
-          </QueueProvider>
-        </AppearanceProvider>
-      </AuthGate>
+      {/* Outside AuthGate so a failed sign-in can report itself too. */}
+      <ToastProvider>
+        <AuthGate>
+          <AppearanceProvider>
+            <QueueProvider>
+              <RouterProvider router={router} />
+            </QueueProvider>
+          </AppearanceProvider>
+        </AuthGate>
+      </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

@@ -138,7 +138,7 @@ export function AppShell({
         </header>
 
         {focusMode && (
-          <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-border/70 bg-background/90 px-4 py-2 backdrop-blur-md">
+          <div className="animate-toolbar-in sticky top-0 z-30 flex items-center gap-2 border-b border-border/70 bg-background/90 px-4 py-2 backdrop-blur-md">
             <button
               type="button"
               onClick={() => window.history.back()}

@@ -20,7 +20,7 @@ export function PerformerRow() {
     return () => window.removeEventListener(pinsChangedEvent(), refresh);
   }, []);
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["performers"],
     queryFn: () =>
       fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
@@ -48,19 +48,31 @@ export function PerformerRow() {
     );
 
   return (
-    <ScrollRow title="Performers" itemCount={performers.length}>
-      {performers.map((performer) => (
-        <PerformerCard
-          key={performer.id}
-          performer={performer}
-          onClick={() =>
-            void navigate({
-              to: "/performer/$performerId",
-              params: { performerId: String(performer.id) },
-            })
-          }
-        />
-      ))}
+    <ScrollRow
+      title="Performers"
+      itemCount={performers.length}
+      loading={isLoading}
+    >
+      {isLoading
+        ? // Portraits are narrow, so more of them fit before the row's edge.
+          Array.from({ length: 8 }).map((_, index) => (
+            <div
+              key={`placeholder-${index}`}
+              className="skeleton aspect-[2/3] w-40 shrink-0 rounded-lg sm:w-52"
+            />
+          ))
+        : performers.map((performer) => (
+            <PerformerCard
+              key={performer.id}
+              performer={performer}
+              onClick={() =>
+                void navigate({
+                  to: "/performer/$performerId",
+                  params: { performerId: String(performer.id) },
+                })
+              }
+            />
+          ))}
     </ScrollRow>
   );
 }

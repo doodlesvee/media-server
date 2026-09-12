@@ -9,6 +9,7 @@ import {
   type PerformerSummary,
 } from "@/lib/performerApi";
 import { isPinned, togglePin } from "@/lib/pinned";
+import { useToast } from "@/lib/toast";
 import { PerformerPeekPanel } from "./PerformerPeekPanel";
 
 // Re-exported because several components import the type from here. It used
@@ -31,6 +32,7 @@ export function PerformerCard({
   const portrait = performerPortraitUrl(performer);
   const showImage = portrait !== null && !imageFailed;
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [pinned, setPinned] = useState(() =>
     isPinned(`performer:${performer.id}`),
   );
@@ -44,6 +46,15 @@ export function PerformerCard({
       queryClient.invalidateQueries({ queryKey: ["performers"] });
       queryClient.invalidateQueries({ queryKey: ["performer", performer.id] });
     },
+    // The heart fills from server state, so a failure just leaves it looking
+    // unpressed — indistinguishable from the click not registering at all.
+    onError: (error) => {
+      toast({
+        title: "Could not update favourite",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "error",
+      });
+    },
   });
 
   return (
@@ -51,7 +62,7 @@ export function PerformerCard({
       {/* A wrapper rather than the card itself being the button: the favourite
         toggle is a button too, and a button inside a button is invalid HTML —
         browsers drop the inner one, so the heart would simply not work. */}
-      <div className="group relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 hover:ring-white/40 focus-within:ring-2 focus-within:ring-white sm:w-52">
+      <div className="motion-card group relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 hover:ring-white/40 focus-within:ring-2 focus-within:ring-white sm:w-52">
         <button
           type="button"
           onClick={onClick}

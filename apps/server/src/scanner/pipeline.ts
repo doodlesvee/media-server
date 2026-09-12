@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { stat } from "node:fs/promises";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { db } from "../db/client.js";
 import {
@@ -12,6 +12,7 @@ import {
   mediaItems,
   performers,
   scanJobs,
+  series,
   studios,
 } from "../db/schema.js";
 import { probeVideo } from "../metadata/videoProbe.js";
@@ -43,6 +44,7 @@ import {
 import { partialContentHash } from "./hash.js";
 import { walk } from "./walk.js";
 import { logActivity } from "../activity/log.js";
+import { parseSeriesEpisode } from "./series.js";
 
 const CONCURRENCY = 4;
 
@@ -195,6 +197,7 @@ async function processFile(
     await syncPerformersWithPath(existingFile.mediaItemId, filePath, root.path);
     await syncStudioWithFilename(existingFile.mediaItemId, filePath, root.path);
     await syncReleaseDateWithFilename(existingFile.mediaItemId, filePath);
+    await syncSeriesFromFilename(existingFile.mediaItemId, libraryId, filePath);
 
     if (kind === "video") {
       await ensureArtworkForItem(
@@ -243,6 +246,7 @@ async function processFile(
     await syncPerformersWithPath(movedFile.mediaItemId, filePath, root.path);
     await syncStudioWithFilename(movedFile.mediaItemId, filePath, root.path);
     await syncReleaseDateWithFilename(movedFile.mediaItemId, filePath);
+    await syncSeriesFromFilename(movedFile.mediaItemId, libraryId, filePath);
     return;
   }
 
@@ -254,6 +258,8 @@ async function processFile(
   }
 
   const title = titleFromFilename(filePath);
+  const parsedSeries = kind === "video" ? parseSeriesEpisode(filePath) : null;
+  const seriesId = parsedSeries ? await ensureSeriesId(libraryId, parsedSeries.name) : null;
   let durationSeconds: number | null = null;
   let takenAt: Date | null = null;
   let extraMetadata: Record<string, unknown>;
@@ -283,6 +289,10 @@ async function processFile(
       durationSeconds,
       takenAt,
       extraMetadata,
+      seriesId,
+      seasonNumber: parsedSeries?.seasonNumber ?? null,
+      episodeNumber: parsedSeries?.episodeNumber ?? null,
+      episodeTitle: parsedSeries?.episodeTitle ?? null,
     })
     .returning();
 
@@ -304,6 +314,42 @@ async function processFile(
     await generatePosterFrame(filePath, item.id, contentHash, durationSeconds);
     await ensurePreviewClip(filePath, item.id, contentHash, durationSeconds);
   }
+}
+
+async function ensureSeriesId(libraryId: number, name: string): Promise<number> {
+  const [created] = await db
+    .insert(series)
+    .values({ libraryId, name })
+    .onConflictDoNothing()
+    .returning({ id: series.id });
+  if (created) return created.id;
+
+  const [existing] = await db
+    .select({ id: series.id })
+    .from(series)
+    .where(and(eq(series.libraryId, libraryId), eq(series.name, name)));
+  if (!existing) throw new Error(`Could not resolve series "${name}"`);
+  return existing.id;
+}
+
+async function syncSeriesFromFilename(
+  mediaItemId: number,
+  libraryId: number,
+  filePath: string,
+): Promise<void> {
+  const parsed = parseSeriesEpisode(filePath);
+  if (!parsed) return;
+  const seriesId = await ensureSeriesId(libraryId, parsed.name);
+  await db
+    .update(mediaItems)
+    .set({
+      seriesId,
+      seasonNumber: parsed.seasonNumber,
+      episodeNumber: parsed.episodeNumber,
+      episodeTitle: parsed.episodeTitle,
+      updatedAt: new Date(),
+    })
+    .where(eq(mediaItems.id, mediaItemId));
 }
 
 /**

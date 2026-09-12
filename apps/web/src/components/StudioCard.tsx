@@ -31,7 +31,7 @@ export function StudioCard({
   // "1 video" line under half of them made the row read as a list of gaps.
   const [pinned, setPinned] = useState(() => isPinned(`studio:${studio.id}`));
   return (
-    <div className={`group relative ${className ?? ""}`}>
+    <div className={`motion-card group relative ${className ?? ""}`}>
       <Link
         to="/studio/$studioId"
         params={{ studioId: String(studio.id) }}

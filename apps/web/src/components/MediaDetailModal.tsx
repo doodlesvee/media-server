@@ -53,6 +53,7 @@ import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import { QueuePanel } from "./QueuePanel";
 import { useQueue } from "@/lib/queue";
+import { SeriesAssignment } from "./SeriesAssignment";
 
 // Only offer "Continue Watching" for meaningful progress: not basically the
 // start (nothing to resume) or basically the end (same as starting over).
@@ -1213,6 +1214,7 @@ export function MediaDetailModal({
                 {editing && (
                   <FolderPicker itemId={item.id} parentId={item.parentId} />
                 )}
+                {editing && item.itemType === "video" && <SeriesAssignment item={item} />}
               </div>
             </div>
           )}

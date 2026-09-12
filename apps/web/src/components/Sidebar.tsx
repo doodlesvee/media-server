@@ -15,6 +15,7 @@ import {
   PanelLeftOpen,
   Plus,
   Settings,
+  Tv,
   Tag,
   Trash2,
   Users,
@@ -179,6 +180,15 @@ export function Sidebar({
         >
           <Images className="size-4 shrink-0" />
           {!collapsed && "Albums"}
+        </Link>
+        <Link
+          to="/series"
+          className={navItemClass}
+          title={collapsed ? "Series" : undefined}
+          activeProps={{ className: "bg-accent text-foreground font-medium" }}
+        >
+          <Tv className="size-4 shrink-0" />
+          {!collapsed && "Series"}
         </Link>
 
         {/* Collections and tags are text-only — collapsed they'd be a column of
