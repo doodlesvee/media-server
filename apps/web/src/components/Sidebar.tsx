@@ -8,7 +8,6 @@ import {
   Lock,
   Images,
   Layers,
-  List,
   CheckCircle2,
   TriangleAlert,
   Pin,
@@ -53,15 +52,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar({
   collapsed,
   onToggle,
-  queueCount,
-  queueOpen,
-  onQueueToggle,
 }: {
   collapsed: boolean;
   onToggle: () => void;
-  queueCount: number;
-  queueOpen: boolean;
-  onQueueToggle: () => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [pins, setPins] = useState<PinnedItem[]>(readPins);
@@ -381,33 +374,6 @@ export function Sidebar({
             <Lock className="size-3 shrink-0 text-muted-foreground/60" />
           )}
         </Link>
-        <button
-          type="button"
-          onClick={onQueueToggle}
-          aria-label={
-            queueOpen ? "Close playback queue" : "Open playback queue"
-          }
-          aria-expanded={queueOpen}
-          title={collapsed ? "Playback queue" : undefined}
-          className={cn(
-            navItemClass,
-            "relative w-full",
-            queueOpen && "bg-accent text-foreground",
-          )}
-        >
-          <List className="size-4 shrink-0" />
-          {!collapsed && "Playback queue"}
-          {queueCount > 0 && (
-            <span
-              className={cn(
-                "flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground",
-                collapsed ? "absolute right-1 top-1" : "ml-auto",
-              )}
-            >
-              {queueCount}
-            </span>
-          )}
-        </button>
         <Link
           to="/settings"
           className={navItemClass}

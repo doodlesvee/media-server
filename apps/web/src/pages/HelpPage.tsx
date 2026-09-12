@@ -77,6 +77,14 @@ export function HelpPage() {
           <Row keys={["↑", "↓"]}>Volume up or down. It's remembered for next time.</Row>
           <Row keys={["M"]}>Mute or unmute.</Row>
           <Row keys={["F"]}>Fullscreen.</Row>
+          {/* Was missing, on a page whose whole point is that every shortcut
+              is listed somewhere findable. */}
+          <Row keys={["C"]}>
+            Cinema mode — the video fills the window, everything else goes.
+          </Row>
+          <Row keys={["Q"]}>
+            Show or hide the queue beside the player, whatever is in it.
+          </Row>
           <Row keys={["Esc"]}>Close the video. Your position is saved.</Row>
         </Group>
 
