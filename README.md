@@ -172,7 +172,7 @@ on the host.
 |---|---|---|
 | `MEDIA_ROOT` | Your library, mounted **read-only** | `./media-placeholder` |
 | `HOME_ROOT` | What the in-app folder browser may look at, read-only | `/Users` |
-| `BACKUP_DIR` | The one writable mount, where backups are written | `../backups` |
+| `BACKUP_DIR` | The one writable mount. Backups are written here, and anything you drop in is offered for restore | `../backups` |
 | `COMPOSE_FILE` | Which compose files a bare `docker compose` picks up | — |
 | `WEBAUTHN_ORIGIN` | Where the browser thinks it is, for Touch ID | `http://localhost:5173` |
 
@@ -334,12 +334,58 @@ thumbnails are deliberately excluded — they're regenerable from your videos,
 and including them would take a backup from a few MB to tens of GB, which in
 practice means it stops being run.
 
-Restoring is a script rather than a button, because the server applies
-migrations at startup and has to be stopped while its database is replaced:
+### Restoring
 
-```bash
-scripts/restore.sh backups/media-server-<timestamp>.tar.gz --yes
-```
+**Restore** sits next to each archive in the same panel. It replaces the whole
+library — database and uploaded images — and signs you out, because the account
+comes from the backup too. The app doesn't need to be stopped: it gates
+incoming requests, stops its own scan timer, swaps the database, and then
+applies any migrations the archive predates.
+
+Confirming it means typing the archive's date, so picking the wrong one out of
+ten near-identical filenames is caught before rather than after. If a privacy
+password or passkey is set, restoring also asks for it — the same credential
+that guards the missing-videos manager. A fresh install has no credential to
+ask for, which is what keeps it recoverable.
+
+Three things make it safe to say yes to:
+
+- **A snapshot of the current library is taken first**, so a restore can be
+  undone by restoring that snapshot. The panel names it afterwards.
+- **The archive you restore *from* is never pruned** to make room for that
+  snapshot. It used to be possible for the newest-10 rule to quietly delete the
+  known-good archive someone was reaching for.
+- **A failed restore changes nothing.** The dump is applied in a single
+  transaction, so an interrupted or corrupt one rolls back whole and the
+  library is exactly as it was.
+
+A backup taken by a *newer* version of the app is refused rather than applied.
+Drizzle's migrator compares the local migration list against the database's
+newest recorded migration, so a database already past every migration the code
+knows about silently matches none of them and reports success — leaving the app
+querying a schema it no longer models. Each archive records the version that
+wrote it so that case can be caught up front.
+
+### Moving to another machine
+
+`BACKUP_DIR` is a bind mount, so an archive is visible to the app as soon as
+it's in that folder:
+
+1. `git clone`, and copy the `.tar.gz` into `backups/`.
+2. Point `MEDIA_ROOT` at the videos and `docker compose up`.
+3. Create any account — it's thrown away in a moment — to get past the
+   first-run screen.
+4. Site settings → Backup → **Restore** on that archive.
+5. Sign in with the password you had when the backup was taken.
+6. Run a scan. Files are matched back to their existing records by content
+   hash, not by path, so a different folder layout doesn't create duplicates —
+   tags, collections, favourites, watch progress and anything you edited by
+   hand stay attached. Values the scanner derived from the *old* path (an
+   auto-titled item, its performers, its studio) are re-derived from the new
+   one. Poster frames and preview clips are rebuilt at the same time.
+
+`scripts/restore.sh` is still there for when the app won't start — it does the
+same thing from outside the container, with Postgres up and the app stopped.
 
 A backup only protects you if it leaves the machine — point `BACKUP_DIR` at an
 external drive or a synced folder.

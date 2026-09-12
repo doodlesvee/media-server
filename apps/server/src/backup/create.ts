@@ -1,9 +1,18 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { UPLOAD_DIRS } from "../media/cache.js";
+import { latestMigration } from "../db/journal.js";
 import { logActivity } from "../activity/log.js";
 
 const execFileAsync = promisify(execFile);
@@ -30,6 +39,11 @@ const KEEP_BACKUPS = 10;
 // way startScan reserves its slot — two near-simultaneous requests would
 // otherwise both pass an `if (running)` check.
 let running = false;
+
+/** Mirrors isScanRunning() — restore has to refuse while a dump is in flight. */
+export function isBackupRunning(): boolean {
+  return running;
+}
 
 export type BackupFile = { name: string; sizeBytes: number; createdAt: string };
 
@@ -73,15 +87,51 @@ export async function listBackups(): Promise<BackupFile[]> {
   }
 }
 
-/** Drops the oldest archives once there are more than KEEP_BACKUPS. */
-async function pruneOldBackups(): Promise<void> {
-  const files = await listBackups();
-  for (const file of files.slice(KEEP_BACKUPS)) {
-    await rm(path.join(BACKUP_DIR, file.name), { force: true });
+/**
+ * Chooses which archives a new backup pushes out, given the newest-first list.
+ *
+ * Separated from the deleting so it can be tested without a filesystem — this
+ * is the part with a decision in it, and the decision has already been wrong
+ * once in a way nothing would have noticed.
+ *
+ * `protect` is never pruned, whatever its age. A restore takes a safety backup
+ * of the current state first, and without this that extra archive pushes the
+ * count past the cap and evicts the oldest — which, on a directory that has
+ * been at its cap for a while, is very often the archive being restored
+ * *from*. The restore works from a temp copy either way, so the deletion would
+ * be completely silent: you would find out the next time you opened the list.
+ *
+ * Protecting the only eviction candidate leaves the directory one over the cap
+ * until the next ordinary backup, which then prunes both. That is deliberate —
+ * the alternative is a restore quietly deleting a *second* archive to make its
+ * own room, which is more surprising than briefly keeping eleven.
+ */
+export function backupsToPrune(
+  newestFirst: BackupFile[],
+  protect?: string,
+): string[] {
+  return newestFirst
+    .slice(KEEP_BACKUPS)
+    .map((file) => file.name)
+    .filter((name) => name !== protect);
+}
+
+async function pruneOldBackups(protect?: string): Promise<void> {
+  for (const name of backupsToPrune(await listBackups(), protect)) {
+    await rm(path.join(BACKUP_DIR, name), { force: true });
   }
 }
 
-export async function createBackup(): Promise<BackupFile> {
+export type CreateBackupOptions = {
+  /** An archive this backup must not prune away. See pruneOldBackups. */
+  protect?: string;
+  /** Distinguishes an automatic pre-restore snapshot in the activity log. */
+  reason?: string;
+};
+
+export async function createBackup(
+  options: CreateBackupOptions = {},
+): Promise<BackupFile> {
   if (running) throw new Error("A backup is already running");
   running = true;
 
@@ -136,16 +186,37 @@ export async function createBackup(): Promise<BackupFile> {
       ]);
     }
 
+    // What this archive can be restored onto. Restoring a dump that is NEWER
+    // than the running code looks like it works and does not: drizzle's
+    // migrator compares each local journal entry against the single newest
+    // row in __drizzle_migrations, so a database already past every local
+    // migration causes it to skip all of them and report success — leaving
+    // the app querying columns its schema no longer matches. Recording the
+    // level here is what lets a restore refuse that outright.
+    const migration = await latestMigration();
+    await writeFile(
+      path.join(workDir, "meta.json"),
+      JSON.stringify(
+        {
+          createdAt: new Date().toISOString(),
+          latestMigrationTag: migration?.tag ?? null,
+          latestMigrationWhen: migration?.when ?? null,
+        },
+        null,
+        2,
+      ),
+    );
+
     await execFileAsync(
       "tar",
-      ["-czf", partialPath, "-C", workDir, "db.sql", "uploads"],
+      ["-czf", partialPath, "-C", workDir, "db.sql", "meta.json", "uploads"],
       {
         timeout: DUMP_TIMEOUT_MS,
       },
     );
     await rename(partialPath, finalPath);
 
-    await pruneOldBackups();
+    await pruneOldBackups(options.protect);
 
     const info = await stat(finalPath);
     const backup = {
@@ -153,7 +224,7 @@ export async function createBackup(): Promise<BackupFile> {
       sizeBytes: info.size,
       createdAt: info.mtime.toISOString(),
     };
-    await logActivity("backup", "Backup created", {
+    await logActivity("backup", options.reason ?? "Backup created", {
       name,
       sizeBytes: info.size,
     });

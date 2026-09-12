@@ -7,9 +7,14 @@
 # This REPLACES the current database. Everything presently in it is lost, so
 # the --yes argument is required rather than a prompt you can hold enter on.
 #
-# Deliberately a script rather than a UI action: the server runs migrations at
-# import with no retry, so it has to be stopped while its database is swapped
-# underneath it.
+# The offline path. Restoring is a button in Site settings now — the app stops
+# its own scan timer, gates incoming requests, drains its connection pool and
+# calls the exported runMigrations() afterwards, so it no longer has to be
+# stopped to swap its own database. This stays for the case that cannot use
+# that button: the app not starting at all.
+#
+# Unlike the in-app restore, this takes no safety backup of the current state
+# and does not check whether the archive came from a newer version of the app.
 #
 # Restoring an older backup onto newer code is fine and expected. The dump
 # carries drizzle's bookkeeping table at whatever position it was taken, so on
