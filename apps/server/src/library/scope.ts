@@ -9,6 +9,7 @@ import {
   mediaItemPerformers,
   mediaItems,
   performers,
+  series,
   studios,
 } from "../db/schema.js";
 import { POSTERS_DIR, PREVIEWS_DIR } from "../media/cache.js";
@@ -108,6 +109,7 @@ export async function purgeEmptyEntities(): Promise<{
   performers: number;
   studios: number;
   albums: number;
+  series: number;
 }> {
   // "No items at all", not "no *visible* items". Two reasons, and the first
   // is a hard crash: an item that is merely hidden still has its join row, so
@@ -123,7 +125,8 @@ export async function purgeEmptyEntities(): Promise<{
   // has no join rows at all, so without this the very next scan deleted them
   // along with any bio or artwork you had added.
   const deadPerformers = await db
-    .delete(performers)
+    .select({ id: performers.id })
+    .from(performers)
     .where(
       sql`not exists (
         select 1 from ${mediaItemPerformers} mip
@@ -132,20 +135,45 @@ export async function purgeEmptyEntities(): Promise<{
       and ${performers.bio} is null
       and ${performers.imageFile} is null
       and ${performers.bannerFile} is null`
-    )
-    .returning({ id: performers.id });
+    );
 
   // Same reasoning: media_items.studio_id still references a studio whose
   // items are only hidden, so scoping this to in_scope would fail the delete.
   const deadStudios = await db
-    .delete(studios)
+    .select({ id: studios.id })
+    .from(studios)
     .where(
       sql`not exists (
         select 1 from ${mediaItems} mi
         where mi.studio_id = ${studios.id}
       )`
-    )
-    .returning({ id: studios.id });
+    );
+
+  // Albums point at a performer and a studio, and neither check above knows
+  // that — they ask about media items only. An album naming a performer whose
+  // items have gone kept a reference to a row about to be deleted, and
+  // Postgres refused the delete: the whole cleanup failed with a foreign key
+  // violation and nothing was removed at all.
+  //
+  // Cleared rather than cascaded: an album keeps existing and simply stops
+  // claiming a performer the library no longer has.
+  if (deadPerformers.length > 0) {
+    const ids = deadPerformers.map((row) => row.id);
+    await db
+      .update(albums)
+      .set({ performerId: null })
+      .where(inArray(albums.performerId, ids));
+    await db.delete(performers).where(inArray(performers.id, ids));
+  }
+
+  if (deadStudios.length > 0) {
+    const ids = deadStudios.map((row) => row.id);
+    await db
+      .update(albums)
+      .set({ studioId: null })
+      .where(inArray(albums.studioId, ids));
+    await db.delete(studios).where(inArray(studios.id, ids));
+  }
 
   // Albums whose files are all gone. media_items.album_id still points at
   // them, so those references have to be cleared first — deleting the parent
@@ -166,10 +194,30 @@ export async function purgeEmptyEntities(): Promise<{
     await db.delete(albums).where(inArray(albums.id, ids));
   }
 
+  // Series, on the same rule as albums: media_items.series_id references
+  // them, so the references go before the rows. Added later than the rest of
+  // this function, which is why an emptied series used to survive a cleanup
+  // that took its videos.
+  const emptySeries = await db
+    .select({ id: series.id })
+    .from(series)
+    .where(
+      sql`not exists (
+        select 1 from ${mediaItems} mi where mi.series_id = ${series.id}
+      )`
+    );
+
+  if (emptySeries.length > 0) {
+    const ids = emptySeries.map((row) => row.id);
+    await db.update(mediaItems).set({ seriesId: null }).where(inArray(mediaItems.seriesId, ids));
+    await db.delete(series).where(inArray(series.id, ids));
+  }
+
   return {
     performers: deadPerformers.length,
     studios: deadStudios.length,
     albums: emptyAlbums.length,
+    series: emptySeries.length,
   };
 }
 
