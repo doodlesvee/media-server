@@ -1,7 +1,7 @@
 import path from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import * as schema from "./schema.js";
 
 const pool = new Pool({
@@ -63,4 +63,65 @@ export async function runMigrations(): Promise<void> {
   await waitForDb();
   const migrationsFolder = path.resolve(import.meta.dirname, "migrations");
   await migrate(db, { migrationsFolder });
+}
+
+const POOL_DRAIN_TIMEOUT_MS = 15_000;
+
+/**
+ * Destroys every pooled connection, waiting for in-flight queries to finish.
+ *
+ * Needed before a restore replaces the database underneath us. An idle backend
+ * holds no locks, but a query that is *mid-flight* holds ACCESS SHARE, which
+ * conflicts with the ACCESS EXCLUSIVE that `DROP TABLE` takes — and with no
+ * lock_timeout set, a blocked DROP waits forever while every later reader
+ * queues behind it.
+ *
+ * Not `pool.end()`: that sets `ending` permanently and every later connect()
+ * rejects with "Cannot use a pool after calling end on the pool", with no way
+ * back. Acquiring every slot instead *is* the barrier — once we hold them all,
+ * no handler can be mid-query — and releasing each with an error destroys the
+ * client rather than returning it, so the next acquire dials a fresh one.
+ *
+ * The timeout is not optional. A handler holding a client while awaiting
+ * something that needs another one would deadlock this, and the caller must
+ * treat a rejection as "abort the restore", not "carry on anyway".
+ */
+export async function drainPool(): Promise<void> {
+  const max = pool.options.max ?? 10;
+  // Collected as each acquisition resolves, not only if all of them do: on a
+  // timeout the ones that already succeeded still have to go back, or every
+  // drain attempt would permanently shrink the pool by however many it won.
+  const acquired: PoolClient[] = [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      Promise.all(
+        Array.from({ length: max }, () =>
+          pool.connect().then((client) => {
+            acquired.push(client);
+          })
+        )
+      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `db: pool did not drain within ${POOL_DRAIN_TIMEOUT_MS}ms`
+              )
+            ),
+          POOL_DRAIN_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    // Releasing with an error routes through _remove -> client.end(), so the
+    // connection is destroyed rather than handed back with a view of a
+    // database that is about to be dropped.
+    for (const client of acquired) {
+      client.release(new Error("pool recycled for restore"));
+    }
+  }
 }
