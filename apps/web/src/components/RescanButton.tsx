@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { libraryStatsKey } from "@/lib/statsApi";
 
 type ScanJob = {
   id: number;
@@ -60,13 +61,21 @@ export function RescanButton() {
   useEffect(() => {
     if (jobId === null || !job) return;
     if (job.status === "completed" || job.status === "failed") {
-      // A scan can add items, reassign performers and studios, and change
-      // counts — invalidating only media-items left the rest stale.
+      // A scan can add items, reassign performers and studios, assign albums
+      // and series, and change every count — invalidating only media-items
+      // left the rest stale.
+      //
+      // Keys that a module owns are imported from it rather than spelled
+      // inline: an inline key that no component actually queries under is
+      // invisibly dead, which is exactly how the library stats went stale
+      // here until a page reload.
       for (const key of [
         ["media-items"],
         ["performers"],
         ["studios"],
-        ["stats"],
+        libraryStatsKey,
+        ["albums"],
+        ["series"],
         ["hero-items"],
         ["library-roots"],
       ]) {

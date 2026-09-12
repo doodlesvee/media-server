@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { libraryStatsKey } from "@/lib/statsApi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { FolderPlus, X } from "lucide-react";
@@ -41,7 +42,7 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["media-items"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: libraryStatsKey });
       setTitle("");
       setEditing(false);
     },

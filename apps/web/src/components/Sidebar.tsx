@@ -29,6 +29,7 @@ import {
   togglePin,
   type Pin as PinnedItem,
 } from "@/lib/pinned";
+import { useLibraryStats } from "@/lib/statsApi";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 type TagRow = { id: number; name: string };
@@ -82,12 +83,7 @@ export function Sidebar({
     queryKey: ["tags"],
     queryFn: () => fetchJson<{ tags: TagRow[] }>("/api/tags"),
   });
-  const { data: health } = useQuery({
-    queryKey: ["library-health"],
-    queryFn: () =>
-      fetchJson<{ missing: number; duplicateGroups: number }>("/api/stats"),
-    staleTime: 30_000,
-  });
+  const { data: health } = useLibraryStats();
 
   const deleteCollection = useMutation({
     mutationFn: async (id: number) => {

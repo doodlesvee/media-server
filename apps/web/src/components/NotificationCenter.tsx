@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   CheckCircle2,
@@ -10,24 +9,7 @@ import {
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-
-type HealthStats = {
-  missing: number;
-  duplicateGroups: number;
-  lastScan: {
-    status: string;
-    finishedAt: string | null;
-    startedAt: string;
-  } | null;
-  lastBackup: string | null;
-};
-
-async function fetchHealth(): Promise<HealthStats> {
-  const response = await fetch("/api/stats");
-  if (!response.ok)
-    throw new Error(`Health request failed: ${response.status}`);
-  return response.json();
-}
+import { useLibraryStats } from "@/lib/statsApi";
 
 const DISMISSED_KEY = "dismissed-notifications";
 
@@ -57,11 +39,7 @@ function writeDismissed(ids: Set<string>): void {
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(readDismissed);
-  const { data } = useQuery({
-    queryKey: ["library-health"],
-    queryFn: fetchHealth,
-    staleTime: 30_000,
-  });
+  const { data } = useLibraryStats();
 
   const notifications = data
     ? [

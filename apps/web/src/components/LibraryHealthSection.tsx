@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,40 +7,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-
-type HealthStats = {
-  videos: number;
-  photos: number;
-  folders: number;
-  totalBytes: number;
-  totalItems: number;
-  missing: number;
-  duplicateGroups: number;
-  lastScan: {
-    status: string;
-    finishedAt: string | null;
-    startedAt: string;
-  } | null;
-  lastBackup: string | null;
-};
-
-async function fetchHealth(): Promise<HealthStats> {
-  const response = await fetch("/api/stats");
-  if (!response.ok)
-    throw new Error(`Health request failed: ${response.status}`);
-  return response.json();
-}
-
-function formatSize(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const exponent = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  );
-  const value = bytes / 1024 ** exponent;
-  return `${value.toFixed(exponent >= 2 ? 1 : 0)} ${units[exponent]}`;
-}
+import { formatBytes, useLibraryStats } from "@/lib/statsApi";
 
 function formatDate(value: string | null): string {
   if (!value) return "Never";
@@ -52,11 +18,7 @@ function formatDate(value: string | null): string {
 }
 
 export function LibraryHealthSection() {
-  const { data, isError, isLoading } = useQuery({
-    queryKey: ["library-health"],
-    queryFn: fetchHealth,
-    staleTime: 30_000,
-  });
+  const { data, isError, isLoading } = useLibraryStats();
 
   if (isLoading) {
     return <div className="skeleton h-72 rounded-lg" />;
@@ -135,7 +97,7 @@ export function LibraryHealthSection() {
         <Metric
           icon={HardDrive}
           label="Storage"
-          value={formatSize(data.totalBytes)}
+          value={formatBytes(data.totalBytes)}
         />
         <Metric
           icon={ScanLine}
