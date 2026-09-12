@@ -35,7 +35,18 @@ const BOOLEAN_KEYS = [
   "discreetText",
 ] as const;
 
-const TILE_INFO = ["full", "title", "none"];
+/**
+ * Settings whose value must be one of a fixed set.
+ *
+ * A table rather than a check per key: adding a view mode and forgetting the
+ * server means it saves locally and reverts on the next round-trip, with
+ * nothing logged. That has already happened once here.
+ */
+const ENUM_KEYS: Record<string, string[]> = {
+  tileInfo: ["full", "title", "none"],
+  viewMode: ["grid", "compact", "large"],
+  density: ["spacious", "comfortable", "compact", "dense"],
+};
 
 const HOME_ROW_KEYS = [
   "categories",
@@ -64,8 +75,9 @@ function clean(input: unknown): Record<string, unknown> {
     if (typeof body[key] === "boolean") out[key] = body[key];
   }
 
-  if (typeof body.tileInfo === "string" && TILE_INFO.includes(body.tileInfo)) {
-    out.tileInfo = body.tileInfo;
+  for (const [key, allowed] of Object.entries(ENUM_KEYS)) {
+    const value = body[key];
+    if (typeof value === "string" && allowed.includes(value)) out[key] = value;
   }
 
   if (Array.isArray(body.homeRows)) {

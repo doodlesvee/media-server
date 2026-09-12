@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
+import { cardChrome } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { isPinned, togglePin } from "@/lib/pinned";
@@ -66,7 +67,17 @@ export function MediaCard({
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLButtonElement>(null);
 
-  const { hoverZoom, hoverPreview, discreet, tileInfo } = useAppearance();
+  const {
+    hoverZoom,
+    hoverPreview,
+    discreet,
+    tileInfo: tileInfoSetting,
+    density,
+  } = useAppearance();
+  // Density decides how tightly the text sits in the frame. The card's width
+  // is the grid's business, so nothing here depends on the view mode.
+  const chrome = cardChrome(density, tileInfoSetting);
+  const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
   const [pinned, setPinned] = useState(
     () => item.itemType === "folder" && isPinned(`folder:${item.id}`),
@@ -183,11 +194,12 @@ export function MediaCard({
             // 16:10 rather than 16:9. The frames themselves are widescreen, so this
             // crops a sliver off each side — the tile reads as slightly taller
             // without the artwork losing anything that matters.
-            "relative aspect-[16/10] w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
+            "relative w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
             item.missingSince && "opacity-50",
           )}
+          style={{ aspectRatio: chrome.aspectRatio }}
         >
           {showImage ? (
             <>
@@ -287,7 +299,14 @@ export function MediaCard({
               they're state, not a label, and losing track of what you'd
               already started would be a real cost rather than less clutter. */}
           {tileInfo !== "none" && (
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2.5 pb-2 pt-8">
+            <span
+              className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8"
+              style={{
+                paddingLeft: chrome.paddingPx,
+                paddingRight: chrome.paddingPx,
+                paddingBottom: Math.max(2, chrome.paddingPx - 2),
+              }}
+            >
               {tileInfo === "full" &&
                 item.performers &&
                 item.performers.length > 0 && (

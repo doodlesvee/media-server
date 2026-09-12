@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { EyeOff, RotateCcw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  activePreset,
+  DENSITIES,
+  PRESETS,
+  VIEW_MODES,
+} from "@/lib/layout";
+import {
   BANNER_MAX,
   BANNER_MIN,
   BLUR_MAX,
@@ -51,6 +57,8 @@ export function AppearanceMenu() {
   const {
     tileSizePercent,
     tileInfo,
+    viewMode,
+    density,
     hoverZoom,
     hoverPreview,
     modalPreview,
@@ -62,6 +70,7 @@ export function AppearanceMenu() {
     set,
     reset,
   } = appearance;
+  const preset = activePreset({ viewMode, density, tileInfo, tileSizePercent });
   const [unlocking, setUnlocking] = useState(false);
 
   const { guarded } = usePrivacyGuard();
@@ -211,7 +220,95 @@ export function AppearanceMenu() {
               </div>
             )}
 
-            <Section label="Tiles" />
+            <Section label="Layout" />
+
+            {/* Presets first: most people want a look, not three axes. The
+                individual controls stay underneath for anyone who does. */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Preset</span>
+                {preset === null && (
+                  <span className="text-[11px] text-muted-foreground/70">
+                    Custom
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {PRESETS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set(option.settings)}
+                    aria-pressed={preset === option.value}
+                    title={option.hint}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs transition-colors",
+                      preset === option.value
+                        ? "bg-background font-medium text-foreground ring-1 ring-border"
+                        : "bg-secondary/60 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                {preset === null
+                  ? "Your own combination of the three settings below."
+                  : PRESETS.find((option) => option.value === preset)?.hint}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">View</span>
+              <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                {VIEW_MODES.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set({ viewMode: option.value })}
+                    aria-pressed={viewMode === option.value}
+                    title={option.hint}
+                    className={cn(
+                      "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                      viewMode === option.value
+                        ? "bg-background font-medium text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                {VIEW_MODES.find((option) => option.value === viewMode)?.hint}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">Density</span>
+              <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                {DENSITIES.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set({ density: option.value })}
+                    aria-pressed={density === option.value}
+                    className={cn(
+                      "flex-1 rounded px-2 py-1 text-[11px] transition-colors",
+                      density === option.value
+                        ? "bg-background font-medium text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                Space between and inside cards.
+              </span>
+            </div>
 
             <Slider
               label="Tile size"
@@ -220,7 +317,7 @@ export function AppearanceMenu() {
               max={TILE_MAX}
               step={5}
               suffix="%"
-              hint="Applies to every row and grid in the app."
+              hint="Applies to every row and grid in the app. A preset sets this too, so moving it yourself makes the preset Custom."
               onChange={(next) => set({ tileSizePercent: next })}
             />
 

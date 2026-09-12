@@ -9,6 +9,41 @@ import {
 } from "@/components/PerformerCard";
 import { AlphabetIndex } from "@/components/AlphabetIndex";
 import { pinsChangedEvent, readPins } from "@/lib/pinned";
+import { tileWidthPx, useAppearance } from "@/lib/appearance";
+import { cardLayout } from "@/lib/layout";
+
+/**
+ * One section of the page.
+ *
+ * Extracted because the page has three of these — favourites, with-videos,
+ * and empty — and they were three copies of the same markup; changing the
+ * spacing in two of them and forgetting the third is exactly the kind of
+ * thing that survives review.
+ */
+function PerformerList({
+  performers,
+  onOpen,
+  layout,
+}: {
+  performers: PerformerSummary[];
+  onOpen: (performer: PerformerSummary) => void;
+  layout: ReturnType<typeof cardLayout>;
+}) {
+  return (
+    <div
+      className="stagger flex flex-wrap"
+      style={{ columnGap: layout.columnGapPx, rowGap: layout.rowGapPx }}
+    >
+      {performers.map((performer) => (
+        <PerformerCard
+          key={performer.id}
+          performer={performer}
+          onClick={() => onOpen(performer)}
+        />
+      ))}
+    </div>
+  );
+}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -18,6 +53,16 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 export function PerformersPage() {
   const navigate = useNavigate();
+  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
+  // The same three axes the media grid uses, so choosing List once applies
+  // here too rather than only to videos.
+  const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
+
+  const openPerformer = (performer: PerformerSummary) =>
+    void navigate({
+      to: "/performer/$performerId",
+      params: { performerId: String(performer.id) },
+    });
   const [letter, setLetter] = useState<string | null>(null);
   const [, refreshPins] = useState(0);
 
@@ -97,38 +142,20 @@ export function PerformersPage() {
               <Heart className="size-3.5 fill-red-500 text-red-500" />
               Favourites
             </h2>
-            <div className="stagger flex flex-wrap gap-x-6 gap-y-7">
-              {visibleFavorites.map((performer) => (
-                <PerformerCard
-                  key={performer.id}
-                  performer={performer}
-                  onClick={() =>
-                    void navigate({
-                      to: "/performer/$performerId",
-                      params: { performerId: String(performer.id) },
-                    })
-                  }
-                />
-              ))}
-            </div>
+            <PerformerList
+              performers={visibleFavorites}
+              onOpen={openPerformer}
+              layout={layout}
+            />
           </section>
         )}
 
         {visibleWithVideos.length > 0 && (
-          <div className="stagger flex flex-wrap gap-x-6 gap-y-7">
-            {visibleWithVideos.map((performer) => (
-              <PerformerCard
-                key={performer.id}
-                performer={performer}
-                onClick={() =>
-                  void navigate({
-                    to: "/performer/$performerId",
-                    params: { performerId: String(performer.id) },
-                  })
-                }
-              />
-            ))}
-          </div>
+          <PerformerList
+            performers={visibleWithVideos}
+            onOpen={openPerformer}
+            layout={layout}
+          />
         )}
 
         {visibleEmpty.length > 0 && (
@@ -140,20 +167,11 @@ export function PerformersPage() {
               Either added by hand, or their folder isn't currently being
               scanned. Their details are kept either way.
             </p>
-            <div className="stagger flex flex-wrap gap-x-6 gap-y-7">
-              {visibleEmpty.map((performer) => (
-                <PerformerCard
-                  key={performer.id}
-                  performer={performer}
-                  onClick={() =>
-                    void navigate({
-                      to: "/performer/$performerId",
-                      params: { performerId: String(performer.id) },
-                    })
-                  }
-                />
-              ))}
-            </div>
+            <PerformerList
+              performers={visibleEmpty}
+              onOpen={openPerformer}
+              layout={layout}
+            />
           </section>
         )}
       </div>
