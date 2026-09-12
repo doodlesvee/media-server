@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ITEM_THUMBNAILS_DIR, PERFORMER_IMAGES_DIR } from "../media/cache.js";
+import { UPLOAD_DIRS } from "../media/cache.js";
 import { logActivity } from "../activity/log.js";
 
 const execFileAsync = promisify(execFile);
@@ -17,14 +17,14 @@ export const BACKUP_NAME_PATTERN = /^media-server-[0-9TZ.-]+\.tar\.gz$/;
 const DUMP_TIMEOUT_MS = 300_000;
 const KEEP_BACKUPS = 10;
 
-// Directories holding things a rescan cannot rebuild. Posters, previews and
-// photo thumbnails are deliberately absent: ffmpeg and sharp regenerate them
-// from the source videos, and including them would take an archive from a few
-// megabytes to tens of gigabytes.
-const UPLOAD_DIRS = [
-  { name: "item-thumbnails", dir: ITEM_THUMBNAILS_DIR },
-  { name: "performer-images", dir: PERFORMER_IMAGES_DIR },
-];
+// What goes in comes from media/cache.ts, which classifies every directory
+// under APP_DATA_DIR as either an upload or derived artwork. It used to be
+// listed again here, and the two drifted: kind-covers was declared there and
+// missing here, so category covers were never backed up at all.
+//
+// Anything in DERIVED_DIRS is deliberately absent — ffmpeg and sharp rebuild
+// it from the source videos, and including it would take an archive from a
+// few megabytes to hundreds.
 
 // Only one at a time. Reserved synchronously before the first await, the same
 // way startScan reserves its slot — two near-simultaneous requests would
