@@ -14,11 +14,10 @@ import { PerformerBanner } from "@/components/PerformerBanner";
 import { PerformerBio } from "@/components/PerformerBio";
 import { PerformerImageMenu } from "@/components/PerformerImageMenu";
 import { PerformerImagePicker } from "@/components/PerformerImagePicker";
-import { PlaySurface } from "@/components/PlaySurface";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import {
   fetchPerformer,
-  performerImageUrl,
+  performerBannerUrl,
   performerPortraitUrl,
   portraitStyle,
   savePortraitFraming,
@@ -81,17 +80,13 @@ export function PerformerPage() {
     );
   }
 
-  const uploadedBanner = performer
-    ? performerImageUrl(performer, "banner")
-    : null;
-
-  // Falls back to a frame from one of their videos until something is
-  // uploaded, so a performer never renders as an empty grey slab.
-  const bannerSrc =
-    uploadedBanner ??
-    (performer?.bannerItemId != null
-      ? `/api/media-items/${performer.bannerItemId}/thumbnail`
-      : null);
+  // Same resolver the hover card uses, so the two cannot disagree about which
+  // picture is this performer's banner. It was worked out inline here, which
+  // is how the second caller ended up reproducing the preference order.
+  //
+  // Still falls back to a frame from one of their videos, so a performer
+  // never renders as an empty grey slab.
+  const bannerSrc = performer ? performerBannerUrl(performer) : null;
   // Same resolver the homepage row and the modal use, so all three show the
   // same face for a given performer.
   const avatarSrc = performer ? performerPortraitUrl(performer) : null;
@@ -194,46 +189,40 @@ export function PerformerPage() {
                 </button>
               )}
             </div>
-            {performer && <PerformerStats performer={performer} />}
-            {performer && (
-              <PlaySurface
-                source={{
-                  type: "library",
-                  performer: performer.name,
-                  tag: null,
-                  studio: null,
-                  kind: null,
-                  q: null,
-                  parentId: null,
+            {/* Gated on `reframing` rather than rendering an empty wrapper on
+                every other view — that wrapper still counted as a flex child
+                and added a gap under the stats you could see but not explain. */}
+            {performer && reframing && avatarSrc && (
+              <FramingEditor
+                src={avatarSrc}
+                value={{
+                  x: performer.imagePositionX,
+                  y: performer.imagePositionY,
+                  scale: performer.imageScale,
                 }}
-                label="Performer playback"
+                // The portrait's tallest frame is the 2:3 card on the
+                // performers page; framing here matches what that shows.
+                // The circular avatars crop further in from the same band.
+                aspectClass="aspect-[2/3]"
+                saving={saveFraming.isPending}
+                onSave={(next) => saveFraming.mutate(next)}
+                onCancel={() => setReframing(false)}
+                note="Used on the performers page, the home row and the avatar in a video's details."
               />
-            )}
-            {performer && (
-              <div className="space-y-2">
-                {reframing && avatarSrc && (
-                  <FramingEditor
-                    src={avatarSrc}
-                    value={{
-                      x: performer.imagePositionX,
-                      y: performer.imagePositionY,
-                      scale: performer.imageScale,
-                    }}
-                    // The portrait's tallest frame is the 2:3 card on the
-                    // performers page; framing here matches what that shows.
-                    // The circular avatars crop further in from the same band.
-                    aspectClass="aspect-[2/3]"
-                    saving={saveFraming.isPending}
-                    onSave={(next) => saveFraming.mutate(next)}
-                    onCancel={() => setReframing(false)}
-                    note="Used on the performers page, the home row and the avatar in a video's details."
-                  />
-                )}
-              </div>
             )}
           </div>
         </div>
       </section>
+
+      {/* Out of the header column for the same reason the bio is: five figures
+          crammed beside a 4xl name and a portrait had nowhere to be noticed. */}
+      {performer && (
+        // The margin lives here rather than in the component: the strip should
+        // not have an opinion about what sits above it.
+        <div className="mt-6">
+          <PerformerStats performer={performer} />
+        </div>
+      )}
 
       {/* Full width rather than squeezed into the header column beside the
           avatar — prose needs a readable line length. */}

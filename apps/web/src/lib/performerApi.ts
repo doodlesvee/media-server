@@ -81,6 +81,28 @@ export function performerImageUrl(
 }
 
 /**
+ * The best available *banner* for a performer, in preference order: an
+ * uploaded banner, then the frame chosen as one, then any frame from their
+ * videos.
+ *
+ * The mirror of `performerPortraitUrl`, and here for the same reason: the
+ * profile page worked its banner out inline, so anywhere else wanting the
+ * same picture had to reproduce the preference order and hope it matched.
+ */
+export function performerBannerUrl(performer: {
+  id: number;
+  hasBanner: boolean;
+  bannerItemId?: number | null;
+  representativeItemId: number | null;
+}): string | null {
+  if (performer.hasBanner) {
+    return `/api/performers/${performer.id}/image?kind=banner&e=${IMAGE_EPOCH}`;
+  }
+  const frame = performer.bannerItemId ?? performer.representativeItemId;
+  return frame != null ? `/api/media-items/${frame}/thumbnail` : null;
+}
+
+/**
  * The best available portrait for a performer, in preference order:
  * an uploaded photo, then an uploaded banner, then a frame from one of their
  * videos. Falling back to the banner means a picture you uploaded always

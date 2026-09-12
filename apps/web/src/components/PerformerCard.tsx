@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, Heart, Pin, Play } from "lucide-react";
+import { Heart, Pin } from "lucide-react";
+
+// Dwell before the panel appears, matching the media tiles.
+const HOVER_DELAY_MS = 450;
 import { cn } from "@/lib/utils";
 import {
   performerPortraitUrl,
@@ -10,7 +13,7 @@ import {
 } from "@/lib/performerApi";
 import { isPinned, togglePin } from "@/lib/pinned";
 import { useToast } from "@/lib/toast";
-import { PerformerPeekPanel } from "./PerformerPeekPanel";
+import { PerformerHoverCard } from "./PerformerHoverCard";
 
 // Re-exported because several components import the type from here. It used
 // to be declared here too — a second, drifting copy of the one in
@@ -36,7 +39,18 @@ export function PerformerCard({
   const [pinned, setPinned] = useState(() =>
     isPinned(`performer:${performer.id}`),
   );
-  const [peekOpen, setPeekOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Nothing should be left pending on a card that has gone — a grid rerender
+  // while the timer is armed would otherwise open a panel for a card that is
+  // no longer under the pointer.
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    };
+  }, []);
 
   const favorite = useMutation({
     mutationFn: (next: boolean) => setPerformerFavorite(performer.id, next),
@@ -57,15 +71,42 @@ export function PerformerCard({
     },
   });
 
+  function open() {
+    if (cardRef.current) setAnchorRect(cardRef.current.getBoundingClientRect());
+  }
+
+  // The same dwell the media tiles use, for the same reason: sweeping a
+  // pointer along a row of portraits should not throw up a card for each one.
+  function handleMouseEnter() {
+    hoverTimer.current = setTimeout(open, HOVER_DELAY_MS);
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    // The panel cancels this itself if the pointer lands on it, so the gap
+    // between card and panel is crossable.
+    setAnchorRect(null);
+  }
+
   return (
     <>
       {/* A wrapper rather than the card itself being the button: the favourite
         toggle is a button too, and a button inside a button is invalid HTML —
         browsers drop the inner one, so the heart would simply not work. */}
-      <div className="motion-card group relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 hover:ring-white/40 focus-within:ring-2 focus-within:ring-white sm:w-52">
+      <div
+        ref={cardRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className="motion-card group relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 hover:ring-white/40 focus-within:ring-2 focus-within:ring-white sm:w-52"
+      >
         <button
           type="button"
           onClick={onClick}
+          onFocus={open}
+          onBlur={() => setAnchorRect(null)}
           title={performer.name}
           className="block h-full w-full focus-visible:outline-none"
         >
@@ -160,42 +201,12 @@ export function PerformerCard({
           />
         </button>
 
-        {performer.representativeItemId != null && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              window.dispatchEvent(
-                new CustomEvent("media-server:play-item", {
-                  detail: { id: performer.representativeItemId },
-                }),
-              );
-            }}
-            aria-label={`Play ${performer.name}`}
-            title="Play a video"
-            className="absolute bottom-12 left-3 z-10 flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black opacity-0 shadow-lg transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <Play className="size-3.5 fill-current" /> Play
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setPeekOpen(true);
-          }}
-          aria-label={`Peek ${performer.name}`}
-          title="Peek performer"
-          className="absolute bottom-12 right-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 ring-1 ring-white/20 backdrop-blur-sm transition-opacity hover:bg-black/90 group-hover:opacity-100 focus-visible:opacity-100"
-        >
-          <Eye className="size-4" />
-        </button>
       </div>
-      {peekOpen && (
-        <PerformerPeekPanel
+      {anchorRect && (
+        <PerformerHoverCard
           performer={performer}
-          onClose={() => setPeekOpen(false)}
+          anchorRect={anchorRect}
+          onDismiss={() => setAnchorRect(null)}
         />
       )}
     </>
