@@ -343,15 +343,15 @@ export function Sidebar({
           className={cn(navItemClass, "mb-1")}
           activeProps={{ className: "bg-accent text-foreground font-medium" }}
         >
-          {health && (health.missing > 0 || health.duplicateGroups > 0) ? (
+          {health && (health.videoMissing > 0 || health.videoDuplicateGroups > 0) ? (
             <TriangleAlert className="size-4 shrink-0 text-amber-500" />
           ) : (
             <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
           )}
           {!collapsed && (
             <span className="min-w-0 flex-1 truncate">
-              {health && (health.missing > 0 || health.duplicateGroups > 0)
-                ? `${health.missing + health.duplicateGroups} library issues`
+              {health && (health.videoMissing > 0 || health.videoDuplicateGroups > 0)
+                ? `${health.videoMissing + health.videoDuplicateGroups} library issues`
                 : "Library healthy"}
             </span>
           )}

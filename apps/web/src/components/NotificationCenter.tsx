@@ -53,21 +53,21 @@ export function NotificationCenter() {
               },
             ]
           : []),
-        ...(data.missing > 0
+        ...(data.videoMissing > 0
           ? [
               {
-                id: `missing:${data.missing}`,
-                label: `${data.missing} missing file${data.missing === 1 ? "" : "s"}`,
+                id: `missing:${data.videoMissing}`,
+                label: `${data.videoMissing} missing video${data.videoMissing === 1 ? "" : "s"}`,
                 icon: FileWarning,
                 href: "/settings" as const,
               },
             ]
           : []),
-        ...(data.duplicateGroups > 0
+        ...(data.videoDuplicateGroups > 0
           ? [
               {
-                id: `duplicates:${data.duplicateGroups}`,
-                label: `${data.duplicateGroups} duplicate group${data.duplicateGroups === 1 ? "" : "s"} found`,
+                id: `duplicates:${data.videoDuplicateGroups}`,
+                label: `${data.videoDuplicateGroups} duplicate group${data.videoDuplicateGroups === 1 ? "" : "s"} found`,
                 icon: Copy,
                 href: "/settings" as const,
               },

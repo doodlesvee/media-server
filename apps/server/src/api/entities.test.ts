@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { eq } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { mediaItems } from "../db/schema.js";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
 import {
   attachFile,
@@ -403,5 +406,70 @@ describe("stats", () => {
 
     // A number, not the string the pg driver returns for a numeric sum.
     expect((await get("/api/stats")).json().totalBytes).toBe(1000);
+  });
+
+  // Health is about videos. Photos arrive in albums beside the videos they
+  // were scanned with, in numbers that would otherwise drown the figure.
+  describe("health, over videos alone", () => {
+    it("counts videos in the total and leaves photos out", async () => {
+      await makeItem(libraryId, { title: "A video" });
+      await makePhoto(libraryId, "A photo");
+      await makePhoto(libraryId, "Another photo");
+
+      const body = (await get("/api/stats")).json();
+      expect(body.videoTotal).toBe(1);
+      // The whole-library summary still sees everything.
+      expect(body.photos).toBe(2);
+    });
+
+    it("ignores a missing photo, and reports a missing video", async () => {
+      await makeItem(libraryId, { title: "Gone", missingSince: new Date() });
+      await makeItem(libraryId, { title: "Here" });
+      const photo = await makePhoto(libraryId, "Gone too");
+      await db
+        .update(mediaItems)
+        .set({ missingSince: new Date() })
+        .where(eq(mediaItems.id, photo));
+
+      expect((await get("/api/stats")).json().videoMissing).toBe(1);
+    });
+
+    it("sizes videos only, where totalBytes sizes everything", async () => {
+      const video = await makeItem(libraryId, { title: "Video" });
+      await attachFile(video, rootId, "/media/video.mp4");
+      const photo = await makePhoto(libraryId, "Photo");
+      await attachFile(photo, rootId, "/media/photo.jpg");
+
+      const body = (await get("/api/stats")).json();
+      expect(body.videoBytes).toBe(1000);
+      expect(body.totalBytes).toBe(2000);
+    });
+
+    it("does not report repeated stills in an album as duplicates", async () => {
+      const one = await makePhoto(libraryId, "Still one");
+      const two = await makePhoto(libraryId, "Still two");
+      await attachFile(one, rootId, "/media/a.jpg", "same-hash");
+      await attachFile(two, rootId, "/media/b.jpg", "same-hash");
+
+      expect((await get("/api/stats")).json().videoDuplicateGroups).toBe(0);
+    });
+
+    it("reports two videos sharing a hash as one duplicate group", async () => {
+      const one = await makeItem(libraryId, { title: "Copy one" });
+      const two = await makeItem(libraryId, { title: "Copy two" });
+      await attachFile(one, rootId, "/media/a.mp4", "shared-hash");
+      await attachFile(two, rootId, "/media/b.mp4", "shared-hash");
+
+      expect((await get("/api/stats")).json().videoDuplicateGroups).toBe(1);
+    });
+
+    it("leaves a folder you stopped scanning out of the duplicate count", async () => {
+      const one = await makeItem(libraryId, { title: "Copy one" });
+      const two = await makeItem(libraryId, { title: "Copy two", inScope: false });
+      await attachFile(one, rootId, "/media/a.mp4", "shared-hash");
+      await attachFile(two, rootId, "/media/b.mp4", "shared-hash");
+
+      expect((await get("/api/stats")).json().videoDuplicateGroups).toBe(0);
+    });
   });
 });

@@ -16,9 +16,18 @@ export type LibraryStats = {
   totalBytes: number;
   tags: number;
   collections: number;
-  totalItems: number;
-  missing: number;
-  duplicateGroups: number;
+  /**
+   * Library health, over videos alone.
+   *
+   * Deliberately not the whole library: an album of stills is scanned
+   * alongside the video it came with, and counting those made the health
+   * figure mostly a statement about photos. `videos`, `photos` and
+   * `totalBytes` above still describe everything, for the footer's summary.
+   */
+  videoTotal: number;
+  videoMissing: number;
+  videoBytes: number;
+  videoDuplicateGroups: number;
   lastScan: {
     status: string;
     finishedAt: string | null;

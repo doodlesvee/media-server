@@ -31,9 +31,9 @@ export function LibraryHealthSection() {
     );
   }
 
-  const available = Math.max(0, data.totalItems - data.missing);
-  const healthPercent = data.totalItems
-    ? Math.round((available / data.totalItems) * 100)
+  const available = Math.max(0, data.videoTotal - data.videoMissing);
+  const healthPercent = data.videoTotal
+    ? Math.round((available / data.videoTotal) * 100)
     : 100;
   const scanHealthy = data.lastScan?.status === "completed";
 
@@ -51,7 +51,8 @@ export function LibraryHealthSection() {
             </h2>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            A quick read on what is available and what needs attention.
+            A quick read on which videos are available and what needs
+            attention.
           </p>
         </div>
         <span className="text-2xl font-semibold tabular-nums">
@@ -72,8 +73,8 @@ export function LibraryHealthSection() {
       <div className="grid gap-2 sm:grid-cols-2">
         <Metric
           icon={Library}
-          label="Total items"
-          value={data.totalItems.toLocaleString()}
+          label="Total videos"
+          value={data.videoTotal.toLocaleString()}
         />
         <Metric
           icon={CheckCircle2}
@@ -84,27 +85,30 @@ export function LibraryHealthSection() {
         <Metric
           icon={AlertTriangle}
           label="Missing"
-          value={data.missing.toLocaleString()}
-          tone={data.missing > 0 ? "warning" : "positive"}
+          value={data.videoMissing.toLocaleString()}
+          tone={data.videoMissing > 0 ? "warning" : "positive"}
           href="/browse"
         />
         <Metric
           icon={Copy}
           label="Duplicate groups"
-          value={data.duplicateGroups.toLocaleString()}
-          tone={data.duplicateGroups > 0 ? "warning" : "positive"}
+          value={data.videoDuplicateGroups.toLocaleString()}
+          tone={data.videoDuplicateGroups > 0 ? "warning" : "positive"}
         />
         <Metric
           icon={HardDrive}
           label="Storage"
-          value={formatBytes(data.totalBytes)}
+          value={formatBytes(data.videoBytes)}
         />
         <Metric
           icon={ScanLine}
           label="Last scan"
+          // Just the date. The status word rode along here until it made the
+          // value twice as long as any other tile's; the icon's tone already
+          // says whether the last scan was healthy.
           value={
             data.lastScan
-              ? `${data.lastScan.status} · ${formatDate(data.lastScan.finishedAt ?? data.lastScan.startedAt)}`
+              ? formatDate(data.lastScan.finishedAt ?? data.lastScan.startedAt)
               : "Never"
           }
           tone={scanHealthy ? "positive" : "neutral"}
@@ -113,7 +117,6 @@ export function LibraryHealthSection() {
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
         <span>{data.videos.toLocaleString()} videos</span>
-        <span>{data.photos.toLocaleString()} photos</span>
         <span>Last backup: {formatDate(data.lastBackup)}</span>
       </div>
     </section>
@@ -133,19 +136,24 @@ function Metric({
   tone?: "neutral" | "positive" | "warning";
   href?: "/browse";
 }) {
+  // The label holds its width and the value takes what is left, rather than
+  // the other way round. Most values here are a short number, but "Last scan"
+  // is a status and a timestamp: as the flexible item the label collapsed to
+  // "La / scan", and the value — which had no min-width of its own to shrink
+  // below — spilled out of its box and printed over the top of it.
   const content = (
     <div className="flex items-center gap-3 rounded-md border border-border/70 bg-background/40 px-3 py-2.5">
       <Icon
         className={
           tone === "warning"
-            ? "size-4 text-amber-500"
-            : "size-4 text-muted-foreground"
+            ? "size-4 shrink-0 text-amber-500"
+            : "size-4 shrink-0 text-muted-foreground"
         }
       />
-      <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-        {label}
-      </span>
-      <strong className="text-sm tabular-nums text-foreground">{value}</strong>
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <strong className="ml-auto min-w-0 break-words text-right text-sm tabular-nums text-foreground">
+        {value}
+      </strong>
     </div>
   );
   return href ? <Link to={href}>{content}</Link> : content;
