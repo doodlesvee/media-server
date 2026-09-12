@@ -10,6 +10,7 @@ import {
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
 import { cardChrome } from "@/lib/layout";
+import { worthExpanding } from "@/lib/hoverCard";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { isPinned, togglePin } from "@/lib/pinned";
@@ -114,7 +115,18 @@ export function MediaCard({
   }, []);
 
   function expand() {
-    if (cardRef.current) setAnchorRect(cardRef.current.getBoundingClientRect());
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // A big tile falls back to playing the clip in place, which is what the
+    // zoom-off path already does — so turning out to be too large costs you
+    // the growth animation, not the preview.
+    if (!worthExpanding(rect.width, window.innerWidth)) {
+      if (hoverPreview && !discreet && item.itemType === "video") {
+        setPreviewing(true);
+      }
+      return;
+    }
+    setAnchorRect(rect);
   }
 
   function handleMouseEnter() {
