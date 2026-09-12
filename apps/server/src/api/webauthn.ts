@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { markUnlocked } from "../auth/privacyUnlock.js";
 import type { FastifyInstance } from "fastify";
 import {
   generateAuthenticationOptions,
@@ -232,6 +233,9 @@ export async function webauthnRoutes(app: FastifyInstance): Promise<void> {
         .set({ counter: verification.authenticationInfo.newCounter })
         .where(eq(webauthnCredentials.id, stored.id));
 
+      // Same standing as the password: either credential guards discreet
+      // mode, so either has to unlock what the password unlocks.
+      markUnlocked(request.user.sessionId);
       return { ok: true };
     }
   );

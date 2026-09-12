@@ -8,7 +8,8 @@ export type ActivityType =
   | "metadata"
   | "collection"
   | "privacy"
-  | "cache";
+  | "cache"
+  | "library";
 
 export async function logActivity(
   type: ActivityType,

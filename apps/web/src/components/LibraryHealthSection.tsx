@@ -87,7 +87,7 @@ export function LibraryHealthSection() {
           label="Missing"
           value={data.videoMissing.toLocaleString()}
           tone={data.videoMissing > 0 ? "warning" : "positive"}
-          href="/browse"
+          to="/missing"
         />
         <Metric
           icon={Copy}
@@ -128,13 +128,16 @@ function Metric({
   label,
   value,
   tone = "neutral",
-  href,
+  to,
+  search,
 }: {
   icon: typeof Library;
   label: string;
   value: string;
   tone?: "neutral" | "positive" | "warning";
-  href?: "/browse";
+  /** Where the tile leads, for the counts that are actionable. */
+  to?: "/missing";
+  search?: { tab: string };
 }) {
   // The label holds its width and the value takes what is left, rather than
   // the other way round. Most values here are a short number, but "Last scan"
@@ -156,5 +159,11 @@ function Metric({
       </strong>
     </div>
   );
-  return href ? <Link to={href}>{content}</Link> : content;
+  return to ? (
+    <Link to={to} search={search}>
+      {content}
+    </Link>
+  ) : (
+    content
+  );
 }

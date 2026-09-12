@@ -10,6 +10,7 @@ import { AlbumsPage } from "@/pages/AlbumsPage";
 import { BrowsePage } from "@/pages/BrowsePage";
 import { HelpPage } from "@/pages/HelpPage";
 import { HomePage } from "@/pages/HomePage";
+import { MissingPage } from "@/pages/MissingPage";
 import { PerformerPage } from "@/pages/PerformerPage";
 import { PerformersPage } from "@/pages/PerformersPage";
 import { StudioPage } from "@/pages/StudioPage";
@@ -110,6 +111,12 @@ const studioRoute = createRoute({
   component: StudioPage,
 });
 
+const missingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/missing",
+  component: MissingPage,
+});
+
 const helpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/help",
@@ -145,6 +152,7 @@ const routeTree = rootRoute.addChildren([
   albumRoute,
   studiosRoute,
   studioRoute,
+  missingRoute,
   helpRoute,
   settingsRoute,
   accountRoute,

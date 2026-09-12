@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Clapperboard,
+  FileQuestion,
   FolderOpen,
   Home,
+  Lock,
   Images,
   Layers,
   List,
@@ -336,6 +338,26 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-border p-2">
+        {/* Only shown when there is something to act on. A permanent link to
+            an empty, password-locked page is a door to nowhere. */}
+        {health && health.videoMissing > 0 && (
+          <Link
+            to="/missing"
+            title={collapsed ? `${health.videoMissing} missing videos` : undefined}
+            className={cn(navItemClass, "mb-1")}
+            activeProps={{ className: "bg-accent text-foreground font-medium" }}
+          >
+            <FileQuestion className="size-4 shrink-0 text-amber-500" />
+            {!collapsed && (
+              <span className="min-w-0 flex-1 truncate">
+                {health.videoMissing} missing
+              </span>
+            )}
+            {!collapsed && (
+              <Lock className="size-3 shrink-0 text-muted-foreground/60" />
+            )}
+          </Link>
+        )}
         <Link
           to="/settings"
           search={{ tab: "library" }}

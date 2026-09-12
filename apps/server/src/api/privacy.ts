@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { appSettings, users } from "../db/schema.js";
 import { hashPassword, MIN_PASSWORD_LENGTH, verifyPassword } from "../auth/passwords.js";
+import { markUnlocked } from "../auth/privacyUnlock.js";
 
 const PRIVACY_KEY = "privacy";
 
@@ -127,6 +128,9 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     attempts.delete(sessionId);
+    // Remembered for a while, so endpoints that guard something destructive
+    // can ask whether this session has actually proved anything.
+    markUnlocked(sessionId);
     return { ok: true };
   });
 }
