@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { Crop, Play, Star } from "lucide-react";
+import { Crop, Star } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { MediaDetailModal } from "@/components/MediaDetailModal";
 import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { FramingEditor, type FramingValue } from "@/components/FramingEditor";
 import { fetchAlbum, saveAlbumCover } from "@/lib/albumApi";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
+import { PlaySurface } from "@/components/PlaySurface";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 const routeApi = getRouteApi("/album/$albumId");
 
@@ -16,14 +21,14 @@ export function AlbumPage() {
   const { albumId } = routeApi.useParams();
   const id = Number(albumId);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [videoOpen, setVideoOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
   const [reframing, setReframing] = useState(false);
 
   const cover = useMutation({
-    mutationFn: (patch: Parameters<typeof saveAlbumCover>[1]) => saveAlbumCover(id, patch),
+    mutationFn: (patch: Parameters<typeof saveAlbumCover>[1]) =>
+      saveAlbumCover(id, patch),
     onSuccess: () => {
       setReframing(false);
       queryClient.invalidateQueries({ queryKey: ["album", id] });
@@ -33,12 +38,13 @@ export function AlbumPage() {
     },
   });
 
-  const { data, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ["album", id],
-    queryFn: ({ pageParam }) => fetchAlbum(id, pageParam),
-    initialPageParam: 1,
-    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
-  });
+  const { data, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: ["album", id],
+      queryFn: ({ pageParam }) => fetchAlbum(id, pageParam),
+      initialPageParam: 1,
+      getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
+    });
 
   if (isError) {
     return (
@@ -66,7 +72,7 @@ export function AlbumPage() {
         if (entries[0]?.isIntersecting) loadMore();
       },
       // Start early so scrolling doesn't visibly stall at the boundary.
-      { rootMargin: "600px" }
+      { rootMargin: "600px" },
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -78,7 +84,9 @@ export function AlbumPage() {
   // image or you'd be cropping something the card never displays.
   const coverPhoto =
     (album?.coverItemId != null
-      ? data?.pages.flatMap((p) => p.photos).find((p) => p.id === album.coverItemId)
+      ? data?.pages
+          .flatMap((p) => p.photos)
+          .find((p) => p.id === album.coverItemId)
       : undefined) ?? data?.pages[0]?.photos[0];
   // Flattened across pages, so the lightbox can step through everything
   // loaded so far rather than restarting at each page boundary.
@@ -87,8 +95,18 @@ export function AlbumPage() {
   return (
     <AppShell>
       <div className="space-y-6 px-6 py-8">
+        <Breadcrumbs
+          items={[
+            { label: "Albums", to: "/albums" },
+            ...(album?.performer ? [{ label: album.performer }] : []),
+            ...(album?.studio ? [{ label: album.studio }] : []),
+            ...(album ? [{ label: album.title }] : []),
+          ]}
+        />
         <div className="space-y-2">
-          <h1 className="sensitive text-3xl font-bold tracking-tight sm:text-4xl">{album?.title ?? " "}</h1>
+          <h1 className="sensitive text-3xl font-bold tracking-tight sm:text-4xl">
+            {album?.title ?? " "}
+          </h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {album?.performer && (
               <Link
@@ -111,16 +129,18 @@ export function AlbumPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {album?.video && (
-              <button
-                type="button"
-                onClick={() => setVideoOpen(true)}
-                className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm transition-colors hover:bg-accent"
-              >
-                <Play className="size-4 fill-current" />
-                Play the video
-              </button>
+              <PlaySurface
+                items={[
+                  {
+                    ...album.video,
+                    itemType: "video",
+                    thumbnailFile: null,
+                    durationSeconds: null,
+                  },
+                ]}
+                label="Album playback"
+              />
             )}
-
             {coverPhoto && !reframing && (
               <button
                 type="button"
@@ -184,18 +204,30 @@ export function AlbumPage() {
                     loading="lazy"
                     className={cn(
                       "aspect-[3/2] w-full rounded-md object-cover ring-1 transition-all",
-                      isCover ? "ring-2 ring-white/70" : "ring-border group-hover:ring-white/40"
+                      isCover
+                        ? "ring-2 ring-white/70"
+                        : "ring-border group-hover:ring-white/40",
                     )}
                   />
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => cover.mutate({ coverItemId: isCover ? null : photo.id })}
+                  onClick={() =>
+                    cover.mutate({ coverItemId: isCover ? null : photo.id })
+                  }
                   disabled={cover.isPending}
                   aria-pressed={isCover}
-                  title={isCover ? "Cover — click to go back to automatic" : "Use as album cover"}
-                  aria-label={isCover ? "Clear the album cover" : "Use this photo as the album cover"}
+                  title={
+                    isCover
+                      ? "Cover — click to go back to automatic"
+                      : "Use as album cover"
+                  }
+                  aria-label={
+                    isCover
+                      ? "Clear the album cover"
+                      : "Use this photo as the album cover"
+                  }
                   className={cn(
                     "absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/90 focus-visible:opacity-100 disabled:opacity-50",
                     // The chosen one keeps its star: it's why this photo is on
@@ -203,10 +235,15 @@ export function AlbumPage() {
                     // that unexplained. Hover-only elsewhere, and always shown
                     // on small screens, which have no hover state at all.
                     "md:opacity-0 md:group-hover:opacity-100",
-                    isCover && "md:opacity-100"
+                    isCover && "md:opacity-100",
                   )}
                 >
-                  <Star className={cn("size-4", isCover && "fill-yellow-400 text-yellow-400")} />
+                  <Star
+                    className={cn(
+                      "size-4",
+                      isCover && "fill-yellow-400 text-yellow-400",
+                    )}
+                  />
                 </button>
               </div>
             );
@@ -234,10 +271,6 @@ export function AlbumPage() {
           onClose={() => setOpenIndex(null)}
           onReachEnd={loadMore}
         />
-      )}
-
-      {videoOpen && album?.video && (
-        <MediaDetailModal itemId={album.video.id} autoPlay onClose={() => setVideoOpen(false)} />
       )}
     </AppShell>
   );

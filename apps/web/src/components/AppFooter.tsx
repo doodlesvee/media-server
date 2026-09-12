@@ -1,44 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 import { Clapperboard } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-
-type Stats = {
-  videos: number;
-  photos: number;
-  folders: number;
-  /** Bytes on disk, across every file the library can currently see. */
-  totalBytes: number;
-  tags: number;
-  collections: number;
-};
-
-/**
- * Binary units, because that's what a filesystem reports — a 2TB drive shows
- * as 1.8TB in Finder, and a footer that disagreed with the OS would just be
- * confusing.
- */
-function formatSize(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-  // One decimal once past megabytes; a fractional byte count is noise.
-  return `${value.toFixed(exponent >= 2 ? 1 : 0)} ${units[exponent]}`;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json();
-}
+import { formatBytes, useLibraryStats } from "@/lib/statsApi";
 
 export function AppFooter() {
-  // Same query key the sidebar used to use, so React Query serves this from
-  // cache rather than issuing a second request for the same data.
-  const { data: stats } = useQuery({
-    queryKey: ["stats"],
-    queryFn: () => fetchJson<Stats>("/api/stats"),
-  });
+  // Shares one cache entry with the sidebar, notification centre and settings
+  // panel, so this is served from cache rather than a second request.
+  const { data: stats } = useLibraryStats();
 
   return (
     <footer className="mt-auto border-t border-border px-6 py-5 text-xs text-muted-foreground">
@@ -84,7 +51,7 @@ export function AppFooter() {
             {stats.totalBytes > 0 && (
               <>
                 <span className="text-muted-foreground/40">·</span>
-                <span className="text-foreground/80">{formatSize(stats.totalBytes)}</span>
+                <span className="text-foreground/80">{formatBytes(stats.totalBytes)}</span>
               </>
             )}
           </div>

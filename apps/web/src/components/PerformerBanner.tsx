@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Move, X } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
 import { saveBannerPosition } from "@/lib/performerApi";
 import { useAppearance } from "@/lib/appearance";
 import { framingAfterDrag } from "@/lib/reposition";
-import { cn } from "@/lib/utils";
 
 /**
  * Banner image with drag-to-reposition.
@@ -22,14 +21,12 @@ export function PerformerBanner({
   performerId,
   src,
   positionY,
-  canReposition,
   editRequest = 0,
   children,
 }: {
   performerId: number;
   src: string | null;
   positionY: number;
-  canReposition: boolean;
   /**
    * Bump to open repositioning from outside — the upload control lives in
    * `children`, so it can't reach this component's own editing state.
@@ -107,25 +104,32 @@ export function PerformerBanner({
     <div
       ref={containerRef}
       style={{ height: `${bannerHeight}vh` }}
-      className="relative w-full overflow-hidden"
+      className="group relative w-full overflow-hidden"
     >
       {src ? (
-        <img
-          ref={imageRef}
-          src={src}
-          alt=""
-          draggable={false}
-          onPointerDown={(event) => {
-            if (!editing) return;
-            event.preventDefault();
-            drag.current = { startY: event.clientY, startPosition: draft };
-          }}
-          style={{ objectPosition: `50% ${draft}%` }}
-          className={cn(
-            "h-full w-full select-none object-cover",
-            editing && "cursor-grab active:cursor-grabbing"
-          )}
-        />
+        editing ? (
+          <img
+            ref={imageRef}
+            src={src}
+            draggable={false}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              drag.current = { startY: event.clientY, startPosition: draft };
+            }}
+            style={{ objectPosition: `50% ${draft}%` }}
+            className="h-full w-full select-none object-cover cursor-grab active:cursor-grabbing"
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            className="performer-banner-fixed absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundAttachment: "fixed",
+              backgroundImage: `url("${src}")`,
+              backgroundPosition: `50% ${draft}%`,
+            }}
+          />
+        )
       ) : (
         <div className="h-full w-full bg-gradient-to-br from-secondary to-background" />
       )}
@@ -146,19 +150,22 @@ export function PerformerBanner({
       )}
 
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
-        {canReposition && !editing && (
+        {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/80"
+            aria-label="Edit banner"
+            title="Edit banner"
+            className="flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 ring-1 ring-white/20 backdrop-blur-sm transition-opacity hover:bg-black/80 group-hover:opacity-100 group-focus-within:opacity-100"
           >
-            <Move className="size-3.5" />
-            Reposition
+            <Pencil className="size-3.5" />
+            Edit
           </button>
         )}
 
         {editing ? (
           <>
+            {children}
             <button
               type="button"
               onClick={() => save.mutate(Math.round(draft))}
@@ -180,9 +187,7 @@ export function PerformerBanner({
               <X className="size-3.5" />
             </button>
           </>
-        ) : (
-          children
-        )}
+        ) : null}
       </div>
     </div>
   );

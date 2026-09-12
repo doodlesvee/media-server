@@ -19,7 +19,7 @@ export function PerformerContinueWatching({
 }) {
   const enabled = performer.watch.inProgress > 0;
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["performer-in-progress", performer.id],
     queryFn: async (): Promise<{ items: MediaCardItem[] }> => {
       const params = new URLSearchParams({
@@ -39,6 +39,7 @@ export function PerformerContinueWatching({
     <MediaRow
       title="Continue watching"
       items={data?.items ?? []}
+      loading={isLoading}
       onSelectItem={(id) => onSelect(id, false)}
       onPlayItem={(id) => onSelect(id, true)}
       onOpenFolder={() => {}}

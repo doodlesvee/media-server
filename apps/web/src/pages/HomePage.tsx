@@ -40,7 +40,7 @@ function TagRow({
   onSelectItem: (id: number) => void;
   onPlayItem: (id: number) => void;
 }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["media-items", "tag-row", tag.name],
     queryFn: () =>
       fetchJson<{ items: MediaCardItem[] }>(`/api/media-items?tag=${encodeURIComponent(tag.name)}`),
@@ -50,6 +50,7 @@ function TagRow({
     <MediaRow
       title={tag.name}
       items={withoutFolders(data?.items ?? [])}
+      loading={isLoading}
       onSelectItem={onSelectItem}
       onPlayItem={onPlayItem}
       onOpenFolder={noopOpenFolder}
@@ -66,7 +67,7 @@ function CollectionRow({
   onSelectItem: (id: number) => void;
   onPlayItem: (id: number) => void;
 }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["collection-items", "row", collection.id],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>(`/api/collections/${collection.id}/items`),
   });
@@ -75,6 +76,7 @@ function CollectionRow({
     <MediaRow
       title={collection.name}
       items={withoutFolders(data?.items ?? [])}
+      loading={isLoading}
       onSelectItem={onSelectItem}
       onPlayItem={onPlayItem}
       onOpenFolder={noopOpenFolder}
@@ -85,7 +87,7 @@ function CollectionRow({
 export function HomePage() {
   const [open, setOpen] = useState<{ id: number; autoPlay: boolean } | null>(null);
 
-  const { data: recent } = useQuery({
+  const { data: recent, isLoading: recentLoading } = useQuery({
     queryKey: ["media-items", "recent"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/media-items"),
   });
@@ -93,11 +95,11 @@ export function HomePage() {
     queryKey: ["hero-items"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/hero-items"),
   });
-  const { data: favorites } = useQuery({
+  const { data: favorites, isLoading: favoritesLoading } = useQuery({
     queryKey: ["media-items", "favorites"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/media-items?favorite=true"),
   });
-  const { data: continueWatching } = useQuery({
+  const { data: continueWatching, isLoading: continueLoading } = useQuery({
     queryKey: ["continue-watching"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/continue-watching"),
   });
@@ -148,6 +150,7 @@ export function HomePage() {
                     title="Continue Watching"
                     action={<ClearContinueWatching />}
                     items={continueWatching?.items ?? []}
+                    loading={continueLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}
                     onOpenFolder={noopOpenFolder}
@@ -159,6 +162,7 @@ export function HomePage() {
                     key={key}
                     title="Favourites"
                     items={withoutFolders(favorites?.items ?? [])}
+                    loading={favoritesLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}
                     onOpenFolder={noopOpenFolder}
@@ -174,6 +178,7 @@ export function HomePage() {
                     key={key}
                     title="Recently Added"
                     items={recentItems}
+                    loading={recentLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}
                     onOpenFolder={noopOpenFolder}

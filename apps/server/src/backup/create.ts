@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { ITEM_THUMBNAILS_DIR, PERFORMER_IMAGES_DIR } from "../media/cache.js";
+import { logActivity } from "../activity/log.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -57,8 +58,12 @@ export async function listBackups(): Promise<BackupFile[]> {
         .filter((name) => BACKUP_NAME_PATTERN.test(name))
         .map(async (name) => {
           const info = await stat(path.join(BACKUP_DIR, name));
-          return { name, sizeBytes: info.size, createdAt: info.mtime.toISOString() };
-        })
+          return {
+            name,
+            sizeBytes: info.size,
+            createdAt: info.mtime.toISOString(),
+          };
+        }),
     );
     // Newest first — what the UI wants, and what pruning needs.
     return files.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -109,7 +114,7 @@ export async function createBackup(): Promise<BackupFile> {
         "--file",
         path.join(workDir, "db.sql"),
       ],
-      { timeout: DUMP_TIMEOUT_MS }
+      { timeout: DUMP_TIMEOUT_MS },
     );
 
     // Uploads are copied *after* the dump, deliberately. An upload writes its
@@ -126,22 +131,36 @@ export async function createBackup(): Promise<BackupFile> {
         // The trailing /. copies contents rather than the directory itself,
         // and `|| true` keeps an empty or missing source from failing.
         `cp -R ${JSON.stringify(upload.dir)}/. ${JSON.stringify(
-          path.join(uploadsDir, upload.name)
+          path.join(uploadsDir, upload.name),
         )}/ 2>/dev/null || true`,
       ]);
     }
 
-    await execFileAsync("tar", ["-czf", partialPath, "-C", workDir, "db.sql", "uploads"], {
-      timeout: DUMP_TIMEOUT_MS,
-    });
+    await execFileAsync(
+      "tar",
+      ["-czf", partialPath, "-C", workDir, "db.sql", "uploads"],
+      {
+        timeout: DUMP_TIMEOUT_MS,
+      },
+    );
     await rename(partialPath, finalPath);
 
     await pruneOldBackups();
 
     const info = await stat(finalPath);
-    return { name, sizeBytes: info.size, createdAt: info.mtime.toISOString() };
+    const backup = {
+      name,
+      sizeBytes: info.size,
+      createdAt: info.mtime.toISOString(),
+    };
+    await logActivity("backup", "Backup created", {
+      name,
+      sizeBytes: info.size,
+    });
+    return backup;
   } catch (err) {
     await rm(partialPath, { force: true });
+    await logActivity("backup", "Backup failed");
     throw err;
   } finally {
     await rm(workDir, { recursive: true, force: true });

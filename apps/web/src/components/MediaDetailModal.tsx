@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronRight,
   Eye,
   EyeOff,
   Gauge,
+  GripHorizontal,
   Heart,
   Maximize,
+  Maximize2,
+  MonitorPlay,
   Move,
   Pencil,
   Play,
-  Plus,
+  ListPlus,
   RotateCcw,
   RotateCw,
   Volume2,
@@ -32,7 +36,12 @@ import { FramingEditor, type FramingValue } from "./FramingEditor";
 import { useAppearance } from "@/lib/appearance";
 import { useAccentColor } from "@/lib/dominantColor";
 import { fetchCategories } from "@/lib/categoryApi";
-import { fetchItem, savePlaybackPosition, setWatched, updateItem } from "@/lib/mediaItemApi";
+import {
+  fetchItem,
+  savePlaybackPosition,
+  setWatched,
+  updateItem,
+} from "@/lib/mediaItemApi";
 import {
   PLAYBACK_RATES,
   readRate,
@@ -41,14 +50,22 @@ import {
   writeVolume,
 } from "@/lib/playerPrefs";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
-import { addToMyList } from "@/lib/myList";
 import { cn } from "@/lib/utils";
+import { QueuePanel } from "./QueuePanel";
+import { useQueue } from "@/lib/queue";
+import { SeriesAssignment } from "./SeriesAssignment";
 
 // Only offer "Continue Watching" for meaningful progress: not basically the
 // start (nothing to resume) or basically the end (same as starting over).
 const MIN_RESUMABLE_SECONDS = 15;
 
-function FieldLabel({ children, accent }: { children: React.ReactNode; accent?: string | null }) {
+function FieldLabel({
+  children,
+  accent,
+}: {
+  children: React.ReactNode;
+  accent?: string | null;
+}) {
   return (
     <span
       className="block text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors duration-500"
@@ -75,7 +92,9 @@ const SKIP_SECONDS = 10;
  */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.matches("input, textarea, select, [contenteditable], [contenteditable=true]");
+  return target.matches(
+    "input, textarea, select, [contenteditable], [contenteditable=true]",
+  );
 }
 
 function formatDuration(seconds: number | null): string | null {
@@ -88,11 +107,17 @@ function formatDuration(seconds: number | null): string | null {
 export function MediaDetailModal({
   itemId,
   autoPlay = false,
+  resume = false,
   onClose,
+  mini = false,
+  onExpand,
 }: {
   itemId: number;
   autoPlay?: boolean;
+  resume?: boolean;
   onClose: () => void;
+  mini?: boolean;
+  onExpand?: () => void;
 }) {
   // Clicking a "More Like This" card swaps the modal's content in place
   // rather than stacking modals or bouncing back to the grid.
@@ -113,9 +138,14 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
-  const { discreet } = useAppearance();
+  const { discreet, modalPreview } = useAppearance();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
-  const [addedToList, setAddedToList] = useState(false);
+  // Opened, but holding the still with nothing running. Only ever true before
+  // real playback starts: once you press Play the mode changes and neither
+  // discreet mode nor the preview preference gets a say in it.
+  const stillOnly = mode === "preview" && (discreet || !modalPreview);
+  const [cinema, setCinema] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
   const [seeked, setSeeked] = useState(false);
   const queryClient = useQueryClient();
   const [muted, setMuted] = useState(true);
@@ -129,6 +159,34 @@ export function MediaDetailModal({
   // default filled the panel with empty "Add tag…" style inputs, which read
   // as unfinished rather than as a record of the video.
   const [editing, setEditing] = useState(false);
+  const { add, addNext, items: queueItems, remove } = useQueue();
+  const autoPlayNext = useRef(false);
+  const [miniPosition, setMiniPosition] = useState(() => {
+    const width = 384;
+    return {
+      left: Math.max(20, window.innerWidth - width - 20),
+      top: Math.max(20, window.innerHeight - width * (9 / 16) - 20),
+    };
+  });
+  const [miniWidth, setMiniWidth] = useState(384);
+  const dragStart = useRef<{
+    pointerX: number;
+    pointerY: number;
+    left: number;
+    top: number;
+  } | null>(null);
+  const resizeStart = useRef<{
+    pointerX: number;
+    width: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (cinema && !mini) root.setAttribute("data-cinema", "true");
+    else root.removeAttribute("data-cinema");
+    return () => root.removeAttribute("data-cinema");
+  }, [cinema, mini]);
 
   const { data: categoryData } = useQuery({
     queryKey: ["categories"],
@@ -189,12 +247,39 @@ export function MediaDetailModal({
   const startPosition = useRef(0);
   const lastSavedAt = useRef(0);
   const autoPlayTriggered = useRef(false);
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showPlayerControls, setShowPlayerControls] = useState(true);
+
+  function revealPlayerControls() {
+    setShowPlayerControls(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    if (mode === "playing") {
+      controlsTimer.current = setTimeout(
+        () => setShowPlayerControls(false),
+        2200,
+      );
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode === "playing") revealPlayerControls();
+    else setShowPlayerControls(true);
+  }, [mode]);
 
   function skip(seconds: number) {
     const video = videoRef.current;
     if (!video) return;
     const limit = Number.isFinite(video.duration) ? video.duration : Infinity;
-    video.currentTime = Math.min(limit, Math.max(0, video.currentTime + seconds));
+    video.currentTime = Math.min(
+      limit,
+      Math.max(0, video.currentTime + seconds),
+    );
   }
 
   function togglePlay() {
@@ -228,7 +313,8 @@ export function MediaDetailModal({
   function toggleFullscreen() {
     const video = videoRef.current;
     if (!video) return;
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    if (document.fullscreenElement)
+      void document.exitFullscreen().catch(() => {});
     else void video.requestFullscreen?.().catch(() => {});
   }
 
@@ -237,6 +323,10 @@ export function MediaDetailModal({
       // Escape closes even from inside an input — it's the way out of a
       // field you opened by accident.
       if (e.key === "Escape") {
+        if (cinema) {
+          setCinema(false);
+          return;
+        }
         onClose();
         return;
       }
@@ -248,7 +338,13 @@ export function MediaDetailModal({
       // The browser's own controls already handle arrows and space once the
       // video itself has focus. Handling them again here would seek twice
       // per press.
-      if (e.target === videoRef.current && e.key !== "f" && e.key !== "m") return;
+      if (
+        e.target === videoRef.current &&
+        e.key !== "f" &&
+        e.key !== "m" &&
+        e.key !== "c"
+      )
+        return;
 
       switch (e.key) {
         case " ":
@@ -281,13 +377,16 @@ export function MediaDetailModal({
         case "m":
           toggleMuted();
           break;
+        case "c":
+          if (!mini) setCinema((active) => !active);
+          break;
         default:
           break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, mode]);
+  }, [cinema, onClose, mode]);
 
   function startPlaying(positionSeconds: number) {
     startPosition.current = positionSeconds;
@@ -306,7 +405,11 @@ export function MediaDetailModal({
   useEffect(() => {
     if (autoPlay && item?.itemType === "video" && !autoPlayTriggered.current) {
       autoPlayTriggered.current = true;
-      startPlaying(0);
+      startPlaying(
+        resume && item.lastPositionSeconds > MIN_RESUMABLE_SECONDS
+          ? item.lastPositionSeconds
+          : 0,
+      );
     }
   }, [autoPlay, item]);
 
@@ -348,6 +451,7 @@ export function MediaDetailModal({
     // muted background preview would clobber the actual resume position
     // with wherever the preview happens to be.
     if (!video || !item || mode !== "playing") return;
+    setCurrentTime(video.currentTime);
 
     const now = Date.now();
     if (now - lastSavedAt.current > SAVE_INTERVAL_MS) {
@@ -368,14 +472,27 @@ export function MediaDetailModal({
     // Continue Watching — which a bare position reset never did, since that
     // row only ever filtered on having *some* progress.
     toggleWatched.mutate(true);
+    const next = queueItems.find((queueItem) => queueItem.id !== item.id);
+    if (next) {
+      remove(item.id);
+      remove(next.id);
+      autoPlayNext.current = true;
+      openRelated(next.id);
+    } else {
+      remove(item.id);
+    }
   }
 
-  async function handleAddToList() {
-    if (!item) return;
-    await addToMyList(item.id);
-    setAddedToList(true);
-    void queryClient.invalidateQueries({ queryKey: ["collections"] });
-    void queryClient.invalidateQueries({ queryKey: ["collection-items"] });
+  function queueCurrent(next: boolean) {
+    if (!item || item.itemType !== "video") return;
+    const queueItem = {
+      id: item.id,
+      title: item.title,
+      thumbnailFile: item.thumbnailFile,
+      durationSeconds: item.durationSeconds,
+    };
+    if (next) addNext(queueItem);
+    else add(queueItem);
   }
 
   function toggleMuted() {
@@ -383,6 +500,99 @@ export function MediaDetailModal({
     if (!video) return;
     video.muted = !video.muted;
     setMuted(video.muted);
+  }
+
+  function playNextQueued() {
+    if (!item) return;
+    const next = queueItems.find((queueItem) => queueItem.id !== item.id);
+    if (!next) return;
+    remove(item.id);
+    remove(next.id);
+    autoPlayNext.current = true;
+    openRelated(next.id);
+  }
+
+  const nextQueuedItem = item
+    ? queueItems.find((queueItem) => queueItem.id !== item.id)
+    : undefined;
+  const showUpNext =
+    mode === "playing" &&
+    !!nextQueuedItem &&
+    item?.durationSeconds != null &&
+    item.durationSeconds - currentTime <= 30;
+
+  function startMiniDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (!mini) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStart.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      left: miniPosition.left,
+      top: miniPosition.top,
+    };
+  }
+
+  function moveMini(event: React.PointerEvent<HTMLDivElement>) {
+    const start = dragStart.current;
+    if (!start) return;
+    const panelHeight = miniWidth * (9 / 16);
+    const maxLeft = Math.max(20, window.innerWidth - miniWidth - 20);
+    const maxTop = Math.max(20, window.innerHeight - panelHeight - 20);
+    setMiniPosition({
+      left: Math.min(
+        maxLeft,
+        Math.max(20, start.left + (event.clientX - start.pointerX)),
+      ),
+      top: Math.min(
+        maxTop,
+        Math.max(20, start.top + (event.clientY - start.pointerY)),
+      ),
+    });
+  }
+
+  function stopMiniDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragStart.current)
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    dragStart.current = null;
+  }
+
+  function startMiniResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (!mini) return;
+    event.preventDefault();
+    event.stopPropagation();
+    revealPlayerControls();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeStart.current = {
+      pointerX: event.clientX,
+      width: miniWidth,
+      left: miniPosition.left,
+    };
+  }
+
+  function moveMiniResize(event: React.PointerEvent<HTMLDivElement>) {
+    const start = resizeStart.current;
+    if (!start) return;
+    const nextWidth = Math.min(
+      640,
+      Math.max(240, start.width + (event.clientX - start.pointerX)),
+    );
+    setMiniWidth(nextWidth);
+    setMiniPosition((current) => ({ ...current, left: start.left }));
+  }
+
+  function stopMiniResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (resizeStart.current)
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    resizeStart.current = null;
+  }
+
+  function scheduleHideControls() {
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(
+      () => setShowPlayerControls(false),
+      1200,
+    );
   }
 
   function openRelated(id: number) {
@@ -393,11 +603,16 @@ export function MediaDetailModal({
     setEditing(false);
     setMuted(true);
     setReframing(false);
-    setAddedToList(false);
     setSeeked(false);
     lastSavedAt.current = 0;
     scrollRef.current?.scrollTo({ top: 0 });
   }
+
+  useEffect(() => {
+    if (!item || item.id !== viewingId || !autoPlayNext.current) return;
+    autoPlayNext.current = false;
+    startPlaying(0);
+  }, [item, viewingId]);
 
   const canResume =
     !!item &&
@@ -406,424 +621,623 @@ export function MediaDetailModal({
       item.lastPositionSeconds < item.durationSeconds - MIN_RESUMABLE_SECONDS);
 
   return (
-    <Portal>
+    <Portal lockPageScroll={!mini}>
       <div
         ref={scrollRef}
         // overscroll-contain stops the scroll continuing into the page
         // behind once this container hits its end.
-        className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/80 p-4 backdrop-blur-sm sm:p-8"
+        className={cn(
+          "z-50",
+          mini
+            ? "pointer-events-none fixed inset-0 overflow-visible bg-transparent"
+            : "fixed inset-0 overflow-y-auto overscroll-contain bg-black/80 p-4 backdrop-blur-sm sm:p-8",
+        )}
         onClick={onClose}
       >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        className="relative mx-auto w-full max-w-5xl animate-fade-up overflow-hidden rounded-xl bg-card shadow-2xl focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Backdrop / player area */}
-        <div className="relative aspect-video w-full overflow-hidden bg-black">
-          {item?.itemType === "video" && (
-            <img
-              src={thumbnailUrl(item)}
-              alt=""
-              // Fades out once real playback is actually on screen. It fills
-              // the frame (object-cover) while the video letterboxes inside it
-              // (object-contain), so for anything not exactly 16:9 the poster
-              // stayed visible down the sides — a bright one reads as a white
-              // border rather than as bars. Kept until the seek lands, which
-              // is what stops the frame flashing black while the stream
-              // buffers.
-              style={{
-                ...framingStyle(item),
-                opacity: mode === "playing" && seeked ? 0 : 1,
-                transition: "opacity 300ms ease-out",
-              }}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          className={cn(
+            "relative overflow-hidden bg-card shadow-2xl focus:outline-none",
+            mini
+              ? "pointer-events-auto fixed z-50 w-[min(24rem,calc(100vw-2rem))] rounded-lg ring-1 ring-border"
+              : cinema
+                ? "fixed inset-0 z-50 bg-black"
+                : "mx-auto w-full max-w-5xl animate-fade-up rounded-xl",
           )}
-          {item?.itemType === "video" ? (
-            // eslint-disable-next-line jsx-a11y/media-has-caption -- no sidecar subtitles yet
-            <video
-              ref={videoRef}
-              // Preview mode plays the pre-cut clip (instant, already at the
-              // poster frame); real playback streams the full file.
-              key={mode}
-              // Discreet mode opens on the poster with nothing running.
-              // Blurred motion still reads as motion across a room, and this
-              // clip used to start the instant an item was opened.
-              src={
-                mode === "playing"
-                  ? `/api/stream/${item.id}`
-                  : discreet
-                    ? undefined
-                    : `/api/media-items/${item.id}/preview`
-              }
-              poster={thumbnailUrl(item)}
-              onLoadedMetadata={handleLoadedMetadata}
-              onSeeked={() => setSeeked(true)}
-              onTimeUpdate={handleTimeUpdate}
-              onPause={handlePause}
-              onEnded={handleEnded}
-              onVolumeChange={handleVolumeChange}
-              muted={mode === "preview"}
-              autoPlay={mode === "playing" || !discreet}
-              loop={mode === "preview"}
-              playsInline
-              controls={mode === "playing"}
-              style={{
-                opacity: seeked || (discreet && mode === "preview") ? 1 : 0,
-                transition: "opacity 300ms ease-out",
-              }}
+          style={
+            mini
+              ? {
+                  left: miniPosition.left,
+                  top: miniPosition.top,
+                  width: miniWidth,
+                }
+              : undefined
+          }
+          onMouseEnter={mini ? revealPlayerControls : undefined}
+          onMouseMove={mini ? revealPlayerControls : undefined}
+          onMouseLeave={mini ? scheduleHideControls : undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {mini && item && (
+            <div
+              role="slider"
+              tabIndex={0}
+              aria-label="Move mini-player"
+              title="Drag to move mini-player"
+              onPointerDown={startMiniDrag}
+              onPointerMove={moveMini}
+              onPointerUp={stopMiniDrag}
+              onPointerCancel={stopMiniDrag}
               className={cn(
-                "absolute inset-0 h-full w-full",
-                // The preview is deliberately cropped to fill the frame, but
-                // cropping actual playback cuts the sides off anything that
-                // isn't 16:9 — letterbox it instead.
-                mode === "playing" ? "object-contain" : "object-cover",
-                // Discreet mode blurs every image and clip in the app, but
-                // blurring something you deliberately pressed play on would
-                // just be broken.
-                mode === "playing" && "discreet-exempt"
+                "absolute inset-x-0 top-0 z-20 flex h-4 cursor-grab items-center justify-center text-white/70 transition-opacity active:cursor-grabbing",
+                showPlayerControls
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0",
               )}
-            />
-          ) : item ? (
-            <img
-              src={`/api/stream/${item.id}`}
-              alt={item.title}
-              className="h-full w-full object-contain"
-            />
-          ) : null}
-
-          {/* Gradient + overlaid title/actions, hidden once real playback
-              starts so they don't sit on top of the video controls. */}
-          {mode === "preview" && (
-            <>
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
-
-              <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-4 p-6">
-                <h2 className="sensitive max-w-2xl text-2xl font-bold tracking-tight drop-shadow-md sm:text-3xl">
-                  {item?.title ?? "Loading…"}
-                </h2>
-
-                {item?.itemType === "video" && (
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => startPlaying(0)}
-                      className="flex items-center gap-2 rounded-md bg-white px-5 py-2 font-semibold text-black transition-transform hover:scale-[1.03]"
-                    >
-                      <RotateCcw className="size-5" />
-                      Start Over
-                    </button>
-                    {canResume && (
-                      <button
-                        type="button"
-                        onClick={() => startPlaying(item.lastPositionSeconds)}
-                        className="flex items-center gap-2 rounded-md bg-white/20 px-5 py-2 font-semibold backdrop-blur-sm transition-colors hover:bg-white/30"
-                      >
-                        <Play className="size-5 fill-current" />
-                        Continue Watching
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => toggleFavorite.mutate(!item.isFavorite)}
-                      disabled={toggleFavorite.isPending}
-                      aria-pressed={item.isFavorite}
-                      aria-label={item.isFavorite ? "Remove from favourites" : "Mark as favourite"}
-                      title={item.isFavorite ? "Favourited" : "Mark as favourite"}
-                      className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
-                    >
-                      <Heart
-                        className={cn(
-                          "size-5 transition-colors",
-                          item.isFavorite && "fill-red-500 text-red-500"
-                        )}
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleWatched.mutate(!item.watched)}
-                      disabled={toggleWatched.isPending}
-                      aria-pressed={item.watched}
-                      aria-label={item.watched ? "Mark as unwatched" : "Mark as watched"}
-                      title={item.watched ? "Watched — click to unmark" : "Mark as watched"}
-                      className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
-                    >
-                      {item.watched ? (
-                        <Eye className="size-5 text-emerald-400" />
-                      ) : (
-                        <EyeOff className="size-5" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddToList}
-                      aria-label="Add to My List"
-                      className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
-                    >
-                      {addedToList ? <Check className="size-5" /> : <Plus className="size-5" />}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {item?.itemType === "video" && (
-                <button
-                  type="button"
-                  onClick={toggleMuted}
-                  aria-label={muted ? "Unmute" : "Mute"}
-                  className="absolute bottom-6 right-6 flex size-10 items-center justify-center rounded-full border border-white/40 bg-black/40 backdrop-blur-sm hover:bg-black/60"
-                >
-                  {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-                </button>
-              )}
-            </>
-          )}
-
-          {/* Sits above the native control bar rather than replacing it —
-              the browser's scrubber and fullscreen already work, these are
-              only the pieces it doesn't offer. */}
-          {mode === "playing" && item?.itemType === "video" && (
-            <div className="absolute left-4 top-4 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => skip(-SKIP_SECONDS)}
-                aria-label={`Back ${SKIP_SECONDS} seconds`}
-                title={`Back ${SKIP_SECONDS}s (←)`}
-                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
-              >
-                <RotateCcw className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => skip(SKIP_SECONDS)}
-                aria-label={`Forward ${SKIP_SECONDS} seconds`}
-                title={`Forward ${SKIP_SECONDS}s (→)`}
-                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
-              >
-                <RotateCw className="size-4" />
-              </button>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowRates((v) => !v)}
-                  aria-label="Playback speed"
-                  aria-expanded={showRates}
-                  title="Playback speed"
-                  className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-medium backdrop-blur-sm transition-colors hover:bg-black/80"
-                >
-                  <Gauge className="size-4" />
-                  {rate}×
-                </button>
-                {showRates && (
-                  <div className="absolute left-0 top-11 z-10 flex flex-col overflow-hidden rounded-md bg-black/90 py-1 backdrop-blur-sm">
-                    {PLAYBACK_RATES.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => applyRate(option)}
-                        className={cn(
-                          "px-4 py-1.5 text-left text-xs transition-colors hover:bg-white/15",
-                          option === rate && "font-semibold text-white"
-                        )}
-                      >
-                        {option}×
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                aria-label="Fullscreen"
-                title="Fullscreen (f)"
-                className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
-              >
-                <Maximize className="size-4" />
-              </button>
+            >
+              <GripHorizontal className="size-5 rounded-full bg-black/45 px-0.5" />
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+          {mini && (
+            <div
+              aria-label="Resize mini-player"
+              title="Resize mini-player"
+              onPointerDown={startMiniResize}
+              onPointerMove={moveMiniResize}
+              onPointerUp={stopMiniResize}
+              onPointerCancel={stopMiniResize}
+              className={cn(
+                "absolute bottom-0 right-0 z-30 size-8 touch-none cursor-nwse-resize transition-opacity",
+                showPlayerControls
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0",
+              )}
+            />
+          )}
+          {/* Backdrop / player area */}
+          <div
+            className={cn(
+              "relative w-full overflow-hidden bg-black",
+              cinema ? "h-screen" : "aspect-video",
+            )}
+            onMouseMove={revealPlayerControls}
+            onTouchStart={revealPlayerControls}
           >
-            <X className="size-5" />
-          </button>
-        </div>
-
-        {/* Details */}
-        {item && (
-          <div className="grid gap-6 p-6 sm:grid-cols-[1.6fr_1fr]">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span>{new Date(item.createdAt).getFullYear()}</span>
-                {item.durationSeconds !== null && (
-                  <>
-                    <span>·</span>
-                    <span>{formatDuration(item.durationSeconds)}</span>
-                  </>
+            {item?.itemType === "video" && (
+              <img
+                src={thumbnailUrl(item)}
+                alt=""
+                // Fades out once real playback is actually on screen. It fills
+                // the frame (object-cover) while the video letterboxes inside it
+                // (object-contain), so for anything not exactly 16:9 the poster
+                // stayed visible down the sides — a bright one reads as a white
+                // border rather than as bars. Kept until the seek lands, which
+                // is what stops the frame flashing black while the stream
+                // buffers.
+                style={{
+                  ...framingStyle(item),
+                  opacity: mode === "playing" && seeked ? 0 : 1,
+                  transition: "opacity 300ms ease-out",
+                }}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )}
+            {item?.itemType === "video" ? (
+              // eslint-disable-next-line jsx-a11y/media-has-caption -- no sidecar subtitles yet
+              <video
+                ref={videoRef}
+                // Preview mode plays the pre-cut clip (instant, already at the
+                // poster frame); real playback streams the full file.
+                key={mode}
+                // With no clip to run, the element is left holding its poster.
+                // Two reasons to end up here: discreet mode, where blurred
+                // motion still reads as motion across a room, and the
+                // appearance panel's "Play preview when opened" turned off.
+                src={
+                  mode === "playing"
+                    ? `/api/stream/${item.id}`
+                    : stillOnly
+                      ? undefined
+                      : `/api/media-items/${item.id}/preview`
+                }
+                poster={thumbnailUrl(item)}
+                onLoadedMetadata={handleLoadedMetadata}
+                onSeeked={() => setSeeked(true)}
+                onTimeUpdate={handleTimeUpdate}
+                onPause={handlePause}
+                onEnded={handleEnded}
+                onVolumeChange={handleVolumeChange}
+                muted={mode === "preview"}
+                autoPlay={mode === "playing" || !stillOnly}
+                loop={mode === "preview"}
+                playsInline
+                controls={mode === "playing"}
+                controlsList={mini ? "nofullscreen" : undefined}
+                style={{
+                  // Nothing will ever seek when there is no clip loaded, so
+                  // the still has to be shown outright or the fade-in would
+                  // leave the frame blank.
+                  opacity: seeked || stillOnly ? 1 : 0,
+                  transition: "opacity 300ms ease-out",
+                }}
+                className={cn(
+                  "absolute inset-0 h-full w-full",
+                  // The preview is deliberately cropped to fill the frame, but
+                  // cropping actual playback cuts the sides off anything that
+                  // isn't 16:9 — letterbox it instead.
+                  mode === "playing" ? "object-contain" : "object-cover",
+                  // Discreet mode blurs every image and clip in the app, but
+                  // blurring something you deliberately pressed play on would
+                  // just be broken.
+                  mode === "playing" && "discreet-exempt",
                 )}
-                <button
-                  type="button"
-                  onClick={() => setEditing((e) => !e)}
-                  aria-pressed={editing}
-                  aria-label={editing ? "Finish editing details" : "Edit details"}
-                  title={editing ? "Done editing" : "Edit details"}
-                  className={cn(
-                    "ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-                    editing
-                      ? "bg-white text-black hover:bg-white/90"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-                  {editing ? "Done" : "Edit"}
-                </button>
-              </div>
+              />
+            ) : item ? (
+              <img
+                src={`/api/stream/${item.id}`}
+                alt={item.title}
+                className="h-full w-full object-contain"
+              />
+            ) : null}
 
-              {editing ? (
-                <>
-                  <EditableTitle
-                    itemId={item.id}
-                    title={item.title}
-                    className="cursor-text text-lg font-bold hover:underline"
-                  />
-                  <DescriptionEditor itemId={item.id} description={item.description} />
-                </>
-              ) : (
-                <>
-                  <h2 className="text-lg font-bold">{item.title}</h2>
-                  {item.description && (
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {item.description}
-                    </p>
-                  )}
-                </>
-              )}
-
-              <div className="space-y-1.5 pt-1">
-                <FieldLabel accent={accent}>Performers</FieldLabel>
-                <PerformerEditor
-                  itemId={item.id}
-                  performers={item.performers}
-                  source={item.performersSource}
-                  readOnly={!editing}
+            {showUpNext && nextQueuedItem && (
+              <div className="absolute bottom-14 right-4 z-20 flex w-[min(20rem,calc(100%-2rem))] items-center gap-3 rounded-lg bg-black/85 p-2.5 text-white shadow-xl ring-1 ring-white/15 backdrop-blur-md">
+                <img
+                  src={thumbnailUrl(nextQueuedItem)}
+                  alt=""
+                  className="size-16 shrink-0 rounded object-cover"
                 />
-              </div>
-
-              {item.playbackWarning && (
-                <p className="rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-500">
-                  {item.playbackWarning}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <FieldLabel accent={accent}>Category</FieldLabel>
-                {editing ? (
-                  <select
-                    value={item.kind}
-                    onChange={(e) => updateKind.mutate(e.target.value)}
-                    disabled={updateKind.isPending}
-                    className="w-full rounded-md border border-border bg-secondary/60 px-2 py-1.5 text-sm outline-none focus:border-ring/60 disabled:opacity-50"
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+                    Up next
+                  </p>
+                  <p className="mt-1 truncate text-sm font-medium">
+                    {nextQueuedItem.title}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={playNextQueued}
+                    className="mt-2 flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white"
                   >
-                    {categories.map((category) => (
-                      <option key={category.slug} value={category.slug}>
-                        {category.label}
-                      </option>
-                    ))}
-                    {/* An item can hold a slug whose category was deleted;
-                        without this the select would silently show the first
-                        option and misrepresent what's stored. */}
-                    {!categories.some((c) => c.slug === item.kind) && (
-                      <option value={item.kind}>{item.kind}</option>
-                    )}
-                  </select>
-                ) : (
-                  <span
-                    className="text-sm font-medium transition-colors duration-500"
-                    style={{ color: accent ?? undefined }}
-                  >
-                    {categories.find((c) => c.slug === item.kind)?.label ?? item.kind}
-                  </span>
-                )}
+                    <Play className="size-3.5 fill-current" /> Play next
+                  </button>
+                </div>
               </div>
+            )}
 
-              {editing && (
-                <div className="space-y-1.5">
-                  <FieldLabel accent={accent}>Thumbnail</FieldLabel>
-                  <ThumbnailPicker
-                    itemId={item.id}
-                    hasCustom={item.thumbnailFile !== null}
-                    onUploaded={() => setReframing(true)}
-                  />
+            {/* Gradient + overlaid title/actions, hidden once real playback
+              starts so they don't sit on top of the video controls. */}
+            {mode === "preview" && !mini && (
+              <>
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
 
-                  {reframing ? (
-                    <FramingEditor
-                      src={thumbnailUrl(item)}
-                      value={{
-                        x: item.thumbnailPositionX,
-                        y: item.thumbnailPositionY,
-                        scale: item.thumbnailScale,
-                      }}
-                      // Previewed at the tile's shape, which is also the hover
-                      // card's and the modal backdrop's. The hero crops the
-                      // same image far wider, so the note below warns that the
-                      // choice shows up there too.
-                      aspectClass="aspect-video"
-                      saving={saveFraming.isPending}
-                      onSave={(next) => saveFraming.mutate(next)}
-                      onCancel={() => setReframing(false)}
-                      note="Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setReframing(true)}
-                      className="flex items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1.5 text-xs transition-colors hover:bg-accent"
-                    >
-                      <Move className="size-3.5" />
-                      Reposition
-                    </button>
+                <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-4 p-6">
+                  <h2 className="sensitive max-w-2xl text-2xl font-bold tracking-tight drop-shadow-md sm:text-3xl">
+                    {item?.title ?? "Loading…"}
+                  </h2>
+
+                  {item?.itemType === "video" && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => startPlaying(0)}
+                        className="flex items-center gap-2 rounded-md bg-white px-5 py-2 font-semibold text-black transition-transform hover:scale-[1.03]"
+                      >
+                        <RotateCcw className="size-5" />
+                        Start Over
+                      </button>
+                      {canResume && (
+                        <button
+                          type="button"
+                          onClick={() => startPlaying(item.lastPositionSeconds)}
+                          className="flex items-center gap-2 rounded-md bg-white/20 px-5 py-2 font-semibold backdrop-blur-sm transition-colors hover:bg-white/30"
+                        >
+                          <Play className="size-5 fill-current" />
+                          Continue Watching
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleFavorite.mutate(!item.isFavorite)}
+                        disabled={toggleFavorite.isPending}
+                        aria-pressed={item.isFavorite}
+                        aria-label={
+                          item.isFavorite
+                            ? "Remove from favourites"
+                            : "Mark as favourite"
+                        }
+                        title={
+                          item.isFavorite ? "Favourited" : "Mark as favourite"
+                        }
+                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                      >
+                        <Heart
+                          className={cn(
+                            "size-5 transition-colors",
+                            item.isFavorite && "fill-red-500 text-red-500",
+                          )}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleWatched.mutate(!item.watched)}
+                        disabled={toggleWatched.isPending}
+                        aria-pressed={item.watched}
+                        aria-label={
+                          item.watched ? "Mark as unwatched" : "Mark as watched"
+                        }
+                        title={
+                          item.watched
+                            ? "Watched — click to unmark"
+                            : "Mark as watched"
+                        }
+                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                      >
+                        {item.watched ? (
+                          <Eye className="size-5 text-emerald-400" />
+                        ) : (
+                          <EyeOff className="size-5" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => queueCurrent(false)}
+                        aria-label="Add to queue"
+                        title="Add to queue"
+                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
+                      >
+                        <ListPlus className="size-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => queueCurrent(true)}
+                        aria-label="Play next"
+                        title="Play next"
+                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
+                      >
+                        <ListPlus className="size-5" />
+                      </button>
+                    </div>
                   )}
                 </div>
-              )}
 
-              <div className="space-y-1.5">
-                <FieldLabel accent={accent}>Studio</FieldLabel>
-                <StudioEditor itemId={item.id} studio={item.studio} readOnly={!editing} />
+                {item?.itemType === "video" && (
+                  <button
+                    type="button"
+                    onClick={toggleMuted}
+                    aria-label={muted ? "Unmute" : "Mute"}
+                    className="absolute bottom-6 right-6 flex size-10 items-center justify-center rounded-full border border-white/40 bg-black/40 backdrop-blur-sm hover:bg-black/60"
+                  >
+                    {muted ? (
+                      <VolumeX className="size-4" />
+                    ) : (
+                      <Volume2 className="size-4" />
+                    )}
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Sits above the native control bar rather than replacing it —
+              the browser's scrubber and fullscreen already work, these are
+              only the pieces it doesn't offer. */}
+            {mode === "playing" && item?.itemType === "video" && (
+              <div
+                className={cn(
+                  "absolute left-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 transition-opacity duration-300",
+                  showPlayerControls
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => skip(-SKIP_SECONDS)}
+                  aria-label={`Back ${SKIP_SECONDS} seconds`}
+                  title={`Back ${SKIP_SECONDS}s (←)`}
+                  className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                >
+                  <RotateCcw className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => skip(SKIP_SECONDS)}
+                  aria-label={`Forward ${SKIP_SECONDS} seconds`}
+                  title={`Forward ${SKIP_SECONDS}s (→)`}
+                  className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                >
+                  <RotateCw className="size-4" />
+                </button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowRates((v) => !v)}
+                    aria-label="Playback speed"
+                    aria-expanded={showRates}
+                    title="Playback speed"
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-medium backdrop-blur-sm transition-colors hover:bg-black/80"
+                  >
+                    <Gauge className="size-4" />
+                    {rate}×
+                  </button>
+                  {showRates && (
+                    <div className="absolute left-0 top-11 z-10 flex flex-col overflow-hidden rounded-md bg-black/90 py-1 backdrop-blur-sm">
+                      {PLAYBACK_RATES.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => applyRate(option)}
+                          className={cn(
+                            "px-4 py-1.5 text-left text-xs transition-colors hover:bg-white/15",
+                            option === rate && "font-semibold text-white",
+                          )}
+                        >
+                          {option}×
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {!mini && (
+                  <button
+                    type="button"
+                    onClick={toggleFullscreen}
+                    aria-label="Fullscreen"
+                    title="Fullscreen (f)"
+                    className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                  >
+                    <Maximize className="size-4" />
+                  </button>
+                )}
+                {mini &&
+                  queueItems.some((queueItem) => queueItem.id !== item.id) && (
+                    <button
+                      type="button"
+                      onClick={playNextQueued}
+                      aria-label="Play next queued video"
+                      title="Play next queued video"
+                      className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs backdrop-blur-sm transition-colors hover:bg-black/80"
+                    >
+                      Next <ChevronRight className="size-4" />
+                    </button>
+                  )}
+                {!mini && (
+                  <button
+                    type="button"
+                    onClick={() => setCinema((active) => !active)}
+                    aria-label={
+                      cinema ? "Exit Cinema Mode" : "Enter Cinema Mode"
+                    }
+                    title={cinema ? "Exit Cinema Mode" : "Cinema Mode (c)"}
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs backdrop-blur-sm transition-colors hover:bg-black/80"
+                  >
+                    <MonitorPlay className="size-4" />
+                    {cinema ? "Exit" : "Cinema"}
+                  </button>
+                )}
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <FieldLabel accent={accent}>Tags</FieldLabel>
-                <TagEditor itemId={item.id} tags={item.tags} readOnly={!editing} accent={accent} />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel accent={accent}>Details</FieldLabel>
-                <TechnicalInfoPanel item={item} />
-              </div>
-
-              {editing && <FolderPicker itemId={item.id} parentId={item.parentId} />}
-            </div>
+            {!mini && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+              >
+                <X className="size-5" />
+              </button>
+            )}
+            {mini && onExpand && showPlayerControls && (
+              <button
+                type="button"
+                onClick={onExpand}
+                aria-label="Expand player"
+                title="Expand player"
+                className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+              >
+                <Maximize2 className="size-4" />
+              </button>
+            )}
           </div>
-        )}
 
-        {/* Above "More like this": the gallery belongs to this video, while
+          {/* Details */}
+          {item && !mini && (
+            <div className="grid gap-6 p-6 sm:grid-cols-[1.6fr_1fr]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <span>{new Date(item.createdAt).getFullYear()}</span>
+                  {item.durationSeconds !== null && (
+                    <>
+                      <span>·</span>
+                      <span>{formatDuration(item.durationSeconds)}</span>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditing((e) => !e)}
+                    aria-pressed={editing}
+                    aria-label={
+                      editing ? "Finish editing details" : "Edit details"
+                    }
+                    title={editing ? "Done editing" : "Edit details"}
+                    className={cn(
+                      "ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
+                      editing
+                        ? "bg-white text-black hover:bg-white/90"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    {editing ? (
+                      <Check className="size-3.5" />
+                    ) : (
+                      <Pencil className="size-3.5" />
+                    )}
+                    {editing ? "Done" : "Edit"}
+                  </button>
+                </div>
+
+                {editing ? (
+                  <>
+                    <EditableTitle
+                      itemId={item.id}
+                      title={item.title}
+                      className="cursor-text text-lg font-bold hover:underline"
+                    />
+                    <DescriptionEditor
+                      itemId={item.id}
+                      description={item.description}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-bold">{item.title}</h2>
+                    {item.description && (
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {item.description}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  <FieldLabel accent={accent}>Performers</FieldLabel>
+                  <PerformerEditor
+                    itemId={item.id}
+                    performers={item.performers}
+                    source={item.performersSource}
+                    readOnly={!editing}
+                  />
+                </div>
+
+                {item.playbackWarning && (
+                  <p className="rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-500">
+                    {item.playbackWarning}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <FieldLabel accent={accent}>Category</FieldLabel>
+                  {editing ? (
+                    <select
+                      value={item.kind}
+                      onChange={(e) => updateKind.mutate(e.target.value)}
+                      disabled={updateKind.isPending}
+                      className="w-full rounded-md border border-border bg-secondary/60 px-2 py-1.5 text-sm outline-none focus:border-ring/60 disabled:opacity-50"
+                    >
+                      {categories.map((category) => (
+                        <option key={category.slug} value={category.slug}>
+                          {category.label}
+                        </option>
+                      ))}
+                      {/* An item can hold a slug whose category was deleted;
+                        without this the select would silently show the first
+                        option and misrepresent what's stored. */}
+                      {!categories.some((c) => c.slug === item.kind) && (
+                        <option value={item.kind}>{item.kind}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <span
+                      className="text-sm font-medium transition-colors duration-500"
+                      style={{ color: accent ?? undefined }}
+                    >
+                      {categories.find((c) => c.slug === item.kind)?.label ??
+                        item.kind}
+                    </span>
+                  )}
+                </div>
+
+                {editing && (
+                  <div className="space-y-1.5">
+                    <FieldLabel accent={accent}>Thumbnail</FieldLabel>
+                    <ThumbnailPicker
+                      itemId={item.id}
+                      hasCustom={item.thumbnailFile !== null}
+                      onUploaded={() => setReframing(true)}
+                    />
+
+                    {reframing ? (
+                      <FramingEditor
+                        src={thumbnailUrl(item)}
+                        value={{
+                          x: item.thumbnailPositionX,
+                          y: item.thumbnailPositionY,
+                          scale: item.thumbnailScale,
+                        }}
+                        // Previewed at the tile's shape, which is also the hover
+                        // card's and the modal backdrop's. The hero crops the
+                        // same image far wider, so the note below warns that the
+                        // choice shows up there too.
+                        aspectClass="aspect-video"
+                        saving={saveFraming.isPending}
+                        onSave={(next) => saveFraming.mutate(next)}
+                        onCancel={() => setReframing(false)}
+                        note="Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReframing(true)}
+                        className="flex items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1.5 text-xs transition-colors hover:bg-accent"
+                      >
+                        <Move className="size-3.5" />
+                        Reposition
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <FieldLabel accent={accent}>Studio</FieldLabel>
+                  <StudioEditor
+                    itemId={item.id}
+                    studio={item.studio}
+                    readOnly={!editing}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <FieldLabel accent={accent}>Tags</FieldLabel>
+                  <TagEditor
+                    itemId={item.id}
+                    tags={item.tags}
+                    readOnly={!editing}
+                    accent={accent}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <FieldLabel accent={accent}>Details</FieldLabel>
+                  <TechnicalInfoPanel item={item} />
+                </div>
+
+                {editing && (
+                  <FolderPicker itemId={item.id} parentId={item.parentId} />
+                )}
+                {editing && item.itemType === "video" && <SeriesAssignment item={item} />}
+              </div>
+            </div>
+          )}
+
+          {/* Above "More like this": the gallery belongs to this video, while
             related items lead away from it. */}
-        {item && <GalleryStrip itemId={item.id} />}
+          {item && !mini && <GalleryStrip itemId={item.id} />}
 
-          {item && <RelatedItems itemId={item.id} onSelect={openRelated} />}
+          {item?.itemType === "video" && !mini && (
+            <QueuePanel onPlay={openRelated} />
+          )}
+
+          {item && !mini && (
+            <RelatedItems itemId={item.id} onSelect={openRelated} />
+          )}
         </div>
       </div>
     </Portal>

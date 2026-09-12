@@ -14,12 +14,18 @@ const arrowClass =
  * `itemCount` is passed separately from `children` because the arrow state
  * has to recompute when the contents change, and children alone give no
  * dependency to key that on.
+ *
+ * While `loading`, the row renders whatever placeholder children the caller
+ * gives it instead of collapsing to nothing. Building those here would mean
+ * knowing what a tile looks like, which is exactly what this component avoids
+ * — so the caller supplies the shapes and this only decides to show them.
  */
 export function ScrollRow({
   title,
   titleClassName = "text-lg font-semibold tracking-tight",
   action,
   itemCount,
+  loading = false,
   children,
 }: {
   title: string;
@@ -32,6 +38,8 @@ export function ScrollRow({
   /** Optional control beside the heading, e.g. a "clear" button. */
   action?: React.ReactNode;
   itemCount: number;
+  /** Render `children` as placeholders, and hold the row's space open. */
+  loading?: boolean;
   children: React.ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -63,10 +71,10 @@ export function ScrollRow({
     el.scrollBy({ left: direction * el.clientWidth * 0.9, behavior: "smooth" });
   }
 
-  if (itemCount === 0) return null;
+  if (!loading && itemCount === 0) return null;
 
   return (
-    <section className="space-y-3">
+    <section className="animate-soft-pop space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className={titleClassName}>{title}</h2>
         {action}
@@ -80,22 +88,22 @@ export function ScrollRow({
           {children}
         </div>
 
-        {canScrollLeft && (
+        {!loading && canScrollLeft && (
           <button
             type="button"
             onClick={() => scrollByPage(-1)}
             aria-label={`Scroll ${title} left`}
-            className={`${arrowClass} left-0 -translate-x-1`}
+            className={`motion-arrow ${arrowClass} left-0 -translate-x-1`}
           >
             <ChevronLeft className="size-5" />
           </button>
         )}
-        {canScrollRight && (
+        {!loading && canScrollRight && (
           <button
             type="button"
             onClick={() => scrollByPage(1)}
             aria-label={`Scroll ${title} right`}
-            className={`${arrowClass} right-0 translate-x-1`}
+            className={`motion-arrow ${arrowClass} right-0 translate-x-1`}
           >
             <ChevronRight className="size-5" />
           </button>

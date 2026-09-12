@@ -45,6 +45,10 @@ export type MediaItemDetail = {
   watched: boolean;
   watchedAt: string | null;
   playCount: number;
+  seriesId: number | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  episodeTitle: string | null;
   /** Detail responses only — the source file's own dates and size. */
   fileModifiedAt?: string | null;
   fileSizeBytes?: number | null;
@@ -141,6 +145,10 @@ export async function updateItem(
     thumbnailPositionX?: number;
     thumbnailPositionY?: number;
     thumbnailScale?: number;
+    seriesId?: number | null;
+    seasonNumber?: number | null;
+    episodeNumber?: number | null;
+    episodeTitle?: string | null;
   }
 ) {
   const res = await fetch(`/api/media-items/${id}`, {

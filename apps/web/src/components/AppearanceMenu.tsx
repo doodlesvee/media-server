@@ -53,9 +53,11 @@ export function AppearanceMenu() {
     tileInfo,
     hoverZoom,
     hoverPreview,
+    modalPreview,
     discreet,
     discreetBlurPercent,
     discreetText,
+    heroHeight,
     bannerHeight,
     set,
     reset,
@@ -274,7 +276,31 @@ export function AppearanceMenu() {
               onChange={(next) => set({ hoverPreview: next })}
             />
 
+            <Section label="Playback" />
+
+            <Toggle
+              label="Play preview when opened"
+              hint={
+                discreet
+                  ? "Off while discreet mode is on — nothing autoplays."
+                  : "Start the clip as soon as you open an item, instead of opening on the still. Pressing Play always plays."
+              }
+              checked={!discreet && modalPreview}
+              disabled={discreet}
+              onChange={(next) => set({ modalPreview: next })}
+            />
+
             <Section label="Banner" />
+
+            <Slider
+              label="Hero height"
+              value={heroHeight}
+              min={BANNER_MIN}
+              max={BANNER_MAX}
+              suffix="%"
+              hint="The homepage hero."
+              onChange={(next) => set({ heroHeight: next })}
+            />
 
             <Slider
               label="Banner height"
@@ -282,7 +308,7 @@ export function AppearanceMenu() {
               min={BANNER_MIN}
               max={BANNER_MAX}
               suffix="%"
-              hint="The homepage hero and the performer and studio headers."
+              hint="The performer and studio headers."
               onChange={(next) => set({ bannerHeight: next })}
             />
 

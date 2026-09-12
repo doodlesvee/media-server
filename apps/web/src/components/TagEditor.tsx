@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { saveTags, type Tag } from "@/lib/mediaItemApi";
+import { useToast } from "@/lib/toast";
 
 export function TagEditor({
   itemId,
@@ -19,6 +20,7 @@ export function TagEditor({
   const [pending, setPending] = useState<string[]>(tags.map((t) => t.name));
   const [input, setInput] = useState("");
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   useEffect(() => {
     setPending(tags.map((t) => t.name));
@@ -31,6 +33,16 @@ export function TagEditor({
       queryClient.invalidateQueries({ queryKey: ["media-items"] });
       queryClient.invalidateQueries({ queryKey: ["tags"] });
       queryClient.invalidateQueries({ queryKey: ["collection-items"] });
+    },
+    // Tags are edited optimistically in `pending`, so a failed save otherwise
+    // leaves the chips showing a state the server never accepted.
+    onError: (error) => {
+      setPending(tags.map((t) => t.name));
+      toast({
+        title: "Could not save tags",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "error",
+      });
     },
   });
 

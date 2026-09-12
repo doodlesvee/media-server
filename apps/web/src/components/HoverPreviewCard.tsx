@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Check, Play, Plus } from "lucide-react";
-import { addToMyList } from "@/lib/myList";
+import { ChevronDown, Check, ListPlus, Play } from "lucide-react";
 import { useAppearance } from "@/lib/appearance";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
+import { useQueue } from "@/lib/queue";
 
 const EXPANDED_SCALE = 1.85;
 const VIEWPORT_MARGIN = 8;
@@ -51,19 +50,19 @@ export function HoverPreviewCard({
 }) {
   const { hoverPreview, discreet } = useAppearance();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [added, setAdded] = useState(false);
+  const { add, addNext, items: queueItems } = useQueue();
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryClient = useQueryClient();
+  const queued = queueItems.some((queueItem) => queueItem.id === item.id);
 
   const width = anchorRect.width * EXPANDED_SCALE;
   const left = Math.max(
     VIEWPORT_MARGIN,
     Math.min(
       anchorRect.left + anchorRect.width / 2 - width / 2,
-      window.innerWidth - width - VIEWPORT_MARGIN
-    )
+      window.innerWidth - width - VIEWPORT_MARGIN,
+    ),
   );
   // Centre the expanded video over the original thumbnail (both 16:9) so the
   // card appears to grow out of the card you're pointing at, rather than
@@ -109,12 +108,17 @@ export function HoverPreviewCard({
     return () => window.removeEventListener("scroll", onScroll, true);
   });
 
-  async function handleAdd(e: React.MouseEvent) {
+  function handleQueue(e: React.MouseEvent, next: boolean) {
     e.stopPropagation();
-    await addToMyList(item.id);
-    setAdded(true);
-    void queryClient.invalidateQueries({ queryKey: ["collections"] });
-    void queryClient.invalidateQueries({ queryKey: ["collection-items"] });
+    if (item.itemType !== "video") return;
+    const queueItem = {
+      id: item.id,
+      title: item.title,
+      thumbnailFile: item.thumbnailFile,
+      durationSeconds: item.durationSeconds,
+    };
+    if (next) addNext(queueItem);
+    else add(queueItem);
   }
 
   const duration = formatDuration(item.durationSeconds);
@@ -138,7 +142,7 @@ export function HoverPreviewCard({
       aria-hidden="true"
       className={cn(
         "fixed z-40 overflow-hidden rounded-lg bg-card shadow-2xl ring-1 ring-white/10",
-        !visible && "pointer-events-none"
+        !visible && "pointer-events-none",
       )}
       onMouseLeave={dismiss}
       onClick={onOpen}
@@ -152,6 +156,7 @@ export function HoverPreviewCard({
             src={thumbnailUrl(item)}
             alt=""
             style={framingStyle(item)}
+            decoding="async"
             className="absolute inset-0 h-full w-full object-cover"
           />
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- silent hover preview */}
@@ -165,7 +170,10 @@ export function HoverPreviewCard({
             loop
             autoPlay
             playsInline
-            style={{ opacity: ready ? 1 : 0, transition: "opacity 300ms ease-out" }}
+            style={{
+              opacity: ready ? 1 : 0,
+              transition: "opacity 300ms ease-out",
+            }}
             className="absolute inset-0 h-full w-full object-cover"
           />
         </div>
@@ -174,6 +182,7 @@ export function HoverPreviewCard({
           src={thumbnailUrl(item)}
           alt=""
           style={framingStyle(item)}
+          decoding="async"
           className="aspect-video w-full cursor-pointer overflow-hidden object-cover"
         />
       )}
@@ -193,15 +202,36 @@ export function HoverPreviewCard({
             <Play className="size-4 translate-x-px fill-black" />
           </button>
 
-          <button
-            type="button"
-            onClick={handleAdd}
-            aria-label="Add to My List"
-            tabIndex={-1}
-            className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white"
-          >
-            {added ? <Check className="size-4" /> : <Plus className="size-4" />}
-          </button>
+          {item.itemType === "video" && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => handleQueue(e, false)}
+                aria-label={queued ? "Already in queue" : "Add to queue"}
+                title={queued ? "Already in queue" : "Add to queue"}
+                tabIndex={-1}
+                className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white disabled:opacity-50"
+                disabled={queued}
+              >
+                {queued ? (
+                  <Check className="size-4" />
+                ) : (
+                  <ListPlus className="size-4" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleQueue(e, true)}
+                aria-label={queued ? "Already in queue" : "Play next"}
+                title={queued ? "Already in queue" : "Play next"}
+                tabIndex={-1}
+                className="flex size-9 items-center justify-center rounded-full border border-white/40 text-foreground transition-colors hover:border-white disabled:opacity-50"
+                disabled={queued}
+              >
+                <ListPlus className="size-4" />
+              </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -222,14 +252,18 @@ export function HoverPreviewCard({
         </p>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {duration && <span className="font-medium text-foreground/80">{duration}</span>}
+          {duration && (
+            <span className="font-medium text-foreground/80">{duration}</span>
+          )}
           {badge && (
             <span className="rounded border border-border px-1 py-px text-[10px] tracking-wide">
               {badge}
             </span>
           )}
           {item.studio && <span>{item.studio}</span>}
-          {item.missingSince && <span className="text-destructive">missing</span>}
+          {item.missingSince && (
+            <span className="text-destructive">missing</span>
+          )}
         </div>
 
         {(item.performers?.length || item.tags?.length) && (
@@ -241,6 +275,6 @@ export function HoverPreviewCard({
         )}
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

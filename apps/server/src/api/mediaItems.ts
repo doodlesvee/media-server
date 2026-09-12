@@ -1045,6 +1045,10 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailPositionX?: number;
       thumbnailPositionY?: number;
       thumbnailScale?: number;
+      seriesId?: number | null;
+      seasonNumber?: number | null;
+      episodeNumber?: number | null;
+      episodeTitle?: string | null;
     };
   }>("/api/media-items/:id", async (request, reply) => {
     const id = Number(request.params.id);
@@ -1058,6 +1062,10 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailPositionX,
       thumbnailPositionY,
       thumbnailScale,
+      seriesId,
+      seasonNumber,
+      episodeNumber,
+      episodeTitle,
     } = request.body;
 
     if (parentId === id) {
@@ -1109,6 +1117,10 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       // From here the filename brackets stop deciding this item's studio.
       patch.studioSource = "user";
     }
+    if (seriesId !== undefined) patch.seriesId = seriesId;
+    if (seasonNumber !== undefined) patch.seasonNumber = seasonNumber;
+    if (episodeNumber !== undefined) patch.episodeNumber = episodeNumber;
+    if (episodeTitle !== undefined) patch.episodeTitle = episodeTitle?.trim() || null;
 
     const updated = await db
       .update(mediaItems)

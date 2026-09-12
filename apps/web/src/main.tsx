@@ -3,7 +3,10 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { AuthGate } from "@/components/AuthGate";
+import { ErrorBoundary, ErrorFallback } from "@/components/ErrorBoundary";
 import { AppearanceProvider } from "@/lib/appearance";
+import { QueueProvider } from "@/lib/queue";
+import { ToastProvider } from "@/lib/toast";
 import "./index.css";
 import { router } from "./router";
 
@@ -11,12 +14,23 @@ const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthGate>
-        <AppearanceProvider>
-          <RouterProvider router={router} />
-        </AppearanceProvider>
-      </AuthGate>
-    </QueryClientProvider>
-  </StrictMode>
+    {/* The last resort. The router has its own error component, which keeps
+        the shell alive and is what a broken page hits; this one catches what
+        it cannot — a provider or the shell itself failing — and so must not
+        depend on any of them. */}
+    <ErrorBoundary fallback={(props) => <ErrorFallback {...props} />}>
+      <QueryClientProvider client={queryClient}>
+        {/* Outside AuthGate so a failed sign-in can report itself too. */}
+        <ToastProvider>
+          <AuthGate>
+            <AppearanceProvider>
+              <QueueProvider>
+                <RouterProvider router={router} />
+              </QueueProvider>
+            </AppearanceProvider>
+          </AuthGate>
+        </ToastProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  </StrictMode>,
 );

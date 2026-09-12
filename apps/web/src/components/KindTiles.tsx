@@ -13,8 +13,27 @@ const ICONS: Record<string, typeof Film> = {
 };
 
 export function KindTiles() {
-  const { data } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  const { data, isLoading } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+  });
   const categories = data?.categories ?? [];
+
+  // Placeholders match the tile's own sizing rules exactly, so the real tiles
+  // drop into the space already held for them rather than resizing the row.
+  // Three is what ships by default (video, movie, series).
+  if (isLoading) {
+    return (
+      <div className="flex flex-wrap justify-center gap-5 sm:flex-nowrap sm:gap-7">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="skeleton h-40 w-72 min-w-0 rounded-lg sm:h-44 sm:w-auto sm:max-w-96 sm:flex-1 sm:basis-0"
+          />
+        ))}
+      </div>
+    );
+  }
 
   if (categories.length === 0) return null;
 

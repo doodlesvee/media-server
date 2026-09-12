@@ -37,7 +37,7 @@ function VideoSection({
   onSelect: (id: number, autoPlay: boolean) => void;
 }) {
   const query = new URLSearchParams({ performer, ...params });
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["performer-videos", performer, params],
     queryFn: () => fetchItems(query),
   });
@@ -49,6 +49,7 @@ function VideoSection({
       // page is structured, not just a label above a strip.
       titleClassName="text-xl font-semibold tracking-tight sm:text-2xl"
       items={data?.items ?? []}
+      loading={isLoading}
       onSelectItem={(id) => onSelect(id, false)}
       onPlayItem={(id) => onSelect(id, true)}
       onOpenFolder={() => {}}

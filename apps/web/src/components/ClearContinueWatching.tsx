@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
+import { useToast } from "@/lib/toast";
 
 /**
  * Empties the Continue Watching row.
@@ -13,6 +14,7 @@ import { Loader2, X } from "lucide-react";
 export function ClearContinueWatching() {
   const [confirming, setConfirming] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const clear = useMutation({
     mutationFn: async () => {
@@ -20,13 +22,27 @@ export function ClearContinueWatching() {
       if (!res.ok) throw new Error(`Failed to clear: ${res.status}`);
       return res.json() as Promise<{ cleared: number }>;
     },
-    onSuccess: () => {
+    onSuccess: ({ cleared }) => {
       setConfirming(false);
       queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
       // Resume positions show on the tiles as a progress bar, and on a
       // performer's profile as its own strip.
       queryClient.invalidateQueries({ queryKey: ["media-items"] });
       queryClient.invalidateQueries({ queryKey: ["performer-in-progress"] });
+      // The row empties itself, which shows that *something* happened but not
+      // how much. The server counts the rows it removed, so say so.
+      toast({
+        title: "Continue Watching cleared",
+        description: `${cleared} resume point${cleared === 1 ? "" : "s"} removed. Play counts and watched state are untouched.`,
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Could not clear Continue Watching",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "error",
+      });
     },
   });
 

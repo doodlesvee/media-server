@@ -1,15 +1,23 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
+import { RouteErrorFallback } from "@/components/RouteErrorFallback";
 import { AccountPage } from "@/pages/AccountPage";
 import { AlbumPage } from "@/pages/AlbumPage";
 import { AlbumsPage } from "@/pages/AlbumsPage";
 import { BrowsePage } from "@/pages/BrowsePage";
 import { HelpPage } from "@/pages/HelpPage";
 import { HomePage } from "@/pages/HomePage";
+import { MissingPage } from "@/pages/MissingPage";
 import { PerformerPage } from "@/pages/PerformerPage";
 import { PerformersPage } from "@/pages/PerformersPage";
 import { StudioPage } from "@/pages/StudioPage";
 import { StudiosPage } from "@/pages/StudiosPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SeriesPage } from "@/pages/SeriesPage";
+import { SeriesPageIndex } from "@/pages/SeriesPageIndex";
 
 const rootRoute = createRootRoute();
 
@@ -23,20 +31,28 @@ const browseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/browse",
   validateSearch: (
-    search: Record<string, unknown>
+    search: Record<string, unknown>,
   ): {
     tag?: string;
     performer?: string;
     studio?: string;
     kind?: string;
     collectionId?: number;
+    parentId?: number;
+    sort?: string;
+    year?: number;
     q?: string;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
-    performer: typeof search.performer === "string" ? search.performer : undefined,
+    performer:
+      typeof search.performer === "string" ? search.performer : undefined,
     studio: typeof search.studio === "string" ? search.studio : undefined,
     kind: typeof search.kind === "string" ? search.kind : undefined,
-    collectionId: search.collectionId != null ? Number(search.collectionId) : undefined,
+    collectionId:
+      search.collectionId != null ? Number(search.collectionId) : undefined,
+    parentId: search.parentId != null ? Number(search.parentId) : undefined,
+    sort: typeof search.sort === "string" ? search.sort : undefined,
+    year: search.year != null ? Number(search.year) : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
   }),
   component: BrowsePage,
@@ -61,6 +77,18 @@ const albumsRoute = createRoute({
   component: AlbumsPage,
 });
 
+const seriesIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/series",
+  component: SeriesPageIndex,
+});
+
+const seriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/series/$seriesId",
+  component: SeriesPage,
+});
+
 const albumRoute = createRoute({
   getParentRoute: () => rootRoute,
   // Keyed by id, like performers: an album's title comes from its folder
@@ -81,6 +109,12 @@ const studioRoute = createRoute({
   // filenames, so a rename would otherwise break every link to it.
   path: "/studio/$studioId",
   component: StudioPage,
+});
+
+const missingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/missing",
+  component: MissingPage,
 });
 
 const helpRoute = createRoute({
@@ -113,15 +147,21 @@ const routeTree = rootRoute.addChildren([
   performerRoute,
   performersRoute,
   albumsRoute,
+  seriesIndexRoute,
+  seriesRoute,
   albumRoute,
   studiosRoute,
   studioRoute,
+  missingRoute,
   helpRoute,
   settingsRoute,
   accountRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  defaultErrorComponent: RouteErrorFallback,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

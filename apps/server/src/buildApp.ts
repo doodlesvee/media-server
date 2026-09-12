@@ -7,6 +7,7 @@ import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { albumRoutes } from "./api/albums.js";
+import { activityRoutes } from "./api/activity.js";
 import { appearanceRoutes } from "./api/appearance.js";
 import { backupRoutes } from "./api/backups.js";
 import { categoryRoutes } from "./api/categories.js";
@@ -19,7 +20,9 @@ import { playbackRoutes } from "./api/playback.js";
 import { privacyRoutes } from "./api/privacy.js";
 import { scanRoutes } from "./api/scan.js";
 import { settingsRoutes } from "./api/settings.js";
+import { missingRoutes } from "./api/missing.js";
 import { statsRoutes } from "./api/stats.js";
+import { seriesRoutes } from "./api/series.js";
 import { studioRoutes } from "./api/studios.js";
 import { performerRoutes } from "./api/performers.js";
 import { tagRoutes } from "./api/tags.js";
@@ -38,9 +41,9 @@ import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
  * the scan schedule are the entry point's job, because a test wants to control
  * when those happen.
  */
-export async function buildApp({ logger = false }: { logger?: boolean } = {}): Promise<
-  FastifyInstance
-> {
+export async function buildApp({
+  logger = false,
+}: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger });
 
   await app.register(cookie);
@@ -76,7 +79,7 @@ export async function buildApp({ logger = false }: { logger?: boolean } = {}): P
     async () => {
       const dbOk = await checkDbConnection();
       return { status: "ok", db: dbOk };
-    }
+    },
   );
 
   await app.register(authRoutes);
@@ -93,11 +96,14 @@ export async function buildApp({ logger = false }: { logger?: boolean } = {}): P
   await app.register(folderRoutes);
   await app.register(playbackRoutes);
   await app.register(statsRoutes);
+  await app.register(missingRoutes);
+  await app.register(seriesRoutes);
   await app.register(settingsRoutes);
   await app.register(libraryRoutes);
   await app.register(backupRoutes);
   await app.register(categoryRoutes);
   await app.register(albumRoutes);
+  await app.register(activityRoutes);
 
   // In the production Docker image the built frontend is copied to ../web-dist
   // (see Dockerfile). In local dev that directory doesn't exist — the Vite dev

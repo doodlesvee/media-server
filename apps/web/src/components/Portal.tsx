@@ -48,11 +48,18 @@ function unlockScroll(): void {
  * header — z-50 lost to the header's z-30 because they were never being
  * compared.
  */
-export function Portal({ children }: { children: React.ReactNode }) {
+export function Portal({
+  children,
+  lockPageScroll = true,
+}: {
+  children: React.ReactNode;
+  lockPageScroll?: boolean;
+}) {
   useEffect(() => {
+    if (!lockPageScroll) return;
     lockScroll();
     return unlockScroll;
-  }, []);
+  }, [lockPageScroll]);
 
   if (typeof document === "undefined") return null;
   return createPortal(children, document.body);
