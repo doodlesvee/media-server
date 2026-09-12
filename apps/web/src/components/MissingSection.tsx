@@ -5,6 +5,7 @@ import { MediaCard } from "./MediaCard";
 import { useToast } from "@/lib/toast";
 import { formatBytes, libraryStatsKey } from "@/lib/statsApi";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
+import { cardLayout } from "@/lib/layout";
 import {
   fetchMissing,
   forgetAllMissing,
@@ -42,8 +43,14 @@ export function MissingSection({ onLocked }: { onLocked?: () => void }) {
   });
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { tileSizePercent } = useAppearance();
-  const tileWidth = tileWidthPx(tileSizePercent);
+  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
+  const layout = cardLayout(
+    tileWidthPx(tileSizePercent),
+    viewMode,
+    density,
+    tileInfo,
+  );
+  const tileWidth = layout.widthPx;
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // Two steps for "Remove all", one for a selection you had to build by hand.
   const [confirmingAll, setConfirmingAll] = useState(false);
@@ -102,13 +109,19 @@ export function MissingSection({ onLocked }: { onLocked?: () => void }) {
   if (isLoading) {
     return (
       <div
-        className="grid gap-4"
+        className="grid"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+          columnGap: layout.columnGapPx,
+          rowGap: layout.rowGapPx,
         }}
       >
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="skeleton aspect-[16/10] rounded-md" />
+          <div
+            key={i}
+            className="skeleton rounded-md"
+            style={{ aspectRatio: layout.aspectRatio }}
+          />
         ))}
       </div>
     );
@@ -235,9 +248,11 @@ export function MissingSection({ onLocked }: { onLocked?: () => void }) {
       </div>
 
       <div
-        className="grid gap-x-4 gap-y-6"
+        className="grid"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+          columnGap: layout.columnGapPx,
+          rowGap: layout.rowGapPx,
         }}
       >
         {items.map((item) => (

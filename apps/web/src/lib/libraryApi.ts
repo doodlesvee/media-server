@@ -46,7 +46,45 @@ export async function addRoot(dirPath: string): Promise<void> {
   }
 }
 
-export async function removeRoot(id: number): Promise<void> {
-  const res = await fetch(`/api/library/roots/${id}`, { method: "DELETE" });
+/**
+ * What a cleanup would remove, or has removed.
+ *
+ * Items belonging to no watched folder, plus the performers, studios, albums
+ * and series that only those items used.
+ */
+export type RemovableData = {
+  items: number;
+  videos: number;
+  photos: number;
+  performers: number;
+  studios: number;
+  albums: number;
+  series: number;
+};
+
+export const cleanupQueryKey = ["library-cleanup"] as const;
+
+export async function fetchRemovableData(): Promise<RemovableData> {
+  const res = await fetch("/api/library/cleanup");
+  if (!res.ok) throw new Error(`Failed to check: ${res.status}`);
+  return ((await res.json()) as { removable: RemovableData }).removable;
+}
+
+export async function purgeRemovableData(): Promise<RemovableData> {
+  const res = await fetch("/api/library/cleanup", { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to clean up: ${res.status}`);
+  return ((await res.json()) as { removed: RemovableData }).removed;
+}
+
+/**
+ * @param deleteData Also destroy the folder's items and their metadata.
+ *   Left off, they are hidden instead, and adding the folder back restores
+ *   everything.
+ */
+export async function removeRoot(id: number, deleteData = false): Promise<void> {
+  const res = await fetch(
+    `/api/library/roots/${id}${deleteData ? "?deleteData=true" : ""}`,
+    { method: "DELETE" },
+  );
   if (!res.ok) throw new Error(`Failed to remove folder: ${res.status}`);
 }

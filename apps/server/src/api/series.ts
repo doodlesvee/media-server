@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { mediaItems, mediaItemTypes, playbackStates, series } from "../db/schema.js";
@@ -48,7 +49,7 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
         unwatched: sql<number>`count(*) filter (where ${playbackStates.completedAt} is null)`,
       })
       .from(series)
-      .leftJoin(mediaItems, and(eq(mediaItems.seriesId, series.id), eq(mediaItems.inScope, true), eq(mediaItems.itemTypeId, videoType)))
+      .leftJoin(mediaItems, and(eq(mediaItems.seriesId, series.id), visibleItems(), eq(mediaItems.itemTypeId, videoType)))
       .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id))
       .groupBy(series.id)
       .orderBy(series.name);
@@ -77,7 +78,7 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
       })
       .from(mediaItems)
       .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id))
-      .where(and(eq(mediaItems.seriesId, id), eq(mediaItems.inScope, true)))
+      .where(and(eq(mediaItems.seriesId, id), visibleItems()))
       .orderBy(asc(mediaItems.seasonNumber), asc(mediaItems.episodeNumber), desc(mediaItems.createdAt));
 
     const seasons = new Map<number, typeof episodes>();

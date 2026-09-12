@@ -173,8 +173,23 @@ describe("GET /api/albums", () => {
       .set({ missingSince: new Date() })
       .where(eq(mediaItems.id, photo));
 
-    // Still listed, because the photo row exists and is in scope — the
-    // scanner is what stops a *new* album forming from missing files.
+    // Gone from the list, which is what this test's name always claimed and
+    // its body did not: missing files are excluded from every browsing
+    // surface, so an album with nothing left to show has nothing to open.
+    // The album row itself survives — a reconnected drive restores it on the
+    // next scan.
+    expect((await get("/api/albums")).json().albums).toHaveLength(0);
+  });
+
+  it("keeps an album that has lost only some of its photos", async () => {
+    const albumId = await makeAlbum("Partly here", "/media/partly");
+    await addPhoto(albumId, "001");
+    const gone = await addPhoto(albumId, "002");
+    await db
+      .update(mediaItems)
+      .set({ missingSince: new Date() })
+      .where(eq(mediaItems.id, gone));
+
     const listed = (await get("/api/albums")).json().albums;
     expect(listed).toHaveLength(1);
     expect(listed[0].photoCount).toBe(1);

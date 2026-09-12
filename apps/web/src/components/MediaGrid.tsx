@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
+import { cardLayout } from "@/lib/layout";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { useQueue, type QueueItem } from "@/lib/queue";
 import { Dices, ListPlus } from "lucide-react";
@@ -80,6 +81,23 @@ async function fetchMediaItems(
   return res.json();
 }
 
+/**
+ * Last measured column count, per tile width.
+ *
+ * Module scope on purpose: it has to outlive the component, because the whole
+ * point is to be right on the *next* mount. Not persisted — a reload has no
+ * scroll position to restore either, so a fresh guess costs nothing.
+ */
+const columnsByTileWidth = new Map<number, number>();
+
+function rememberColumns(tileWidth: number, columns: number): void {
+  columnsByTileWidth.set(tileWidth, columns);
+}
+
+function rememberedColumns(tileWidth: number): number {
+  return columnsByTileWidth.get(tileWidth) ?? 1;
+}
+
 export function MediaGrid({
   source,
   onOpenFolder,
@@ -93,9 +111,13 @@ export function MediaGrid({
   year?: string;
   onViewStateChange?: (state: { sort: SortValue; year: string }) => void;
 }) {
-  const { tileSizePercent } = useAppearance();
+  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
   const { add, clear } = useQueue();
-  const tileWidth = tileWidthPx(tileSizePercent);
+  // Every length the grid needs comes from here, so the mode and density can
+  // change the shape of the page without this component knowing what either
+  // of them means.
+  const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
+  const tileWidth = layout.widthPx;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -155,14 +177,21 @@ export function MediaGrid({
       Number(a.itemType === "folder" && pinnedFolderIds.has(a.id)),
   );
 
-  // Gap between columns (gap-x-4) and the space under each row, which is a
-  // row's own padding here rather than a grid gap: virtualized rows are
-  // absolutely positioned, so a grid row-gap would have nothing to apply to.
-  const COLUMN_GAP_PX = 16;
-  const ROW_SPACING_PX = 24;
+  // The space under each row is a row's own padding rather than a grid gap:
+  // virtualized rows are absolutely positioned, so a grid row-gap would have
+  // nothing to apply to.
+  const COLUMN_GAP_PX = layout.columnGapPx;
+  const ROW_SPACING_PX = layout.rowGapPx;
 
   const [gridNode, setGridNode] = useState<HTMLDivElement | null>(null);
-  const [columns, setColumns] = useState(1);
+  // Seeded from the last measurement at this tile width rather than from 1.
+  //
+  // The grid cannot know its own width until it has mounted, so the first
+  // render has to guess. Guessing one column makes the virtualizer claim a
+  // page many times its real height, and scroll restoration returning to that
+  // render lands somewhere arbitrary. Coming back to a page you have already
+  // seen, at a width you have already measured, the guess is simply right.
+  const [columns, setColumns] = useState(() => rememberedColumns(tileWidth));
   const [columnWidth, setColumnWidth] = useState(tileWidth);
   // How far the grid sits down the page. The window is the scroller, so the
   // virtualizer has to discount everything above the grid or every row lands
@@ -179,6 +208,7 @@ export function MediaGrid({
     const measure = () => {
       const width = node.clientWidth;
       const next = columnsForWidth(width, tileWidth, COLUMN_GAP_PX);
+      rememberColumns(tileWidth, next);
       setColumns(next);
       setColumnWidth(columnWidthFor(width, next, COLUMN_GAP_PX));
       setScrollMargin(node.offsetTop);
@@ -194,7 +224,7 @@ export function MediaGrid({
     return () => observer.disconnect();
     // gridNode is a dependency, not a ref read, precisely because the grid is
     // not mounted on the first pass — the skeleton is.
-  }, [gridNode, tileWidth]);
+  }, [gridNode, tileWidth, COLUMN_GAP_PX]);
 
   const rows = chunkIntoRows(items, columns);
 
@@ -202,7 +232,10 @@ export function MediaGrid({
     count: rows.length,
     // Only the starting guess: measureElement below replaces it with the real
     // height as each row renders, so mixed card heights settle on their own.
-    estimateSize: () => Math.round(columnWidth * 0.625) + 72 + ROW_SPACING_PX,
+    // Taken from the layout rather than hardcoded here, so the card's shape
+    // and this scrollbar cannot drift apart.
+    estimateSize: () =>
+      Math.round(columnWidth * layout.heightRatio) + 72 + ROW_SPACING_PX,
     overscan: 3,
     scrollMargin,
   });
@@ -348,13 +381,19 @@ export function MediaGrid({
       // No `stagger` here: it sets the same `animation` property the
       // skeletons need for their shimmer, and the two would fight.
       <div
-        className="grid gap-4"
+        className="grid"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+          columnGap: COLUMN_GAP_PX,
+          rowGap: ROW_SPACING_PX,
         }}
       >
         {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="skeleton aspect-[16/10] rounded-md" />
+          <div
+            key={i}
+            className="skeleton rounded-md"
+            style={{ aspectRatio: layout.aspectRatio }}
+          />
         ))}
       </div>
     );
@@ -479,9 +518,10 @@ export function MediaGrid({
               key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
-              className="absolute left-0 top-0 grid w-full gap-x-4"
+              className="absolute left-0 top-0 grid w-full"
               style={{
                 gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                columnGap: COLUMN_GAP_PX,
                 paddingBottom: ROW_SPACING_PX,
                 transform: `translateY(${
                   virtualRow.start - virtualizer.options.scrollMargin
@@ -511,13 +551,19 @@ export function MediaGrid({
 
       {isFetchingNextPage && (
         <div
-          className="grid gap-x-4 gap-y-6"
+          className="grid"
           style={{
             gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+            columnGap: COLUMN_GAP_PX,
+            rowGap: ROW_SPACING_PX,
           }}
         >
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton aspect-[16/10] rounded-md" />
+            <div
+              key={i}
+              className="skeleton rounded-md"
+              style={{ aspectRatio: layout.aspectRatio }}
+            />
           ))}
         </div>
       )}

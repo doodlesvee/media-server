@@ -113,7 +113,18 @@ async function missingVideoIdsAmong(ids: number[]): Promise<number[]> {
  * performer, or a saved playback position.
  */
 export async function forgetItems(ids: number[]): Promise<number> {
-  const targets = await missingVideoIdsAmong(ids);
+  return deleteItems(await missingVideoIdsAmong(ids));
+}
+
+/**
+ * Deletes media items outright, with every row that points at them.
+ *
+ * Takes ids that a caller has already decided are safe to destroy — it does
+ * no checking of its own, which is why it is not exported beyond this module
+ * without a guard in front of it. `forgetItems` restricts to missing videos;
+ * the folder cleanup restricts to items under no watched folder.
+ */
+export async function deleteItems(targets: number[]): Promise<number> {
   if (targets.length === 0) return 0;
 
   // Read before the delete: these name the cached poster and clip, and the

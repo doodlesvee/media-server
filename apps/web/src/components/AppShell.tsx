@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, List, Search, X } from "lucide-react";
+import { ArrowLeft, Search, X } from "lucide-react";
 import { SEARCH_SHORTCUT } from "@/lib/appearance";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { DiscreetUnlockDialog } from "./DiscreetUnlockDialog";
@@ -10,8 +10,6 @@ import { Sidebar } from "./Sidebar";
 import { UserMenu } from "./UserMenu";
 import { cn } from "@/lib/utils";
 import { MediaDetailModal } from "./MediaDetailModal";
-import { QueuePanel } from "./QueuePanel";
-import { useQueue } from "@/lib/queue";
 import { NotificationCenter } from "./NotificationCenter";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
@@ -42,8 +40,6 @@ export function AppShell({
   actions?: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const { items: queueItems } = useQueue();
-  const [queueOpen, setQueueOpen] = useState(false);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [miniPlayer, setMiniPlayer] = useState(false);
   const [resumePlayer, setResumePlayer] = useState(false);
@@ -112,9 +108,6 @@ export function AppShell({
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
-        queueCount={queueItems.length}
-        queueOpen={queueOpen}
-        onQueueToggle={() => setQueueOpen((open) => !open)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -169,21 +162,6 @@ export function AppShell({
             </button>
             <button
               type="button"
-              onClick={() => setQueueOpen((open) => !open)}
-              aria-label="Open playback queue"
-              aria-expanded={queueOpen}
-              title="Playback queue"
-              className="relative flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <List className="size-4" />
-              {queueItems.length > 0 && (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                  {queueItems.length}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
               onClick={() => setFocusMode(false)}
               aria-label="Exit Focus Mode"
               title="Exit Focus Mode (Esc)"
@@ -215,19 +193,6 @@ export function AppShell({
           <AppFooter />
         </div>
       </div>
-
-      {queueOpen && (
-        <div className="fixed bottom-16 left-2 z-40 w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-lg bg-card shadow-2xl ring-1 ring-border">
-          <QueuePanel
-            onPlay={(id) => {
-              setPlayingId(id);
-              setMiniPlayer(true);
-              setResumePlayer(false);
-              setQueueOpen(false);
-            }}
-          />
-        </div>
-      )}
 
       {playingId !== null && (
         <MediaDetailModal

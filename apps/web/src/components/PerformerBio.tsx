@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ClampedText } from "./ClampedText";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { savePerformerBio } from "@/lib/performerApi";
@@ -73,20 +74,24 @@ export function PerformerBio({ performerId, bio }: { performerId: number; bio: s
     );
   }
 
+  // The prose is clickable to edit and the clamp brings a button of its own,
+  // so the two sit side by side rather than nested — a button inside a button
+  // is invalid, and browsers drop the inner one, which would be the Read more.
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      title="Click to edit"
-      className="group max-w-2xl text-left"
-    >
-      <span className="block whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground transition-colors group-hover:text-foreground/90">
-        {bio}
-      </span>
-      <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground">
+    <div className="group max-w-2xl">
+      <ClampedText
+        text={bio}
+        className="text-sm leading-relaxed text-muted-foreground transition-colors group-hover:text-foreground/90"
+      />
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        title="Click to edit"
+        className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground"
+      >
         <Pencil className="size-3" />
         Edit
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }

@@ -58,6 +58,16 @@ describe("appearance settings", () => {
     expect(stored).not.toHaveProperty("somethingElse");
   });
 
+  it("stores the view mode and density", async () => {
+    await save({ viewMode: "large", density: "dense" });
+    expect(await load()).toMatchObject({ viewMode: "large", density: "dense" });
+  });
+
+  it("drops a view mode that is not one of the real ones", async () => {
+    await save({ viewMode: "hologram" });
+    expect(await load()).not.toHaveProperty("viewMode");
+  });
+
   it("ignores a height that is not a number", async () => {
     await save({ heroHeight: "tall" });
     expect(await load()).not.toHaveProperty("heroHeight");

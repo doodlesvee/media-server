@@ -1,4 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
+import { logActivity } from "../activity/log.js";
+import { countRemovableData, purgeRemovableData } from "../library/cleanup.js";
 import path from "node:path";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -180,7 +182,31 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
     return { root: created };
   });
 
-  app.delete<{ Params: { id: string } }>("/api/library/roots/:id", async (request, reply) => {
+  /**
+   * What a removed folder has left behind, and the way to clear it.
+   *
+   * Separate from the removal itself because the folder is usually long gone
+   * by the time you notice its performers and studios still listed.
+   */
+  app.get("/api/library/cleanup", async () => {
+    return { removable: await countRemovableData() };
+  });
+
+  app.post("/api/library/cleanup", async () => {
+    const removed = await purgeRemovableData();
+    if (removed.items > 0) {
+      await logActivity(
+        "library",
+        `Removed ${removed.items} items left behind by folders no longer watched`,
+        removed,
+      );
+    }
+    return { removed };
+  });
+
+  app.delete<{ Params: { id: string }; Querystring: { deleteData?: string } }>(
+    "/api/library/roots/:id",
+    async (request, reply) => {
     const id = Number(request.params.id);
     const [root] = await db.select().from(libraryRoots).where(eq(libraryRoots.id, id));
     if (!root) {
@@ -213,8 +239,25 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
     // lost — but the lists stop showing names from a library you no longer have.
     await purgeEmptyEntities();
 
-    return { ok: true };
-  });
+    // Asked for at the point of removal, because "I am done with this folder"
+    // and "I want its 1,400 rows gone" are different decisions and only you
+    // know which one this is. Without it the data waits, invisible, until it
+    // turns up as names in a list months later.
+    const removed =
+      request.query.deleteData === "true"
+        ? await purgeRemovableData()
+        : null;
+    if (removed && removed.items > 0) {
+      await logActivity(
+        "library",
+        `Removed ${removed.items} items along with the folder`,
+        removed,
+      );
+    }
+
+    return { ok: true, removed };
+  },
+  );
 }
 
 export { mediaItems };

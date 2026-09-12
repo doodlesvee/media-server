@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
 import { compileSmartRule, type SmartRule } from "../collections/ruleCompiler.js";
 import { db } from "../db/client.js";
@@ -107,14 +108,14 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       if (collection.type === "manual") {
         rows = await baseQuery
           .innerJoin(collectionItems, eq(collectionItems.mediaItemId, mediaItems.id))
-          .where(and(eq(collectionItems.collectionId, id), eq(mediaItems.inScope, true)))
+          .where(and(eq(collectionItems.collectionId, id), visibleItems()))
           .orderBy(...order)
           .limit(PAGE_SIZE + 1)
           .offset((pageNum - 1) * PAGE_SIZE);
       } else {
         const rule = collection.smartRule as SmartRule;
         rows = await baseQuery
-          .where(and(compileSmartRule(rule), eq(mediaItems.inScope, true)))
+          .where(and(compileSmartRule(rule), visibleItems()))
           .orderBy(...order)
           .limit(PAGE_SIZE + 1)
           .offset((pageNum - 1) * PAGE_SIZE);

@@ -49,6 +49,19 @@ export async function studioRoutes(app: FastifyInstance): Promise<void> {
         // A frame to put on the card. Highest id is the most recently
         // scanned, which is the freshest thing the studio has.
         representativeItemId: sql<number | null>`max(${mediaItems.id})`,
+        // A handful of recent frames, so a card can show a different one each
+        // time instead of the same still forever. Capped rather than every
+        // id: the homepage only needs something to choose between, and a
+        // studio with hundreds of videos should not send hundreds of numbers
+        // to pick one of them.
+        //
+        // The filter matters — a LEFT JOIN gives studios with no videos a
+        // single NULL row, and array_agg would happily collect that.
+        frameItemIds: sql<number[]>`coalesce(
+          (array_agg(${mediaItems.id} order by ${mediaItems.id} desc)
+            filter (where ${mediaItems.id} is not null))[1:8],
+          '{}'
+        )`,
       })
       .from(studios)
       // Videos only. Without the type restriction this counted an album's

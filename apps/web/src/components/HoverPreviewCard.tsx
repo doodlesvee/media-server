@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { EXPANDED_SCALE, hoverCardBox } from "@/lib/hoverCard";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, ListPlus, Play } from "lucide-react";
 import { useAppearance } from "@/lib/appearance";
@@ -7,8 +8,6 @@ import { cn } from "@/lib/utils";
 import type { MediaCardItem } from "./MediaCard";
 import { useQueue } from "@/lib/queue";
 
-const EXPANDED_SCALE = 1.85;
-const VIEWPORT_MARGIN = 8;
 
 // Kept in sync with the CSS transition duration below so the element isn't
 // unmounted before its exit animation finishes.
@@ -56,19 +55,13 @@ export function HoverPreviewCard({
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queued = queueItems.some((queueItem) => queueItem.id === item.id);
 
-  const width = anchorRect.width * EXPANDED_SCALE;
-  const left = Math.max(
-    VIEWPORT_MARGIN,
-    Math.min(
-      anchorRect.left + anchorRect.width / 2 - width / 2,
-      window.innerWidth - width - VIEWPORT_MARGIN,
-    ),
-  );
-  // Centre the expanded video over the original thumbnail (both 16:9) so the
-  // card appears to grow out of the card you're pointing at, rather than
-  // jumping upward by a fixed amount.
-  const thumbGrowth = (width - anchorRect.width) * (9 / 16);
-  const top = Math.max(VIEWPORT_MARGIN, anchorRect.top - thumbGrowth / 2);
+  // Centred on the thumbnail it grew from, and clamped to the window on every
+  // side. The maths lives in lib/hoverCard so it can be tested against
+  // viewport sizes this component never sees in practice.
+  const { left, top, width } = hoverCardBox(anchorRect, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
   // Where the anchor card's thumbnail centre falls inside this expanded card.
   const originX = anchorRect.left + anchorRect.width / 2 - left;

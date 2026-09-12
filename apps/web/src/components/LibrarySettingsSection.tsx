@@ -1,7 +1,21 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronRight, CornerLeftUp, Folder, Plus, Trash2 } from "lucide-react";
-import { addRoot, browseFolders, fetchRoots, removeRoot } from "@/lib/libraryApi";
+import {
+  AlertTriangle,
+  ChevronRight,
+  CornerLeftUp,
+  Folder,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  addRoot,
+  browseFolders,
+  cleanupQueryKey,
+  fetchRoots,
+  removeRoot,
+} from "@/lib/libraryApi";
 import { fetchSettings, saveScanInterval } from "@/lib/settingsApi";
 import { RescanButton } from "./RescanButton";
 import { SettingsSection } from "./SettingsSection";
@@ -41,7 +55,22 @@ export function LibrarySettingsSection() {
     onError: (err: Error) => setError(err.message),
   });
 
-  const remove = useMutation({ mutationFn: removeRoot, onSuccess: refresh });
+  // Which folder is being removed, while the keep-or-delete choice is open.
+  const [removing, setRemoving] = useState<{ id: number; path: string } | null>(
+    null,
+  );
+
+  const remove = useMutation({
+    mutationFn: ({ id, deleteData }: { id: number; deleteData: boolean }) =>
+      removeRoot(id, deleteData),
+    onSuccess: () => {
+      setRemoving(null);
+      refresh();
+      // The cleanup panel counts what removal leaves behind, so it is wrong
+      // the moment this finishes either way.
+      void queryClient.invalidateQueries({ queryKey: cleanupQueryKey });
+    },
+  });
 
   return (
     <SettingsSection
@@ -70,7 +99,7 @@ export function LibrarySettingsSection() {
             )}
             <button
               type="button"
-              onClick={() => remove.mutate(root.id)}
+              onClick={() => setRemoving({ id: root.id, path: root.path })}
               disabled={remove.isPending}
               aria-label={`Stop scanning ${root.path}`}
               className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
@@ -79,6 +108,56 @@ export function LibrarySettingsSection() {
             </button>
           </li>
         ))}
+        {removing && (
+          <li className="space-y-3 rounded-md border border-border bg-secondary/40 px-3 py-3">
+            <div>
+              <p className="text-sm font-medium">Stop scanning this folder?</p>
+              <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                {removing.path}
+              </p>
+            </div>
+            {/* Asked rather than assumed: keeping the data makes re-adding the
+                folder instant, and deleting it is the only way the names stop
+                turning up in your lists. Only you know which this is. */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  remove.mutate({ id: removing.id, deleteData: false })
+                }
+                disabled={remove.isPending}
+                className="rounded-md bg-secondary px-3 py-1.5 text-xs transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                Keep its data
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  remove.mutate({ id: removing.id, deleteData: true })
+                }
+                disabled={remove.isPending}
+                className="flex items-center gap-1.5 rounded-md bg-destructive/90 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-destructive disabled:opacity-50"
+              >
+                {remove.isPending && <Loader2 className="size-3.5 animate-spin" />}
+                Delete its data too
+              </button>
+              <button
+                type="button"
+                onClick={() => setRemoving(null)}
+                disabled={remove.isPending}
+                className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+              Keeping it means adding the folder back restores every title,
+              favourite and piece of artwork. Either way your files are left
+              alone.
+            </p>
+          </li>
+        )}
+
         {rootsData?.roots.length === 0 && (
           <li className="text-xs text-muted-foreground">
             No folders configured — nothing will be found on the next scan.

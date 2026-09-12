@@ -294,7 +294,12 @@
    `.discreet-exempt` is for the one case where blurring is absurd: a video you
    have deliberately pressed play on. */
 [data-discreet="true"] img:not(.discreet-exempt),
-[data-discreet="true"] video:not(.discreet-exempt) {
+[data-discreet="true"] video:not(.discreet-exempt),
+/* Artwork drawn as a CSS background rather than an <img>. The rule matched
+   elements, not pictures, so the performer banner — the one place that paints
+   its image through `background-image` — stayed perfectly sharp with discreet
+   mode on. Anything else that paints artwork this way wants this class. */
+[data-discreet="true"] .discreet-background:not(.discreet-exempt) {
   /* Strength comes from the Appearance panel; the fallback is what the
      slider defaults to, so a stylesheet loaded before the script still
      blurs rather than briefly showing everything. */

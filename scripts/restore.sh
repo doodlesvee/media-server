@@ -72,9 +72,16 @@ docker run --rm \
   -v "$VOLUME":/app-data \
   -v "$WORK_DIR/uploads":/uploads:ro \
   alpine:3 sh -c '
-    mkdir -p /app-data/item-thumbnails /app-data/performer-images
-    cp -R /uploads/item-thumbnails/. /app-data/item-thumbnails/ 2>/dev/null || true
-    cp -R /uploads/performer-images/. /app-data/performer-images/ 2>/dev/null || true
+    # Whatever the archive holds, rather than a list of names repeated here.
+    # This was hardcoded to two directories while the backup grew a third, so
+    # a restore silently skipped it — the kind of failure you only discover
+    # during an actual recovery.
+    for src in /uploads/*/; do
+      [ -d "$src" ] || continue
+      name=$(basename "$src")
+      mkdir -p "/app-data/$name"
+      cp -R "$src." "/app-data/$name/" 2>/dev/null || true
+    done
   '
 
 echo "==> starting the app"

@@ -8,6 +8,13 @@ import {
   useState,
 } from "react";
 import { fetchAppearance, saveAppearance } from "./appearanceApi";
+import {
+  DENSITIES,
+  VIEW_MODES,
+  type Density,
+  type TileInfo,
+  type ViewMode,
+} from "./layout";
 
 /**
  * The homepage's sections, in their default order.
@@ -69,7 +76,7 @@ function readHomeRows(value: unknown): HomeRowSetting[] {
 }
 
 /** How much text a tile carries under its artwork. */
-export type TileInfo = "full" | "title" | "none";
+export type { TileInfo };
 
 export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
   { value: "full", label: "Full" },
@@ -95,6 +102,17 @@ export type Appearance = {
    * to move too, not just the box.
    */
   tileInfo: TileInfo;
+  /**
+   * The card's shape and how much of the chosen width it takes.
+   *
+   * Separate from the size slider rather than replacing it: the mode says
+   * what kind of card this is, the slider says how big your cards are, and
+   * folding both into one control makes every preset a compromise between
+   * them.
+   */
+  viewMode: ViewMode;
+  /** How much air sits between and inside cards. */
+  density: Density;
   /** Whether hovering a tile expands it into a preview card. */
   hoverZoom: boolean;
   /** Whether that card plays the video's preview clip, or just holds the still. */
@@ -185,6 +203,8 @@ export const DEFAULTS: Appearance = {
   // 80% is the 416px it sat at before the slider took percentages.
   tileSizePercent: 80,
   tileInfo: "full",
+  viewMode: "grid",
+  density: "comfortable",
   hoverZoom: true,
   hoverPreview: true,
   modalPreview: true,
@@ -249,6 +269,12 @@ function read(): Appearance {
       )
         ? (parsed.tileInfo as TileInfo)
         : DEFAULTS.tileInfo,
+      viewMode: VIEW_MODES.some((option) => option.value === parsed.viewMode)
+        ? (parsed.viewMode as ViewMode)
+        : DEFAULTS.viewMode,
+      density: DENSITIES.some((option) => option.value === parsed.density)
+        ? (parsed.density as Density)
+        : DEFAULTS.density,
       hoverZoom:
         typeof parsed.hoverZoom === "boolean"
           ? parsed.hoverZoom

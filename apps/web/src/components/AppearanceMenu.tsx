@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { EyeOff, RotateCcw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  activePreset,
+  DENSITIES,
+  PRESETS,
+  VIEW_MODES,
+} from "@/lib/layout";
+import {
   BANNER_MAX,
   BANNER_MIN,
   BLUR_MAX,
@@ -51,6 +57,8 @@ export function AppearanceMenu() {
   const {
     tileSizePercent,
     tileInfo,
+    viewMode,
+    density,
     hoverZoom,
     hoverPreview,
     modalPreview,
@@ -62,6 +70,7 @@ export function AppearanceMenu() {
     set,
     reset,
   } = appearance;
+  const preset = activePreset({ viewMode, density, tileInfo, tileSizePercent });
   const [unlocking, setUnlocking] = useState(false);
 
   const { guarded } = usePrivacyGuard();
@@ -131,7 +140,11 @@ export function AppearanceMenu() {
           role="dialog"
           aria-modal="true"
           aria-label="Appearance"
-          className="max-h-[85vh] w-80 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-2xl"
+          // Two columns of settings rather than one long scroll. The panel
+          // grew a Layout section with five controls in it, and at 320px wide
+          // everything below the fold needed hunting for. Capped so it does
+          // not become a full-screen sheet on a wide display.
+          className="max-h-[85vh] w-[min(52rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl"
         >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold">Appearance</h2>
@@ -160,162 +173,256 @@ export function AppearanceMenu() {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <Section label="Discreet mode" />
+          {/* Layout owns a column to itself: it is much the longest section,
+              and pairing it with the three short ones keeps the two columns a
+              similar height instead of one running far past the other. */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+            <div className="space-y-4">
+              <Section label="Discreet mode" />
 
-            <Toggle
-              label="Discreet mode"
-              hint={
-                discreet && guarded
-                  ? "Blurs every image. Unlocking asks for your privacy password."
-                  : `Blurs every image. ${DISCREET_SHORTCUT} turns it on from anywhere.`
-              }
-              checked={discreet}
-              onChange={toggleDiscreet}
-            />
+              <Toggle
+                label="Discreet mode"
+                hint={
+                  discreet && guarded
+                    ? "Blurs every image. Unlocking asks for your privacy password."
+                    : `Blurs every image. ${DISCREET_SHORTCUT} turns it on from anywhere.`
+                }
+                checked={discreet}
+                onChange={toggleDiscreet}
+              />
 
-            {discreet && (
-              <div className="space-y-3 rounded-lg bg-secondary/40 p-3">
-                <Slider
-                  label="Blur strength"
-                  value={discreetBlurPercent}
-                  min={BLUR_MIN}
-                  max={BLUR_MAX}
-                  step={5}
-                  suffix="%"
-                  hint="Everything behind this panel is blurred at it right now."
-                  onChange={(next) => set({ discreetBlurPercent: next })}
-                />
-                <Toggle
-                  label="Blur names too"
-                  hint="Titles, performers and studios. Navigation stays readable."
-                  checked={discreetText}
-                  onChange={(next) => set({ discreetText: next })}
-                />
-              </div>
-            )}
+              {discreet && (
+                <div className="space-y-3 rounded-lg bg-secondary/40 p-3">
+                  <Slider
+                    label="Blur strength"
+                    value={discreetBlurPercent}
+                    min={BLUR_MIN}
+                    max={BLUR_MAX}
+                    step={5}
+                    suffix="%"
+                    hint="Everything behind this panel is blurred at it right now."
+                    onChange={(next) => set({ discreetBlurPercent: next })}
+                  />
+                  <Toggle
+                    label="Blur names too"
+                    hint="Titles, performers and studios. Navigation stays readable."
+                    checked={discreetText}
+                    onChange={(next) => set({ discreetText: next })}
+                  />
+                </div>
+              )}
 
-            {unlocking && (
-              <div className="space-y-2 rounded-lg bg-secondary/60 p-3">
-                <span className="flex items-center gap-1.5 text-xs font-medium">
-                  <EyeOff className="size-3.5" />
-                  Privacy password
-                </span>
-                <PrivacyUnlockForm
-                  onUnlocked={() => {
-                    set({ discreet: false });
-                    setUnlocking(false);
-                  }}
-                  onCancel={() => setUnlocking(false)}
-                />
-              </div>
-            )}
+              {unlocking && (
+                <div className="space-y-2 rounded-lg bg-secondary/60 p-3">
+                  <span className="flex items-center gap-1.5 text-xs font-medium">
+                    <EyeOff className="size-3.5" />
+                    Privacy password
+                  </span>
+                  <PrivacyUnlockForm
+                    onUnlocked={() => {
+                      set({ discreet: false });
+                      setUnlocking(false);
+                    }}
+                    onCancel={() => setUnlocking(false)}
+                  />
+                </div>
+              )}
 
-            <Section label="Tiles" />
+              <Section label="Playback" />
 
-            <Slider
-              label="Tile size"
-              value={tileSizePercent}
-              min={TILE_MIN}
-              max={TILE_MAX}
-              step={5}
-              suffix="%"
-              hint="Applies to every row and grid in the app."
-              onChange={(next) => set({ tileSizePercent: next })}
-            />
+              <Toggle
+                label="Play preview when opened"
+                hint={
+                  discreet
+                    ? "Off while discreet mode is on — nothing autoplays."
+                    : "Start the clip as soon as you open an item, instead of opening on the still. Pressing Play always plays."
+                }
+                checked={!discreet && modalPreview}
+                disabled={discreet}
+                onChange={(next) => set({ modalPreview: next })}
+              />
 
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium">Tile labels</span>
-              <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
-                {TILE_INFO_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => set({ tileInfo: option.value })}
-                    aria-pressed={tileInfo === option.value}
-                    className={cn(
-                      "flex-1 rounded px-2 py-1 text-xs transition-colors",
-                      tileInfo === option.value
-                        ? "bg-background font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <span className="block text-[11px] leading-snug text-muted-foreground/70">
-                Performer and title, title alone, or artwork with neither.
-              </span>
+              <Section label="Banner" />
+
+              <Slider
+                label="Hero height"
+                value={heroHeight}
+                min={BANNER_MIN}
+                max={BANNER_MAX}
+                suffix="%"
+                hint="The homepage hero."
+                onChange={(next) => set({ heroHeight: next })}
+              />
+
+              <Slider
+                label="Banner height"
+                value={bannerHeight}
+                min={BANNER_MIN}
+                max={BANNER_MAX}
+                suffix="%"
+                hint="The performer and studio headers."
+                onChange={(next) => set({ bannerHeight: next })}
+              />
+              {/* Both are held off while discreet mode is on, and shown that
+                  way rather than left looking live but inert. The stored values
+                  are untouched, so turning discreet off restores whatever you
+                  had before it. */}
             </div>
 
+            <div className="space-y-4">
+              <Section label="Layout" />
 
-            <Toggle
-              label="Zoom on hover"
-              hint={
-                discreet
-                  ? "Off while discreet mode is on."
-                  : "Expand a tile into a preview card when you hover it."
-              }
-              checked={!discreet && hoverZoom}
-              disabled={discreet}
-              onChange={(next) => set({ hoverZoom: next })}
-            />
+              {/* Presets first: most people want a look, not three axes. The
+                  individual controls stay underneath for anyone who does. */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium">Preset</span>
+                  {preset === null && (
+                    <span className="text-[11px] text-muted-foreground/70">
+                      Custom
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {PRESETS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set(option.settings)}
+                      aria-pressed={preset === option.value}
+                      title={option.hint}
+                      className={cn(
+                        "rounded-md px-2 py-1.5 text-xs transition-colors",
+                        preset === option.value
+                          ? "bg-background font-medium text-foreground ring-1 ring-border"
+                          : "bg-secondary/60 text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  {preset === null
+                    ? "Your own combination of the three settings below."
+                    : PRESETS.find((option) => option.value === preset)?.hint}
+                </span>
+              </div>
 
-            <Toggle
-              label="Play preview on hover"
-              hint={
-                discreet
-                  ? "Off while discreet mode is on — nothing autoplays."
-                  : hoverZoom
-                    ? "Autoplay the video's clip in that card, instead of holding the still."
-                    : "With zoom off, the clip plays in the tile itself."
-              }
-              checked={!discreet && hoverPreview}
-              disabled={discreet}
-              onChange={(next) => set({ hoverPreview: next })}
-            />
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium">View</span>
+                <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                  {VIEW_MODES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set({ viewMode: option.value })}
+                      aria-pressed={viewMode === option.value}
+                      title={option.hint}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                        viewMode === option.value
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  {VIEW_MODES.find((option) => option.value === viewMode)?.hint}
+                </span>
+              </div>
 
-            <Section label="Playback" />
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium">Density</span>
+                <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                  {DENSITIES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set({ density: option.value })}
+                      aria-pressed={density === option.value}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-[11px] transition-colors",
+                        density === option.value
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  Space between and inside cards.
+                </span>
+              </div>
 
-            <Toggle
-              label="Play preview when opened"
-              hint={
-                discreet
-                  ? "Off while discreet mode is on — nothing autoplays."
-                  : "Start the clip as soon as you open an item, instead of opening on the still. Pressing Play always plays."
-              }
-              checked={!discreet && modalPreview}
-              disabled={discreet}
-              onChange={(next) => set({ modalPreview: next })}
-            />
+              <Slider
+                label="Tile size"
+                value={tileSizePercent}
+                min={TILE_MIN}
+                max={TILE_MAX}
+                step={5}
+                suffix="%"
+                hint="Applies to every row and grid in the app. A preset sets this too, so moving it yourself makes the preset Custom."
+                onChange={(next) => set({ tileSizePercent: next })}
+              />
 
-            <Section label="Banner" />
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium">Tile labels</span>
+                <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                  {TILE_INFO_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set({ tileInfo: option.value })}
+                      aria-pressed={tileInfo === option.value}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                        tileInfo === option.value
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  Performer and title, title alone, or artwork with neither.
+                </span>
+              </div>
 
-            <Slider
-              label="Hero height"
-              value={heroHeight}
-              min={BANNER_MIN}
-              max={BANNER_MAX}
-              suffix="%"
-              hint="The homepage hero."
-              onChange={(next) => set({ heroHeight: next })}
-            />
 
-            <Slider
-              label="Banner height"
-              value={bannerHeight}
-              min={BANNER_MIN}
-              max={BANNER_MAX}
-              suffix="%"
-              hint="The performer and studio headers."
-              onChange={(next) => set({ bannerHeight: next })}
-            />
+              <Toggle
+                label="Zoom on hover"
+                hint={
+                  discreet
+                    ? "Off while discreet mode is on."
+                    : "Expand a tile into a preview card when you hover it."
+                }
+                checked={!discreet && hoverZoom}
+                disabled={discreet}
+                onChange={(next) => set({ hoverZoom: next })}
+              />
 
-            {/* Both are held off while discreet mode is on, and shown that
-                way rather than left looking live but inert. The stored values
-                are untouched, so turning discreet off restores whatever you
-                had before it. */}
+              <Toggle
+                label="Play preview on hover"
+                hint={
+                  discreet
+                    ? "Off while discreet mode is on — nothing autoplays."
+                    : hoverZoom
+                      ? "Autoplay the video's clip in that card, instead of holding the still."
+                      : "With zoom off, the clip plays in the tile itself."
+                }
+                checked={!discreet && hoverPreview}
+                disabled={discreet}
+                onChange={(next) => set({ hoverPreview: next })}
+              />
+            </div>
           </div>
         </div>
       </div>

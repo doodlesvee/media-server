@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
+import { playbackStates } from "../db/schema.js";
 import { mediaItems } from "../db/schema.js";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
 import {
@@ -471,5 +472,77 @@ describe("stats", () => {
 
       expect((await get("/api/stats")).json().videoDuplicateGroups).toBe(0);
     });
+  });
+});
+
+
+// Missing files are hidden from everywhere you browse. They still exist, are
+// still counted by library health, and are still listed by the missing-videos
+// manager — they just stop appearing where you would try to play them.
+describe("missing items stay out of the library", () => {
+  const gone = () => new Date("2026-01-01");
+
+  async function titles(url: string): Promise<string[]> {
+    const body = (await get(url)).json();
+    const rows = body.items ?? body.suggestions ?? body;
+    return (Array.isArray(rows) ? rows : []).map(
+      (row: { title?: string; label?: string }) => row.title ?? row.label ?? "",
+    );
+  }
+
+  it("leaves a missing video out of the library grid", async () => {
+    await makeItem(libraryId, { title: "Here" });
+    await makeItem(libraryId, { title: "Gone", missingSince: gone() });
+
+    const listed = await titles("/api/media-items");
+    expect(listed).toContain("Here");
+    expect(listed).not.toContain("Gone");
+  });
+
+  it("leaves it out of search suggestions", async () => {
+    await makeItem(libraryId, { title: "Findable" });
+    await makeItem(libraryId, { title: "Findable but gone", missingSince: gone() });
+
+    const body = (await get("/api/search/suggestions?q=Findable")).json();
+    const text = JSON.stringify(body);
+    expect(text).toContain("Findable");
+    expect(text).not.toContain("Findable but gone");
+  });
+
+  it("leaves it out of continue watching", async () => {
+    const item = await makeItem(libraryId, {
+      title: "Half watched",
+      missingSince: gone(),
+      durationSeconds: 600,
+    });
+    await db.insert(playbackStates).values({ mediaItemId: item, positionSeconds: 120 });
+
+    expect(await titles("/api/continue-watching")).not.toContain("Half watched");
+  });
+
+  // The hero had three branches and only one of them filtered, so a favourited
+  // or hand-picked video that went missing still headlined the homepage.
+  it("leaves a favourited missing video out of the hero", async () => {
+    await makeItem(libraryId, { title: "Gone favourite", isFavorite: true, missingSince: gone() });
+    // PATCH /api/settings, not a PUT to a hero route — the first version of
+    // this test called an endpoint that does not exist, so the hero silently
+    // fell back to the one branch that already filtered and the test passed
+    // while proving nothing.
+    const saved = await send("PATCH", "/api/settings", {
+      hero: { source: "favorites", itemIds: [] },
+    });
+    expect(saved.statusCode).toBe(200);
+
+    expect(await titles("/api/hero-items")).not.toContain("Gone favourite");
+  });
+
+  it("still counts it in library health, and still lists it for removal", async () => {
+    await makeItem(libraryId, { title: "Gone", missingSince: gone() });
+
+    const stats = (await get("/api/stats")).json();
+    expect(stats.videoMissing).toBe(1);
+    expect(stats.videoTotal).toBe(1);
+
+    expect(await titles("/api/missing")).toContain("Gone");
   });
 });

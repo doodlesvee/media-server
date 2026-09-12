@@ -1,12 +1,15 @@
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { ScrollRow } from "./ScrollRow";
+import { SeeMoreTile, type SeeMoreDestination } from "./SeeMoreTile";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
+import { cardLayout } from "@/lib/layout";
 
 export function MediaRow({
   title,
   titleClassName,
   itemClassName,
   action,
+  seeMore,
   items,
   loading = false,
   onSelectItem,
@@ -24,6 +27,12 @@ export function MediaRow({
   itemClassName?: string;
   /** Passed straight through to ScrollRow; see the note there. */
   action?: React.ReactNode;
+  /**
+   * Where the row leads when it is showing only the first few. Rendered as a
+   * final tile, so it is found at the end of a scroll rather than back at the
+   * heading you scrolled away from.
+   */
+  seeMore?: SeeMoreDestination;
   items: MediaCardItem[];
   /**
    * Holds the row open with placeholder tiles while its query is in flight.
@@ -35,8 +44,16 @@ export function MediaRow({
   onPlayItem?: (id: number) => void;
   onOpenFolder: (id: number, title: string) => void;
 }) {
-  const { tileSizePercent } = useAppearance();
-  const tileWidth = tileWidthPx(tileSizePercent);
+  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
+  // Same derivation the grid uses, so a row and the grid below it agree about
+  // how big a card is instead of drifting apart mode by mode.
+  const layout = cardLayout(
+    tileWidthPx(tileSizePercent),
+    viewMode,
+    density,
+    tileInfo,
+  );
+  const tileWidth = layout.widthPx;
   // About what a wide row shows at the default tile size — enough to read as a
   // full row, few enough that the last ones aren't wasted work off-screen.
   const placeholderCount = 6;
@@ -62,7 +79,10 @@ export function MediaRow({
               className={itemClassName ?? "shrink-0"}
               style={tileStyle}
             >
-              <div className="skeleton aspect-[16/10] w-full rounded-md" />
+              <div
+                className="skeleton w-full rounded-md"
+                style={{ aspectRatio: layout.aspectRatio }}
+              />
             </div>
           ))
         : items.map((item) => (
@@ -85,6 +105,17 @@ export function MediaRow({
               />
             </div>
           ))}
+
+      {!loading && seeMore && items.length > 0 && (
+        <SeeMoreTile
+          destination={seeMore}
+          className={itemClassName ?? "shrink-0"}
+          // The same width the real tiles get, or this ends up as wide as the
+          // words inside it.
+          style={tileStyle}
+          aspectRatio={layout.aspectRatio}
+        />
+      )}
     </ScrollRow>
   );
 }

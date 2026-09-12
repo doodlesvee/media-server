@@ -43,6 +43,35 @@ describe("GET /api/studios", () => {
     });
   });
 
+  it("offers several frames to choose between, newest first", async () => {
+    const vixen = await makeStudio("Vixen");
+    const ids = [];
+    for (let n = 0; n < 3; n++) {
+      ids.push(await makeItem(libraryId, { title: `V${n}`, studioId: vixen }));
+    }
+
+    const [studio] = (await get("/api/studios")).json().studios;
+    expect(studio.frameItemIds).toEqual([...ids].reverse());
+  });
+
+  it("caps the frames rather than sending every video a studio has", async () => {
+    const vixen = await makeStudio("Vixen");
+    for (let n = 0; n < 11; n++) {
+      await makeItem(libraryId, { title: `V${n}`, studioId: vixen });
+    }
+
+    const [studio] = (await get("/api/studios")).json().studios;
+    expect(studio.frameItemIds).toHaveLength(8);
+  });
+
+  // A LEFT JOIN gives a studio with nothing attached one null-padded row, and
+  // array_agg would collect that null as a frame.
+  it("gives a studio with no videos an empty list, not a list of nothing", async () => {
+    await makeStudio("Nobody");
+    const [studio] = (await get("/api/studios")).json().studios;
+    expect(studio.frameItemIds).toEqual([]);
+  });
+
   it("keeps a studio with no videos, and reports zero rather than one", async () => {
     // count(*) over a LEFT JOIN with no match counts the null-padded row.
     await makeStudio("Nobody");

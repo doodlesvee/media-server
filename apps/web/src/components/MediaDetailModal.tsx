@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { PerformerEditor } from "./PerformerEditor";
+import { ClampedText } from "./ClampedText";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { FolderPicker } from "./FolderPicker";
@@ -244,6 +245,28 @@ export function MediaDetailModal({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The queue column, beside the player so the video stays visible while you
+   * pick what is next.
+   *
+   * Always there once something is queued — hiding what plays next while
+   * things are waiting to play is not a preference. The Appearance setting
+   * only decides whether the empty column keeps its place.
+   *
+   * Never in cinema mode, where the point is the video filling the screen, or
+   * in the mini player, which has no room for it.
+   */
+  /**
+   * null means "follow the rule below". Q replaces it with a real answer, so
+   * a queue with things in it can still be put away for a moment without
+   * emptying it, and an empty one can be called up to see what is there.
+   */
+  const [queueChoice, setQueueChoice] = useState<boolean | null>(null);
+  const queueOpen = queueChoice ?? queueItems.length > 0;
+
+  const queueBeside =
+    !mini && !cinema && item?.itemType === "video" && queueOpen;
   const startPosition = useRef(0);
   const lastSavedAt = useRef(0);
   const autoPlayTriggered = useRef(false);
@@ -331,6 +354,18 @@ export function MediaDetailModal({
         return;
       }
       if (isTypingTarget(e.target)) return;
+
+      // Handled above the guard below because the queue is worth seeing while
+      // the preview is still running — that is when you are deciding what to
+      // line up next, not once something is already playing.
+      if (e.key === "q" || e.key === "Q") {
+        if (!mini && !cinema && item?.itemType === "video") {
+          e.preventDefault();
+          setQueueChoice(!queueOpen);
+        }
+        return;
+      }
+
       // Every shortcut below drives the video, so there's nothing to do
       // while the muted preview is showing.
       if (mode !== "playing") return;
@@ -386,7 +421,7 @@ export function MediaDetailModal({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cinema, onClose, mode]);
+  }, [cinema, onClose, mode, mini, item?.itemType, queueOpen]);
 
   function startPlaying(positionSeconds: number) {
     startPosition.current = positionSeconds;
@@ -697,6 +732,16 @@ export function MediaDetailModal({
               )}
             />
           )}
+          {/* The player and the queue share a row. The player keeps its
+              aspect ratio and so decides the row's height; the queue column
+              stretches to match and scrolls inside itself. */}
+          {/* The player and the queue share a row; everything below it runs
+              the full width again.
+
+              The modal keeps its width and the player gives up the space —
+              widening it instead pushed the dialog out towards the edges of
+              the screen every time something was queued, so the whole page
+              moved because of a list. */}
           {/* Backdrop / player area */}
           <div
             className={cn(
@@ -1028,7 +1073,11 @@ export function MediaDetailModal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                className={cn(
+                  "absolute top-4 z-40 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-all hover:bg-black/80",
+                  // Steps aside for the queue rather than hiding under it.
+                  queueBeside ? "right-[21.25rem]" : "right-4",
+                )}
               >
                 <X className="size-5" />
               </button>
@@ -1039,12 +1088,31 @@ export function MediaDetailModal({
                 onClick={onExpand}
                 aria-label="Expand player"
                 title="Expand player"
-                className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                className={cn(
+                  "absolute top-4 z-40 flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-all hover:bg-black/80",
+                  // Steps aside for the queue rather than hiding under it.
+                  queueBeside ? "right-[21.25rem]" : "right-4",
+                )}
               >
                 <Maximize2 className="size-4" />
               </button>
             )}
+
+            {/* Over the video rather than beside it. Taking width from the
+                player meant the video either got shorter or grew black bars
+                down its sides every time the queue opened; floating it leaves
+                the player untouched at every size.
+
+                It covers the right of the frame while open, which is the
+                trade — but it is open because you are choosing what is next,
+                not because you are watching this one. */}
+            {queueBeside && (
+              <aside className="absolute inset-y-0 right-0 z-30 w-80 border-l border-white/10 bg-black/70 backdrop-blur-md">
+                <QueuePanel onPlay={openRelated} variant="side" />
+              </aside>
+            )}
           </div>
+
 
           {/* Details */}
           {item && !mini && (
@@ -1098,9 +1166,10 @@ export function MediaDetailModal({
                   <>
                     <h2 className="text-lg font-bold">{item.title}</h2>
                     {item.description && (
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {item.description}
-                      </p>
+                      <ClampedText
+                        text={item.description}
+                        className="text-sm leading-relaxed text-muted-foreground"
+                      />
                     )}
                   </>
                 )}
@@ -1231,9 +1300,16 @@ export function MediaDetailModal({
             related items lead away from it. */}
           {item && !mini && <GalleryStrip itemId={item.id} />}
 
-          {item?.itemType === "video" && !mini && (
-            <QueuePanel onPlay={openRelated} />
-          )}
+          {/* Only ever with something in it. An empty queue below the player
+              was a heading and a line of instructions taking up the space
+              between the video and what is actually under it — the sidebar's
+              queue button is where you go looking for an empty one. */}
+          {/* Cinema mode has no side column, so a queue with something in it
+              falls back to the stack below. Empty, it stays hidden. */}
+          {item?.itemType === "video" &&
+            !mini &&
+            !queueBeside &&
+            queueItems.length > 0 && <QueuePanel onPlay={openRelated} />}
 
           {item && !mini && (
             <RelatedItems itemId={item.id} onSelect={openRelated} />
