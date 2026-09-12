@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { PerformerEditor } from "./PerformerEditor";
+import { ClampedText } from "./ClampedText";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { FolderPicker } from "./FolderPicker";
@@ -1098,9 +1099,10 @@ export function MediaDetailModal({
                   <>
                     <h2 className="text-lg font-bold">{item.title}</h2>
                     {item.description && (
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {item.description}
-                      </p>
+                      <ClampedText
+                        text={item.description}
+                        className="text-sm leading-relaxed text-muted-foreground"
+                      />
                     )}
                   </>
                 )}
