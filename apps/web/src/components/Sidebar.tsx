@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Clapperboard,
-  FileQuestion,
   FolderOpen,
   Home,
   Lock,
@@ -87,6 +86,20 @@ export function Sidebar({
     queryFn: () => fetchJson<{ tags: TagRow[] }>("/api/tags"),
   });
   const { data: health } = useLibraryStats();
+  const healthIssues = health
+    ? health.videoMissing + health.videoDuplicateGroups
+    : 0;
+  // Names the actual fault where there is one kind of it, so the row says
+  // what to expect on the other side of the click.
+  const healthLabel = !health
+    ? "Library health"
+    : health.videoMissing > 0 && health.videoDuplicateGroups > 0
+      ? `${healthIssues} library issues`
+      : health.videoMissing > 0
+        ? `${health.videoMissing} missing`
+        : health.videoDuplicateGroups > 0
+          ? `${health.videoDuplicateGroups} duplicate${health.videoDuplicateGroups === 1 ? "" : "s"}`
+          : "Library healthy";
 
   const deleteCollection = useMutation({
     mutationFn: async (id: number) => {
@@ -338,44 +351,34 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-border p-2">
-        {/* Only shown when there is something to act on. A permanent link to
-            an empty, password-locked page is a door to nowhere. */}
-        {health && health.videoMissing > 0 && (
-          <Link
-            to="/missing"
-            title={collapsed ? `${health.videoMissing} missing videos` : undefined}
-            className={cn(navItemClass, "mb-1")}
-            activeProps={{ className: "bg-accent text-foreground font-medium" }}
-          >
-            <FileQuestion className="size-4 shrink-0 text-amber-500" />
-            {!collapsed && (
-              <span className="min-w-0 flex-1 truncate">
-                {health.videoMissing} missing
-              </span>
-            )}
-            {!collapsed && (
-              <Lock className="size-3 shrink-0 text-muted-foreground/60" />
-            )}
-          </Link>
-        )}
+        {/* One row, not two. A separate "N missing" entry sat directly above
+            this one counting the same problem, so the sidebar reported the
+            same fault twice and disagreed with itself about where to go.
+
+            Where it leads follows what is wrong: missing files have a page
+            built to act on them, so that is where the row goes when there are
+            any. With only duplicates — which have a count but no manager yet —
+            the health panel in settings is still the whole story. */}
         <Link
-          to="/settings"
-          search={{ tab: "library" }}
-          title={collapsed ? "Library health" : undefined}
+          {...(health && health.videoMissing > 0
+            ? { to: "/missing" as const }
+            : { to: "/settings" as const, search: { tab: "library" } })}
+          title={collapsed ? healthLabel : undefined}
           className={cn(navItemClass, "mb-1")}
           activeProps={{ className: "bg-accent text-foreground font-medium" }}
         >
-          {health && (health.videoMissing > 0 || health.videoDuplicateGroups > 0) ? (
+          {healthIssues > 0 ? (
             <TriangleAlert className="size-4 shrink-0 text-amber-500" />
           ) : (
             <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
           )}
           {!collapsed && (
-            <span className="min-w-0 flex-1 truncate">
-              {health && (health.videoMissing > 0 || health.videoDuplicateGroups > 0)
-                ? `${health.videoMissing + health.videoDuplicateGroups} library issues`
-                : "Library healthy"}
-            </span>
+            <span className="min-w-0 flex-1 truncate">{healthLabel}</span>
+          )}
+          {/* The missing page asks for the privacy credential, so the padlock
+              says so before you click rather than after. */}
+          {!collapsed && health && health.videoMissing > 0 && (
+            <Lock className="size-3 shrink-0 text-muted-foreground/60" />
           )}
         </Link>
         <button

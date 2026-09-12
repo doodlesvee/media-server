@@ -13,6 +13,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import {
@@ -308,7 +309,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         representativeItemId: sql<number | null>`max(${mediaItems.id})`,
       })
       .from(mediaItems)
-      .where(eq(mediaItems.inScope, true))
+      .where(visibleItems())
       .groupBy(mediaItems.kind);
 
     const byKind = new Map(rows.map((r) => [r.kind, r]));
@@ -428,7 +429,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
 
     // Items whose folder was removed from the scan list stay in the database
     // but drop out of every view, so removing a folder reads as a clean slate.
-    const conditions: SQL[] = [eq(mediaItems.inScope, true)];
+    const conditions: SQL[] = [visibleItems()];
     if (libraryId) {
       conditions.push(eq(mediaItems.libraryId, Number(libraryId)));
     }
@@ -635,7 +636,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .leftJoin(mediaItemPerformers, eq(mediaItemPerformers.performerId, performers.id))
       .leftJoin(
         mediaItems,
-        and(eq(mediaItems.id, mediaItemPerformers.mediaItemId), eq(mediaItems.inScope, true))
+        and(eq(mediaItems.id, mediaItemPerformers.mediaItemId), visibleItems())
       )
       .where(ilike(performers.name, pattern))
       .groupBy(
@@ -674,7 +675,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
       .where(
         and(
-          eq(mediaItems.inScope, true),
+          visibleItems(),
           ne(mediaItemTypes.name, "photo"),
           ilike(mediaItems.title, pattern)
         )
@@ -713,7 +714,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
       .where(
         and(
-          eq(mediaItems.inScope, true),
+          visibleItems(),
           ne(mediaItemTypes.name, "photo"),
           isNotNull(mediaItems.releaseDate)
         )
@@ -742,7 +743,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       const found = await base.where(
         and(
           eq(mediaItemTypes.name, "video"),
-          eq(mediaItems.inScope, true),
+          visibleItems(),
           inArray(mediaItems.id, hero.itemIds)
         )
       );
@@ -754,7 +755,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         .where(
           and(
             eq(mediaItemTypes.name, "video"),
-            eq(mediaItems.inScope, true),
+            visibleItems(),
             eq(mediaItems.isFavorite, true)
           )
         )
@@ -793,7 +794,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .where(
         and(
           gt(playbackStates.positionSeconds, 15),
-          eq(mediaItems.inScope, true),
+          visibleItems(),
           // Finished videos drop out of the row rather than sitting at the
           // front of it forever. A video with no known duration is kept —
           // better a stale entry than silently hiding something.
@@ -862,7 +863,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
 
     const sameDirectoryPhotos = and(
       eq(mediaItemTypes.name, "photo"),
-      eq(mediaItems.inScope, true),
+      visibleItems(),
       ne(mediaItems.id, id),
       // Everything up to the last slash, compared exactly. A LIKE prefix
       // would treat `_` and `%` in a folder name as wildcards, and both
@@ -985,7 +986,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
             inArray(mediaItems.id, samePerformerIds),
             ne(mediaItems.id, id),
             ne(mediaItemTypes.name, "photo"),
-            eq(mediaItems.inScope, true)
+            visibleItems()
           )
         )
         .orderBy(desc(mediaItems.createdAt))
@@ -1003,7 +1004,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
           and(
             inArray(mediaItems.id, relatedIds),
             ne(mediaItems.id, id),
-            eq(mediaItems.inScope, true)
+            visibleItems()
           )
         )
         .orderBy(desc(mediaItems.createdAt))
@@ -1022,7 +1023,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
             ne(mediaItems.id, id),
             ne(mediaItemTypes.name, "folder"),
             ne(mediaItemTypes.name, "photo"),
-            eq(mediaItems.inScope, true)
+            visibleItems()
           )
         )
         .orderBy(desc(mediaItems.createdAt))

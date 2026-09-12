@@ -1,4 +1,5 @@
 import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { categories, mediaItems, mediaItemTypes } from "../db/schema.js";
@@ -24,7 +25,7 @@ export async function categoryRoutes(app: FastifyInstance): Promise<void> {
     // ever changes it for them — so counting by kind alone reported every
     // still in the library as a video. Categories apply to videos only, which
     // is also how every listing query already treats them.
-    const videosOnly = and(eq(mediaItems.inScope, true), eq(mediaItemTypes.name, "video"));
+    const videosOnly = and(visibleItems(), eq(mediaItemTypes.name, "video"));
 
     const counts = await db
       .select({ kind: mediaItems.kind, total: sql<number>`count(*)::int` })

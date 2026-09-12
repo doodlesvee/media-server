@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { albums, mediaFiles, mediaItemTypes, mediaItems, performers, studios } from "../db/schema.js";
@@ -52,7 +53,7 @@ export async function albumRoutes(app: FastifyInstance): Promise<void> {
       .from(albums)
       .leftJoin(
         mediaItems,
-        and(eq(mediaItems.albumId, albums.id), eq(mediaItems.inScope, true))
+        and(eq(mediaItems.albumId, albums.id), visibleItems())
       )
       .leftJoin(mediaItemTypes, eq(mediaItemTypes.id, mediaItems.itemTypeId))
       .leftJoin(performers, eq(performers.id, albums.performerId))
@@ -129,7 +130,7 @@ export async function albumRoutes(app: FastifyInstance): Promise<void> {
         .where(
           and(
             eq(mediaItems.albumId, id),
-            eq(mediaItems.inScope, true),
+            visibleItems(),
             eq(mediaItemTypes.name, "photo")
           )
         )
@@ -147,7 +148,7 @@ export async function albumRoutes(app: FastifyInstance): Promise<void> {
         .where(
           and(
             eq(mediaItems.albumId, id),
-            eq(mediaItems.inScope, true),
+            visibleItems(),
             eq(mediaItemTypes.name, "video")
           )
         )
@@ -207,7 +208,7 @@ export async function albumRoutes(app: FastifyInstance): Promise<void> {
             and(
               eq(mediaItems.id, coverItemId),
               eq(mediaItems.albumId, id),
-              eq(mediaItems.inScope, true),
+              visibleItems(),
               eq(mediaItemTypes.name, "photo")
             )
           );
