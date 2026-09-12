@@ -1,4 +1,5 @@
 import { getScanSettings } from "../api/settings.js";
+import { isRestoring } from "../backup/restoreState.js";
 import { isScanRunning, startScan } from "./pipeline.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -22,6 +23,11 @@ async function tick(): Promise<void> {
   // startScan throws when one is already running, and an unhandled rejection
   // inside setInterval would take the process down rather than skip a beat.
   if (isScanRunning()) return;
+  // A restore drops and recreates every table. The HTTP gate cannot see a
+  // setInterval, so the check has to live here too — otherwise a scan that
+  // happens to fire mid-restore inserts a job row into a table being dropped,
+  // and blocks the DROP itself while it does.
+  if (isRestoring()) return;
   try {
     await startScan();
   } catch {
@@ -41,6 +47,19 @@ export async function startScanSchedule(): Promise<void> {
   timer = setInterval(() => void tick(), intervalMinutes * 60_000);
   // Don't hold the process open on shutdown for a scan that hasn't fired.
   timer.unref?.();
+}
+
+/**
+ * Disarms the timer entirely.
+ *
+ * Belt and braces alongside the isRestoring() check in tick(): a scan already
+ * past that check cannot be recalled, so a restore stops the clock as well as
+ * gating the beat, then calls restartScanSchedule() when it is done.
+ */
+export function stopScanSchedule(): void {
+  if (!timer) return;
+  clearInterval(timer);
+  timer = null;
 }
 
 /** Re-reads the setting and re-arms, so a change applies without a restart. */

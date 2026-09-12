@@ -1,7 +1,18 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const appDataDir = process.env.APP_DATA_DIR ?? "./app-data";
+/**
+ * The root everything below lives under.
+ *
+ * Not named `*_DIR` on purpose: cache.test.ts treats every such export as a
+ * directory that must be classified as an upload or as derived, and this is
+ * the container for those rather than one of them.
+ */
+export const APP_DATA_ROOT = path.resolve(
+  process.env.APP_DATA_DIR ?? "./app-data"
+);
+
+const appDataDir = APP_DATA_ROOT;
 
 export const THUMBNAILS_DIR = path.resolve(appDataDir, "thumbnails");
 export const POSTERS_DIR = path.resolve(appDataDir, "posters");

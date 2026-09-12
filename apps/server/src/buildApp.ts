@@ -29,6 +29,7 @@ import { tagRoutes } from "./api/tags.js";
 import { webauthnRoutes } from "./api/webauthn.js";
 import { authRoutes } from "./api/auth.js";
 import { registerAuthGuard } from "./auth/guard.js";
+import { isRestoring } from "./backup/restoreState.js";
 import { checkDbConnection } from "./db/client.js";
 import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
 
@@ -47,6 +48,21 @@ export async function buildApp({
   const app = Fastify({ logger });
 
   await app.register(cookie);
+
+  // Ahead of the auth guard, deliberately. That guard resolves a session by
+  // querying the database on every single request (auth/guard.ts), so a gate
+  // registered after it would be running behind a query against the very
+  // database being dropped and recreated. Health stays reachable so something
+  // outside can still tell the process is alive.
+  app.addHook("onRequest", async (request, reply) => {
+    if (!isRestoring()) return;
+    if (!request.url.startsWith("/api/")) return;
+    if (request.url.split("?")[0] === "/api/health") return;
+    reply.code(503).send({
+      error: "A backup is being restored — the library is briefly unavailable",
+      code: "restoring",
+    });
+  });
 
   // Registered before any route so the guard sees every /api request. Routes
   // added later are protected automatically — deny-by-default.
