@@ -81,6 +81,23 @@ async function fetchMediaItems(
   return res.json();
 }
 
+/**
+ * Last measured column count, per tile width.
+ *
+ * Module scope on purpose: it has to outlive the component, because the whole
+ * point is to be right on the *next* mount. Not persisted — a reload has no
+ * scroll position to restore either, so a fresh guess costs nothing.
+ */
+const columnsByTileWidth = new Map<number, number>();
+
+function rememberColumns(tileWidth: number, columns: number): void {
+  columnsByTileWidth.set(tileWidth, columns);
+}
+
+function rememberedColumns(tileWidth: number): number {
+  return columnsByTileWidth.get(tileWidth) ?? 1;
+}
+
 export function MediaGrid({
   source,
   onOpenFolder,
@@ -167,7 +184,14 @@ export function MediaGrid({
   const ROW_SPACING_PX = layout.rowGapPx;
 
   const [gridNode, setGridNode] = useState<HTMLDivElement | null>(null);
-  const [columns, setColumns] = useState(1);
+  // Seeded from the last measurement at this tile width rather than from 1.
+  //
+  // The grid cannot know its own width until it has mounted, so the first
+  // render has to guess. Guessing one column makes the virtualizer claim a
+  // page many times its real height, and scroll restoration returning to that
+  // render lands somewhere arbitrary. Coming back to a page you have already
+  // seen, at a width you have already measured, the guess is simply right.
+  const [columns, setColumns] = useState(() => rememberedColumns(tileWidth));
   const [columnWidth, setColumnWidth] = useState(tileWidth);
   // How far the grid sits down the page. The window is the scroller, so the
   // virtualizer has to discount everything above the grid or every row lands
@@ -184,6 +208,7 @@ export function MediaGrid({
     const measure = () => {
       const width = node.clientWidth;
       const next = columnsForWidth(width, tileWidth, COLUMN_GAP_PX);
+      rememberColumns(tileWidth, next);
       setColumns(next);
       setColumnWidth(columnWidthFor(width, next, COLUMN_GAP_PX));
       setScrollMargin(node.offsetTop);

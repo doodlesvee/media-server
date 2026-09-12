@@ -161,6 +161,19 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultErrorComponent: RouteErrorFallback,
+  /**
+   * Coming back to a grid returns you to where you were, rather than the top.
+   *
+   * The window is the scroller — no page owns a scroll container — so the
+   * router's own restoration is enough and there is nothing to plumb through
+   * AppShell.
+   *
+   * Keyed on the full href, including the search string, on purpose: the
+   * browse page keeps its filters and sort there, so each filtered view
+   * remembers its own position instead of every view sharing one. Changing a
+   * filter is a different list and correctly starts at the top.
+   */
+  scrollRestoration: true,
 });
 
 declare module "@tanstack/react-router" {
