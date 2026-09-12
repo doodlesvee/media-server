@@ -239,7 +239,7 @@ export function HeroBanner({
     return () => clearTimeout(timer);
   }, [index, items.length, hovering]);
 
-  const { bannerHeight } = useAppearance();
+  const { heroHeight } = useAppearance();
 
   function go(direction: 1 | -1) {
     setIndex((i) => (i + direction + items.length) % items.length);
@@ -254,7 +254,7 @@ export function HeroBanner({
       // Height in vh rather than a pixel floor: the slider is a percentage of
       // the screen, and a min-height in pixels would quietly ignore it at the
       // low end.
-      style={{ height: `${bannerHeight}vh` }}
+      style={{ height: `${heroHeight}vh` }}
       className="relative w-full overflow-hidden"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}

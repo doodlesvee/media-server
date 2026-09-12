@@ -21,11 +21,19 @@ const APPEARANCE_KEY = "appearance";
 
 const PERCENT_KEYS = {
   tileSizePercent: [40, 100],
+  // The homepage hero and the performer/studio headers size independently.
+  heroHeight: [30, 100],
   bannerHeight: [30, 100],
   discreetBlurPercent: [10, 100],
 } as const;
 
-const BOOLEAN_KEYS = ["hoverZoom", "hoverPreview", "discreet", "discreetText"] as const;
+const BOOLEAN_KEYS = [
+  "hoverZoom",
+  "hoverPreview",
+  "modalPreview",
+  "discreet",
+  "discreetText",
+] as const;
 
 const TILE_INFO = ["full", "title", "none"];
 

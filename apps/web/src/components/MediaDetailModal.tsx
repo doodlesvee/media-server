@@ -138,8 +138,12 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
-  const { discreet } = useAppearance();
+  const { discreet, modalPreview } = useAppearance();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
+  // Opened, but holding the still with nothing running. Only ever true before
+  // real playback starts: once you press Play the mode changes and neither
+  // discreet mode nor the preview preference gets a say in it.
+  const stillOnly = mode === "preview" && (discreet || !modalPreview);
   const [cinema, setCinema] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [seeked, setSeeked] = useState(false);
@@ -728,13 +732,14 @@ export function MediaDetailModal({
                 // Preview mode plays the pre-cut clip (instant, already at the
                 // poster frame); real playback streams the full file.
                 key={mode}
-                // Discreet mode opens on the poster with nothing running.
-                // Blurred motion still reads as motion across a room, and this
-                // clip used to start the instant an item was opened.
+                // With no clip to run, the element is left holding its poster.
+                // Two reasons to end up here: discreet mode, where blurred
+                // motion still reads as motion across a room, and the
+                // appearance panel's "Play preview when opened" turned off.
                 src={
                   mode === "playing"
                     ? `/api/stream/${item.id}`
-                    : discreet
+                    : stillOnly
                       ? undefined
                       : `/api/media-items/${item.id}/preview`
                 }
@@ -746,13 +751,16 @@ export function MediaDetailModal({
                 onEnded={handleEnded}
                 onVolumeChange={handleVolumeChange}
                 muted={mode === "preview"}
-                autoPlay={mode === "playing" || !discreet}
+                autoPlay={mode === "playing" || !stillOnly}
                 loop={mode === "preview"}
                 playsInline
                 controls={mode === "playing"}
                 controlsList={mini ? "nofullscreen" : undefined}
                 style={{
-                  opacity: seeked || (discreet && mode === "preview") ? 1 : 0,
+                  // Nothing will ever seek when there is no clip loaded, so
+                  // the still has to be shown outright or the fade-in would
+                  // leave the frame blank.
+                  opacity: seeked || stillOnly ? 1 : 0,
                   transition: "opacity 300ms ease-out",
                 }}
                 className={cn(
