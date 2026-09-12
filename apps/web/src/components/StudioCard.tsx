@@ -23,9 +23,16 @@ import type { StudioSummary } from "@/lib/studioApi";
 export function StudioCard({
   studio,
   className,
+  frameItemId = studio.representativeItemId,
 }: {
   studio: StudioSummary;
   className?: string;
+  /**
+   * Which frame to show. Defaults to the newest, which is what the studios
+   * page wants — a stable picture you can learn to recognise. The homepage
+   * row passes a shuffled one instead.
+   */
+  frameItemId?: number | null;
 }) {
   // The count is deliberately not shown: the name is the whole label, and a
   // "1 video" line under half of them made the row read as a list of gaps.
@@ -38,9 +45,9 @@ export function StudioCard({
         className="block focus-visible:outline-none"
       >
         <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-secondary ring-1 ring-border transition-all duration-200 group-hover:ring-white/40">
-          {studio.representativeItemId != null ? (
+          {frameItemId != null ? (
             <img
-              src={thumbnailUrl({ id: studio.representativeItemId })}
+              src={thumbnailUrl({ id: frameItemId })}
               alt=""
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"

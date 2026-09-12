@@ -5,6 +5,12 @@ export type StudioSummary = {
   name: string;
   videoCount: number;
   representativeItemId: number | null;
+  /**
+   * A few recent frames, newest first, for callers that would rather show a
+   * different one each time than the same still forever. Empty for a studio
+   * with no videos.
+   */
+  frameItemIds: number[];
 };
 
 /**

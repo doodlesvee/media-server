@@ -6,6 +6,7 @@ import type { MediaCardItem } from "@/components/MediaCard";
 import { MediaDetailModal } from "@/components/MediaDetailModal";
 import { ClearContinueWatching } from "@/components/ClearContinueWatching";
 import { KindTiles } from "@/components/KindTiles";
+import { ROW_TILE_LIMIT } from "@/lib/rowLimits";
 import { MediaRow } from "@/components/MediaRow";
 import { PerformerRow } from "@/components/PerformerRow";
 import { useAppearance } from "@/lib/appearance";
@@ -49,7 +50,8 @@ function TagRow({
   return (
     <MediaRow
       title={tag.name}
-      items={withoutFolders(data?.items ?? [])}
+      seeMore={{ to: "/browse", search: { tag: tag.name } }}
+      items={withoutFolders(data?.items ?? []).slice(0, ROW_TILE_LIMIT)}
       loading={isLoading}
       onSelectItem={onSelectItem}
       onPlayItem={onPlayItem}
@@ -75,7 +77,8 @@ function CollectionRow({
   return (
     <MediaRow
       title={collection.name}
-      items={withoutFolders(data?.items ?? [])}
+      seeMore={{ to: "/browse", search: { collectionId: collection.id } }}
+      items={withoutFolders(data?.items ?? []).slice(0, ROW_TILE_LIMIT)}
       loading={isLoading}
       onSelectItem={onSelectItem}
       onPlayItem={onPlayItem}
@@ -149,7 +152,7 @@ export function HomePage() {
                     key={key}
                     title="Continue Watching"
                     action={<ClearContinueWatching />}
-                    items={continueWatching?.items ?? []}
+                    items={(continueWatching?.items ?? []).slice(0, ROW_TILE_LIMIT)}
                     loading={continueLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}
@@ -161,7 +164,7 @@ export function HomePage() {
                   <MediaRow
                     key={key}
                     title="Favourites"
-                    items={withoutFolders(favorites?.items ?? [])}
+                    items={withoutFolders(favorites?.items ?? []).slice(0, ROW_TILE_LIMIT)}
                     loading={favoritesLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}
@@ -177,7 +180,8 @@ export function HomePage() {
                   <MediaRow
                     key={key}
                     title="Recently Added"
-                    items={recentItems}
+                    seeMore={{ to: "/browse" }}
+                    items={recentItems.slice(0, ROW_TILE_LIMIT)}
                     loading={recentLoading}
                     onSelectItem={(id) => openItem(id, false)}
                     onPlayItem={(id) => openItem(id, true)}

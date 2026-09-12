@@ -4,6 +4,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { PerformerCard, type PerformerSummary } from "./PerformerCard";
 import { ScrollRow } from "./ScrollRow";
 import { pinsChangedEvent, readPins } from "@/lib/pinned";
+import { PERFORMER_ROW_TILE_LIMIT } from "@/lib/rowLimits";
+import { seededRank } from "@/lib/shuffle";
+import { SeeMoreTile } from "./SeeMoreTile";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -20,7 +23,7 @@ export function PerformerRow() {
     return () => window.removeEventListener(pinsChangedEvent(), refresh);
   }, []);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ["performers"],
     queryFn: () =>
       fetchJson<{ performers: PerformerSummary[] }>("/api/performers"),
@@ -31,8 +34,14 @@ export function PerformerRow() {
   // here, so the row filters them out rather than the endpoint.
   const performers = (data?.performers ?? [])
     .filter((p) => p.videoCount > 0)
-    // Alphabetical here too, matching the Performers page — the same list in
-    // two orders on two screens is worse than either order on its own.
+    // Pinned first, then shuffled. Alphabetical made this row a permanent
+    // window onto the letter A — with only twelve tiles showing, the same
+    // dozen names appeared every visit and the rest of the library may as
+    // well not have existed. Pins stay at the front because that is what
+    // pinning is for.
+    //
+    // Seeded on the fetch rather than random during render, so the row holds
+    // its order while you look at it and reshuffles when the data returns.
     .sort(
       (a, b) =>
         Number(
@@ -44,8 +53,12 @@ export function PerformerRow() {
             readPins().some(
               (pin) => pin.type === "performer" && pin.performerId === a.id,
             ),
-          ) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-    );
+          ) ||
+        seededRank(a.id, dataUpdatedAt) - seededRank(b.id, dataUpdatedAt),
+    )
+    // Capped after sorting, so what survives is the top of the order rather
+    // than whichever names the API happened to send first.
+    .slice(0, PERFORMER_ROW_TILE_LIMIT);
 
   return (
     <ScrollRow
@@ -73,6 +86,15 @@ export function PerformerRow() {
               }
             />
           ))}
+
+      {!isLoading && performers.length > 0 && (
+        // Matches the portrait tiles it follows: same width rule, same 2:3.
+        <SeeMoreTile
+          destination={{ to: "/performers" }}
+          className="w-40 shrink-0 sm:w-52"
+          aspectRatio="2 / 3"
+        />
+      )}
     </ScrollRow>
   );
 }
