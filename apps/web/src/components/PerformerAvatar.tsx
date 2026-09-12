@@ -38,6 +38,8 @@ export function PerformerAvatar({
         <img
           src={src}
           alt=""
+          loading="lazy"
+          decoding="async"
           onError={() => setImageFailed(true)}
           // Posters are 16:9 and this frame is square, so the sides crop away.
           // The framing defaults to top-aligned for the same reason the class

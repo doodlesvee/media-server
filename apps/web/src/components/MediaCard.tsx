@@ -43,6 +43,8 @@ export function MediaCard({
   selectable = false,
   selected = false,
   className,
+  tabIndex,
+  gridIndex,
 }: {
   item: MediaCardItem;
   onClick: () => void;
@@ -50,6 +52,14 @@ export function MediaCard({
   selectable?: boolean;
   selected?: boolean;
   className?: string;
+  /**
+   * Set by a virtualized grid running a roving tab stop, so Tab enters the
+   * grid once and the arrow keys move within it. Left undefined elsewhere,
+   * where every card being a tab stop is the right behaviour.
+   */
+  tabIndex?: number;
+  /** Flat position in that grid, so it can find this card to focus it. */
+  gridIndex?: number;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -144,6 +154,8 @@ export function MediaCard({
       <button
         ref={cardRef}
         type="button"
+        tabIndex={tabIndex}
+        data-grid-index={gridIndex}
         onClick={() => openItem(onClick)}
         onMouseEnter={handleMouseEnter}
         // The expanded card overlays this one, so only cancel a *pending*
@@ -183,6 +195,13 @@ export function MediaCard({
                 src={thumbnailUrl(item)}
                 style={framingStyle(item)}
                 alt=""
+                // The grid can hold thousands of these. Off-screen tiles cost
+                // nothing until they're scrolled near, and decoding off the
+                // main thread keeps a fast scroll from stuttering. Safe
+                // against layout shift: the frame is already sized, so the
+                // image never decides the tile's geometry.
+                loading="lazy"
+                decoding="async"
                 onError={() => setThumbFailed(true)}
                 className="h-full w-full object-cover"
               />

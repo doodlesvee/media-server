@@ -156,6 +156,7 @@ export function HoverPreviewCard({
             src={thumbnailUrl(item)}
             alt=""
             style={framingStyle(item)}
+            decoding="async"
             className="absolute inset-0 h-full w-full object-cover"
           />
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- silent hover preview */}
@@ -181,6 +182,7 @@ export function HoverPreviewCard({
           src={thumbnailUrl(item)}
           alt=""
           style={framingStyle(item)}
+          decoding="async"
           className="aspect-video w-full cursor-pointer overflow-hidden object-cover"
         />
       )}

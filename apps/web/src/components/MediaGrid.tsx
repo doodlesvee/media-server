@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
@@ -7,6 +8,11 @@ import { MediaDetailModal } from "./MediaDetailModal";
 import { useQueue, type QueueItem } from "@/lib/queue";
 import { Dices, ListPlus } from "lucide-react";
 import { readPins } from "@/lib/pinned";
+import {
+  chunkIntoRows,
+  columnsForWidth,
+  columnWidthFor,
+} from "@/lib/gridLayout";
 
 export type GridSource =
   | {
@@ -148,6 +154,111 @@ export function MediaGrid({
       Number(b.itemType === "folder" && pinnedFolderIds.has(b.id)) -
       Number(a.itemType === "folder" && pinnedFolderIds.has(a.id)),
   );
+
+  // Gap between columns (gap-x-4) and the space under each row, which is a
+  // row's own padding here rather than a grid gap: virtualized rows are
+  // absolutely positioned, so a grid row-gap would have nothing to apply to.
+  const COLUMN_GAP_PX = 16;
+  const ROW_SPACING_PX = 24;
+
+  const [gridNode, setGridNode] = useState<HTMLDivElement | null>(null);
+  const [columns, setColumns] = useState(1);
+  const [columnWidth, setColumnWidth] = useState(tileWidth);
+  // How far the grid sits down the page. The window is the scroller, so the
+  // virtualizer has to discount everything above the grid or every row lands
+  // one header too high.
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useLayoutEffect(() => {
+    const node = gridNode;
+    if (!node) return;
+
+    // Mirrors repeat(auto-fill, minmax(tileWidth, 1fr)) — the CSS the grid
+    // used before it was virtualized — so the tile size chosen in Appearance
+    // still decides the column count.
+    const measure = () => {
+      const width = node.clientWidth;
+      const next = columnsForWidth(width, tileWidth, COLUMN_GAP_PX);
+      setColumns(next);
+      setColumnWidth(columnWidthFor(width, next, COLUMN_GAP_PX));
+      setScrollMargin(node.offsetTop);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    // Also watched because the grid's offsetTop moves when something above it
+    // appears — the bulk action bar, most visibly — which never changes the
+    // grid's own size and so would not trigger the observer above.
+    observer.observe(document.body);
+    return () => observer.disconnect();
+    // gridNode is a dependency, not a ref read, precisely because the grid is
+    // not mounted on the first pass — the skeleton is.
+  }, [gridNode, tileWidth]);
+
+  const rows = chunkIntoRows(items, columns);
+
+  const virtualizer = useWindowVirtualizer({
+    count: rows.length,
+    // Only the starting guess: measureElement below replaces it with the real
+    // height as each row renders, so mixed card heights settle on their own.
+    estimateSize: () => Math.round(columnWidth * 0.625) + 72 + ROW_SPACING_PX,
+    overscan: 3,
+    scrollMargin,
+  });
+  const virtualRows = virtualizer.getVirtualItems();
+
+  // One roving tab stop: Tab moves into the grid and straight back out, and
+  // the arrows move within it. Without this, tabbing through a virtualized
+  // grid would walk to the end of the rendered window and then fall out of
+  // the grid entirely, with no way to reach the rest of the library.
+  const [tabStop, setTabStop] = useState(0);
+  const pendingFocus = useRef(false);
+  const safeTabStop = Math.min(tabStop, Math.max(0, items.length - 1));
+
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    const node = gridNode?.querySelector<HTMLElement>(
+      `[data-grid-index="${safeTabStop}"]`,
+    );
+    // Missing means the row has not been rendered yet; the scroll below will
+    // bring it in and this runs again on the next commit.
+    if (node) {
+      node.focus();
+      pendingFocus.current = false;
+    }
+  }, [gridNode, safeTabStop, virtualRows]);
+
+  function moveFocus(to: number) {
+    const next = Math.max(0, Math.min(items.length - 1, to));
+    if (next === safeTabStop) return;
+    setTabStop(next);
+    pendingFocus.current = true;
+    virtualizer.scrollToIndex(Math.floor(next / columns), { align: "auto" });
+  }
+
+  function handleGridKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const moves: Record<string, number> = {
+      ArrowRight: safeTabStop + 1,
+      ArrowLeft: safeTabStop - 1,
+      ArrowDown: safeTabStop + columns,
+      ArrowUp: safeTabStop - columns,
+      Home: 0,
+      End: items.length - 1,
+    };
+    const next = moves[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    moveFocus(next);
+  }
+
+  // Keeps the tab stop on whatever was last focused, so clicking one card and
+  // then using the arrows continues from there rather than jumping to the top.
+  function handleGridFocus(event: React.FocusEvent<HTMLDivElement>) {
+    const card = (event.target as HTMLElement).closest?.("[data-grid-index]");
+    const index = Number(card?.getAttribute("data-grid-index"));
+    if (!Number.isNaN(index)) setTabStop(index);
+  }
 
   // Neither call site owns a scroll container — the page itself scrolls — so
   // the observer's default viewport root is the right one and needs no ref
@@ -346,25 +457,54 @@ export function MediaGrid({
         />
       )}
 
+      {/* Only the rows near the viewport exist in the DOM. A library of
+          thousands used to build up that many card nodes as you scrolled and
+          never gave any of them back.
+
+          No `stagger` here, unlike the skeletons: rows mount as they are
+          scrolled to, so an entry animation would re-run down the whole grid
+          instead of playing once. */}
       <div
-        className="stagger grid gap-x-4 gap-y-6"
-        // auto-fill against the chosen tile width, so the grid and the rows
-        // agree on how big a tile is instead of the grid deriving its own size
-        // from a column count. min(100%, …) keeps a single column from
-        // overflowing a narrow screen.
-        style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
-        }}
+        ref={setGridNode}
+        onKeyDown={handleGridKeyDown}
+        onFocusCapture={handleGridFocus}
+        className="relative w-full"
+        style={{ height: virtualizer.getTotalSize() }}
       >
-        {items.map((item) => (
-          <MediaCard
-            key={item.id}
-            item={item}
-            onClick={() => handleCardClick(item)}
-            selectable={selectionMode}
-            selected={selectedIds.has(item.id)}
-          />
-        ))}
+        {virtualRows.map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          if (!row) return null;
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 top-0 grid w-full gap-x-4"
+              style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                paddingBottom: ROW_SPACING_PX,
+                transform: `translateY(${
+                  virtualRow.start - virtualizer.options.scrollMargin
+                }px)`,
+              }}
+            >
+              {row.map((item, column) => {
+                const index = virtualRow.index * columns + column;
+                return (
+                  <MediaCard
+                    key={item.id}
+                    item={item}
+                    gridIndex={index}
+                    tabIndex={index === safeTabStop ? 0 : -1}
+                    onClick={() => handleCardClick(item)}
+                    selectable={selectionMode}
+                    selected={selectedIds.has(item.id)}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
 
       <div ref={sentinelRef} aria-hidden className="h-px" />

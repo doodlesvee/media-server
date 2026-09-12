@@ -73,6 +73,8 @@ export function PerformerCard({
             <img
               src={portrait}
               alt=""
+              loading="lazy"
+              decoding="async"
               onError={() => setImageFailed(true)}
               style={portraitStyle(performer)}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
