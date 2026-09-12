@@ -122,7 +122,11 @@ export function PerformerBanner({
         ) : (
           <div
             aria-hidden="true"
-            className="performer-banner-fixed absolute inset-0 bg-cover bg-center bg-no-repeat"
+            // `discreet-background` because this paints its picture through
+            // background-image; the blur rule cannot see it as an image
+            // otherwise. The editing branch above is a real <img> and is
+            // already covered.
+            className="performer-banner-fixed discreet-background absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{
               backgroundAttachment: "fixed",
               backgroundImage: `url("${src}")`,
