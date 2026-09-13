@@ -38,9 +38,15 @@ const MIN_RESUMABLE_SECONDS = 15;
  * carry on down the same scroll position with the same filters. A modal
  * covers exactly the thing you are comparing against.
  *
- * It deliberately does not lock page scroll. The page underneath is still
- * usable while this is open, which is what separates a peek from the detail
- * modal; `Portal` is used only for the stacking context.
+ * It holds the page still underneath. Scrolling a grid you cannot see behind
+ * a panel you are reading only loses your place in it, and the panel has its
+ * own scroll for content that overflows — so the wheel always has something
+ * sensible to act on.
+ *
+ * Locking the scroll does not make this a modal. Clicks still reach the page:
+ * a tile behind is clickable, and clicking one closes the peek and opens that
+ * tile. That is the part that separates a peek from the detail modal, and it
+ * is preserved precisely because there is no backdrop swallowing the click.
  *
  * Quick Edit (§4) is the same panel rather than a mode: title, description
  * and tags are editable in place through the components the detail modal
@@ -172,7 +178,7 @@ export function PeekPanel({
     (progressPercent ?? 0) < 97;
 
   return (
-    <Portal lockPageScroll={false}>
+    <Portal>
       <div
         ref={panelRef}
         role="dialog"

@@ -46,7 +46,7 @@ async function renderPanel() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <AppearanceProvider>
@@ -64,8 +64,35 @@ async function renderPanel() {
     </QueryClientProvider>,
   );
   await screen.findByRole("dialog");
-  return { onClose, user: userEvent.setup() };
+  return { onClose, user: userEvent.setup(), unmount: view.unmount };
 }
+
+describe("PeekPanel page scroll", () => {
+  it("holds the page still while it is open", async () => {
+    await renderPanel();
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("gives the scroll back when it closes", async () => {
+    const { unmount } = await renderPanel();
+    unmount();
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
+  // Locking the page is not the same as blocking it. A peek differs from the
+  // detail modal precisely in that the grid behind stays clickable.
+  it("still lets a click reach the page behind", async () => {
+    const { onClose, user } = await renderPanel();
+    const behind = screen.getByRole("button", { name: "Something behind" });
+    const clicked = vi.fn();
+    behind.addEventListener("click", clicked);
+
+    await user.click(behind);
+
+    expect(clicked).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+});
 
 describe("PeekPanel dismissal", () => {
   it("closes on its own button", async () => {
