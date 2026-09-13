@@ -33,34 +33,34 @@ describe("cardLayout", () => {
     }
   });
 
-  // Cover art is 16:10 everywhere except Cinematic, which is wide on purpose.
-  // A 21:9 mode used to exist and cropped the sides off the artwork; 2:1 is
-  // the widest frame that still reads as letterboxing rather than damage.
-  it("keeps every mode but Cinematic on the poster frame", () => {
+  // Cover art is 16:10 and stays that way in every mode. Two modes that
+  // broke this have existed and been removed: a 21:9 one that cropped the
+  // sides off the artwork, and a Cinematic 2:1 that cropped it less but for
+  // the same reason. The modes differ by how much width a card asks for,
+  // and by nothing else.
+  it("keeps every mode on the same frame, so nothing crops the artwork", () => {
     for (const { value } of VIEW_MODES) {
-      if (value === "cinematic") continue;
       expect(cardLayout(400, value, "comfortable", "full").aspectRatio).toBe("16 / 10");
     }
-    expect(cardLayout(400, "cinematic", "comfortable", "full").aspectRatio).toBe("2 / 1");
   });
 
-  it("marks only List as a row, so every other mode still tiles", () => {
+  // Three, and they are three sizes of one card. A picker with five entries
+  // was a decision where a size control was wanted.
+  it("offers three modes", () => {
+    expect(VIEW_MODES.map((mode) => mode.value)).toEqual([
+      "grid",
+      "compact",
+      "large",
+    ]);
+  });
+
+  // No mode overrides the label setting any more. Cinematic did, stepping
+  // "full" down to the title alone, and went with the mode.
+  it("passes the label setting straight through in every mode", () => {
     for (const { value } of VIEW_MODES) {
-      expect(cardLayout(400, value, "comfortable", "full").isRow).toBe(
-        value === "list",
-      );
+      expect(cardLayout(400, value, "comfortable", "full").tileInfo).toBe("full");
+      expect(cardLayout(400, value, "comfortable", "none").tileInfo).toBe("none");
     }
-  });
-
-  // Cinematic's whole argument is the artwork, so full metadata printed over
-  // it is the thing the mode exists to remove. It steps down to the title
-  // rather than to nothing — a wall of similar artwork needs a label.
-  it("steps Cinematic down from full metadata to the title alone", () => {
-    expect(cardLayout(400, "cinematic", "comfortable", "full").tileInfo).toBe("title");
-    // An explicit "none" is a choice, not a default to override.
-    expect(cardLayout(400, "cinematic", "comfortable", "none").tileInfo).toBe("none");
-    // No other mode touches the setting.
-    expect(cardLayout(400, "grid", "comfortable", "full").tileInfo).toBe("full");
   });
 
   it("reports the shape as a ratio the grid can estimate row heights with", () => {

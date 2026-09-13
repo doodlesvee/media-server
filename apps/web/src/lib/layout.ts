@@ -8,18 +8,21 @@
  * the alternative, and it makes every preset a compromise.
  */
 
-export type ViewMode = "grid" | "compact" | "large" | "cinematic" | "list";
+/**
+ * Three modes, and they differ only by how much width a card asks for.
+ *
+ * Cinematic and List existed here and were removed. Both broke that
+ * invariant — one cropped the artwork to a wider frame, the other was not a
+ * tile at all — and neither earned the exception: three sizes of the same
+ * card is a size control, which is what people actually reach for, while a
+ * fourth and fifth entry made the picker a decision rather than a slider.
+ */
+export type ViewMode = "grid" | "compact" | "large";
 
 export const VIEW_MODES: { value: ViewMode; label: string; hint: string }[] = [
   { value: "grid", label: "Grid", hint: "The standard tile." },
   { value: "compact", label: "Compact", hint: "Smaller tiles, more per row." },
   { value: "large", label: "Large", hint: "Bigger tiles, same detail." },
-  {
-    value: "cinematic",
-    label: "Cinematic",
-    hint: "Wide artwork, little text.",
-  },
-  { value: "list", label: "List", hint: "One per row, with details." },
 ];
 
 export type Density = "spacious" | "comfortable" | "compact" | "dense";
@@ -49,13 +52,6 @@ const MODE_WIDTH_SCALE: Record<ViewMode, number> = {
   grid: 1,
   compact: 0.8,
   large: 1.2,
-  // Wider than Large by more than the gap between the other modes, because
-  // its whole argument is that one piece of artwork is worth the room.
-  cinematic: 1.6,
-  // Ignored: a list row spans the container, so its width is not a column
-  // minimum to fit against. Kept at 1 so the record stays total and nothing
-  // has to special-case the lookup.
-  list: 1,
 };
 
 /**
@@ -84,20 +80,7 @@ const DENSITY_WIDTH_SCALE: Record<Density, number> = {
  * can estimate a row's height from it, instead of parsing the string back out
  * and producing NaN the first time the format changes.
  */
-const CARD_ASPECT: Record<ViewMode, { w: number; h: number }> = {
-  grid: { w: 16, h: 10 },
-  compact: { w: 16, h: 10 },
-  large: { w: 16, h: 10 },
-  // 2:1 rather than the 21:9 a "cinematic" mode suggests. The mode that used
-  // to live here was 21:9 and was dropped for cutting the sides off cover
-  // art; 2:1 is wide enough to read as letterboxed without taking the same
-  // bite out of a poster.
-  cinematic: { w: 2, h: 1 },
-  // The thumbnail inside a row, not the row itself. A list row's height
-  // comes from its content, which is why `heightRatio` below is only a
-  // starting guess for the virtualizer.
-  list: { w: 16, h: 10 },
-};
+const CARD_ASPECT = { w: 16, h: 10 };
 
 /**
  * Gaps in pixels, per density: [between columns, under a row].
@@ -135,41 +118,23 @@ export type CardChrome = {
   heightRatio: number;
   paddingPx: number;
   tileInfo: TileInfo;
-  /**
-   * Lay the card out as a horizontal row rather than a tile.
-   *
-   * A flag rather than a separate component: a row shows the same item with
-   * the same artwork, framing, hover and selection behaviour, and forking
-   * MediaCard in two would mean every later change landing twice.
-   */
-  isRow: boolean;
 };
 
 /**
- * The parts of a card's look that depend on the mode and density but not on
- * how wide the grid made it.
+ * The parts of a card's look that do not depend on how wide the grid made it.
  *
- * The mode is back in this signature. It used to be absent on the grounds
- * that modes differ by how much room a card takes rather than how the
- * artwork is cropped — which held while every mode was a rectangle of the
- * same shape. Cinematic and List both break it: one is deliberately wider
- * than a poster, and the other is not a tile at all.
+ * No view mode here, and that is the point of having only three: they differ
+ * by how much width a card asks for, which is the grid's business, not the
+ * card's. The two modes that needed this to know about them — one cropping
+ * to a wider frame, one laying out as a row — have been removed.
  */
-export function cardChrome(
-  mode: ViewMode,
-  density: Density,
-  tileInfo: TileInfo,
-): CardChrome {
-  const aspect = CARD_ASPECT[mode] ?? CARD_ASPECT.grid;
+export function cardChrome(density: Density, tileInfo: TileInfo): CardChrome {
   return {
-    aspectRatio: `${aspect.w} / ${aspect.h}`,
-    heightRatio: aspect.h / aspect.w,
+    aspectRatio: `${CARD_ASPECT.w} / ${CARD_ASPECT.h}`,
+    heightRatio: CARD_ASPECT.h / CARD_ASPECT.w,
     paddingPx: DENSITY_PADDING[density] ?? DENSITY_PADDING.comfortable,
-    // Cinematic overrides the label setting: "strong visual emphasis" (§1)
-    // is the whole mode, and full metadata printed over the artwork is the
-    // thing it exists to remove. Nothing else overrides it.
-    tileInfo: mode === "cinematic" && tileInfo === "full" ? "title" : tileInfo,
-    isRow: mode === "list",
+    // No mode overrides the label setting, so it passes straight through.
+    tileInfo,
   };
 }
 
@@ -188,7 +153,7 @@ export function cardLayout(
 ): CardLayout {
   const gaps = DENSITY_GAPS[density] ?? DENSITY_GAPS.comfortable;
   return {
-    ...cardChrome(mode, density, tileInfo),
+    ...cardChrome(density, tileInfo),
     // Rounded because it becomes a CSS pixel length and a grid column count;
     // a fractional minimum makes the column maths drift by a column at some
     // widths and not others.
@@ -210,11 +175,7 @@ export function cardLayout(
  * when the current settings match none of these, rather than something you
  * can pick.
  */
-export type PresetName =
-  | "minimal"
-  | "comfortable"
-  | "detailed"
-  | "cinematic";
+export type PresetName = "minimal" | "comfortable" | "detailed";
 
 export type PresetSettings = {
   viewMode: ViewMode;
@@ -269,19 +230,6 @@ export const PRESETS: {
       density: "dense",
       tileInfo: "full",
       tileSizePercent: 42,
-    },
-  },
-  {
-    value: "cinematic",
-    label: "Cinematic",
-    hint: "Wide artwork, minimal text.",
-    settings: {
-      viewMode: "cinematic",
-      density: "spacious",
-      // "none" would be Minimal with wider frames. A title is what keeps a
-      // wall of near-identical artwork navigable.
-      tileInfo: "title",
-      tileSizePercent: 82,
     },
   },
 ];
