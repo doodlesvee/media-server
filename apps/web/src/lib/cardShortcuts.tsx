@@ -280,10 +280,6 @@ export function CardShortcutProvider({
         <PeekPanel
           itemId={peekId}
           onClose={() => setPeekId(null)}
-          onOpenDetails={(id) => {
-            setPeekId(null);
-            playItem(id);
-          }}
           onPlay={(id, { resume }) => {
             setPeekId(null);
             playItem(id, { resume });

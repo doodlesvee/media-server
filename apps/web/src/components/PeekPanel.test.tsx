@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PeekPanel } from "./PeekPanel";
@@ -55,7 +55,6 @@ async function renderPanel() {
             <PeekPanel
               itemId={1}
               onClose={onClose}
-              onOpenDetails={() => {}}
               onPlay={() => {}}
             />
           </QueueProvider>
@@ -137,6 +136,13 @@ describe("PeekPanel dismissal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // Entering edit mode is a click inside the panel like any other.
+  it("stays open when you click Edit", async () => {
+    const { onClose, user } = await renderPanel();
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // A toast sits above the page too, and clicking its Undo is not "clicking
   // away" — losing the panel mid-correction would be its own small betrayal.
   it("stays open when you click a toast", async () => {
@@ -166,5 +172,69 @@ describe("PeekPanel dismissal", () => {
     await user.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();
     modal.remove();
+  });
+});
+
+/**
+ * Reading and editing are separate modes (§4's Quick Edit, without the
+ * assumption that you came here to type).
+ *
+ * A peek is what you open to look at something while deciding what to play.
+ * Live inputs on arrival invite edits nobody meant to make, and the panel
+ * reads as a form rather than as an answer.
+ */
+describe("PeekPanel edit mode", () => {
+  it("opens read-only, with no inputs to fall into", async () => {
+    await renderPanel();
+    expect(screen.getByRole("heading", { name: "A video" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("offers only Play and Edit", async () => {
+    await renderPanel();
+    // Scoped to the panel: the harness renders a button behind it, which is
+    // the page the peek does not own.
+    const labels = within(screen.getByRole("dialog"))
+      .getAllByRole("button")
+      .map((button) => button.textContent?.trim())
+      .filter(Boolean);
+
+    // Close carries an icon and no text, so it is absent from this list.
+    expect(labels).toEqual(["Play", "Edit"]);
+    expect(
+      screen.queryByRole("button", { name: /Favourite|Watched|Queue/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Edit turns the fields into inputs in place", async () => {
+    const { user } = await renderPanel();
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+
+    expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Done/ })).toBeInTheDocument();
+  });
+
+  it("Done puts it back to reading", async () => {
+    const { user } = await renderPanel();
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    await user.click(screen.getByRole("button", { name: /Done/ }));
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Edit/ })).toBeInTheDocument();
+  });
+
+  // The reported bug: Edit dispatched a play event, so asking to edit opened
+  // the mini player and started the video.
+  it("Edit plays nothing", async () => {
+    const played: unknown[] = [];
+    const listener = (event: Event) =>
+      played.push((event as CustomEvent).detail);
+    window.addEventListener("media-server:play-item", listener);
+
+    const { user } = await renderPanel();
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    window.removeEventListener("media-server:play-item", listener);
+
+    expect(played).toEqual([]);
   });
 });
