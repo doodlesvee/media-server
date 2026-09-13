@@ -32,8 +32,9 @@ does differently:
 - **Streams** with HTTP range support, so seeking works
 - **Generates** poster frames and multi-segment hover previews with ffmpeg
 - **Organises** with tags, favourites, categories, manual and rule-based
-  collections, and virtual folders
-- **Groups** by performer, studio and album, each with its own browsable page
+  collections, and saved searches
+- **Groups** by performer, studio, album and series, each with its own
+  browsable page
 - **Tracks** watch progress, play counts and a watched state
 - **Hides itself** on a keypress — see [Discreet mode](#discreet-mode)
 - **Adapts** to how you like it drawn, without a rebuild — see
@@ -66,7 +67,9 @@ however you like, instead of being locked into "Movies" or "Photos".
 erDiagram
     libraries ||--o{ library_roots : "folders to scan"
     libraries ||--o{ media_items : contains
+    libraries ||--o{ series : contains
     library_roots ||--o{ media_files : "found under"
+    series ||--o{ media_items : "episodes belong to"
 
     media_item_types ||--o{ media_items : "video / photo / folder"
     media_items ||--o{ media_files : "one item, many paths over time"
@@ -96,16 +99,28 @@ erDiagram
         int parent_id FK "folders nest"
         int item_type_id FK
         int studio_id FK
+        int series_id FK "set by hand — nothing in a filename implies it"
         int album_id "soft link"
         text title
         text title_source "filename | user"
         text performers_source "scanner | user"
         text studio_source "scanner | user"
+        text kind "video | movie | series, set by hand"
+        int season_number
+        int episode_number
+        text episode_title
         date release_date "parsed from the filename"
         bool is_favorite
         bool in_scope "folder still watched?"
         timestamp missing_since "file gone from a watched folder"
         jsonb extra_metadata "codec, camera, GPS"
+    }
+
+    series {
+        int id PK
+        int library_id FK
+        text name
+        text name_source "scanner | user"
     }
 
     media_files {
@@ -143,9 +158,10 @@ Four decisions worth knowing:
   already points back at `media_items` for its cover, and a hard constraint in
   both directions needs deferred checks for no practical gain.
 
-Not shown, because nothing references them: `scan_jobs`, `categories` and
+Not shown, because nothing references them: `scan_jobs`, `categories`,
 `app_settings` (a key/JSONB store holding hero picks, scan interval,
-appearance and the privacy password hash).
+appearance and the privacy password hash) and `activity_events` (an
+append-only log of type/message/metadata rows behind the activity feed).
 
 ## Running it
 
@@ -155,7 +171,7 @@ Requires Docker and Docker Compose.
 git clone git@github.com:doodlesvee/media-server.git
 cd media-server
 cp .env.example docker/.env      # then edit it — see below
-docker compose -f docker/docker-compose.yml up --build
+npm run start:docker
 ```
 
 Open <http://localhost:3000>. The first screen creates your account; there is
@@ -175,6 +191,11 @@ on the host.
 | `BACKUP_DIR` | The one writable mount. Backups are written here, and anything you drop in is offered for restore | `../backups` |
 | `COMPOSE_FILE` | Which compose files a bare `docker compose` picks up | — |
 | `WEBAUTHN_ORIGIN` | Where the browser thinks it is, for Touch ID | `http://localhost:5173` |
+
+`.env.example` also has `DATABASE_URL`, `PORT` and `APP_DATA_DIR` — those only
+matter if you're running the server directly on the host (`npm run
+dev:server`) rather than through Docker; the Docker path hardcodes its own
+values for these inside the compose file.
 
 **Set `COMPOSE_FILE` if you develop against this.** Without it a plain
 `docker compose up -d` in `docker/` reads the base file alone, which has no
@@ -205,6 +226,11 @@ The web app is then on <http://localhost:5173>, proxying `/api` to the server.
 > affected container after changing server code:
 > `docker compose -f docker/docker-compose.yml restart app`.
 > This is also why scanning is interval-based rather than using a file watcher.
+
+`npm run docker:down` tears everything down regardless of which mode you
+started — it always references both compose files plus `--remove-orphans`,
+so a `web` container left over from dev mode is caught even if you only
+started (or only tear down against) the base file.
 
 `node_modules` is a named volume rather than part of the bind mount, so the
 host's copy (built for the host's OS and architecture) can't shadow the

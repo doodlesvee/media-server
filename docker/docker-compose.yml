@@ -13,6 +13,7 @@ services:
       BROWSE_ROOTS: /media,/host/home,/host/volumes
       BACKUP_DIR: /app/backups
       APP_DATA_DIR: /app/app-data
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:5173}
     volumes:
       # Kept for compatibility with an existing library: paths already in the
       # database are /media/..., so this must stay pointed where it was.
