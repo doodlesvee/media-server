@@ -46,16 +46,6 @@ export function AlbumPage() {
       getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
     });
 
-  if (isError) {
-    return (
-      <AppShell title="Album not found">
-        <p className="px-6 text-sm text-muted-foreground">
-          That album doesn’t exist — its folder may have been removed.
-        </p>
-      </AppShell>
-    );
-  }
-
   // Shared by the scroll sentinel and the lightbox, so reaching the end of
   // either loads the next page.
   const loadMore = useCallback(() => {
@@ -77,6 +67,23 @@ export function AlbumPage() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [hasNextPage, loadMore]);
+
+  // Below every hook, not above them.
+  //
+  // This return used to sit before the three hooks above, which meant a
+  // failed load rendered fewer hooks than the render before it — React
+  // counts them positionally, so the transition from loading to error threw
+  // rather than showing this message. None of those hooks need the data:
+  // the effect stands down when there is no sentinel or no next page.
+  if (isError) {
+    return (
+      <AppShell title="Album not found">
+        <p className="px-6 text-sm text-muted-foreground">
+          That album doesn’t exist — its folder may have been removed.
+        </p>
+      </AppShell>
+    );
+  }
 
   const album = data?.pages[0];
   // What the album card actually shows: the hand-picked photo, or the first
