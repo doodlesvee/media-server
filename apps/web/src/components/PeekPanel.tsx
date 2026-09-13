@@ -83,17 +83,63 @@ export function PeekPanel({
     closeRef.current?.focus();
   }, [itemId]);
 
+  /**
+   * Escape closes, unless something is open on top of it.
+   *
+   * This used to require focus to be inside the panel, which was too strict
+   * in a way that produced the obvious bug: clicking anywhere outside moved
+   * focus to <body>, and from then on Escape did nothing at all. The panel
+   * is non-modal by design — the page behind it stays usable — so focus
+   * leaving it is ordinary rather than a signal that it should stop
+   * listening.
+   *
+   * The guard it replaces asked "does the peek own the focus"; what it meant
+   * to ask was "is the peek the topmost thing", and only a modal dialog or a
+   * menu can be above it.
+   */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      // Only when the peek owns the focus. Otherwise Escape in a dialog
-      // opened on top of it would close this instead of that.
-      if (!panelRef.current?.contains(document.activeElement)) return;
+      if (
+        document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')
+      )
+        return;
       event.preventDefault();
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  /**
+   * Clicking away closes it (§4).
+   *
+   * On mousedown rather than click, matching the appearance and filter
+   * panels, so the dismissal happens as you press rather than lagging until
+   * you release somewhere else.
+   *
+   * There is deliberately no backdrop. A backdrop would swallow the click,
+   * and the point of a peek is that the grid behind it stays live — clicking
+   * a different tile should reach that tile, not merely dismiss this.
+   *
+   * Other floating things are exempt: a toast carrying an Undo, a menu, a
+   * dialog. Those sit above the page too, and clicking one is not "clicking
+   * away".
+   */
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (
+        target.closest(
+          '[role="dialog"], [role="menu"], [role="status"], [role="alert"]',
+        )
+      )
+        return;
+      onClose();
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
   }, [onClose]);
 
   const toggleWatched = useMutation({
