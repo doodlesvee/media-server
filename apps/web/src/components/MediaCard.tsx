@@ -43,6 +43,7 @@ export function MediaCard({
   onClick,
   onPlay,
   onContextMenu,
+  onDragStart,
   selectable = false,
   selected = false,
   className,
@@ -58,6 +59,12 @@ export function MediaCard({
   onPlay?: (event: React.MouseEvent | React.KeyboardEvent) => void;
   /** Right-click. The grid owns the menu; the card only reports the event. */
   onContextMenu?: (event: React.MouseEvent) => void;
+  /**
+   * What this card contributes to a drag (§13). The grid decides, because a
+   * drag of a selected card carries the whole selection rather than just the
+   * one under the pointer.
+   */
+  onDragStart?: (event: React.DragEvent) => void;
   selectable?: boolean;
   selected?: boolean;
   className?: string;
@@ -192,6 +199,14 @@ export function MediaCard({
         tabIndex={tabIndex}
         data-grid-index={gridIndex}
         onClick={(event) => openItem(onClick, event)}
+        draggable={Boolean(onDragStart) && item.itemType !== "folder"}
+        onDragStart={(event) => {
+          // The hover card would otherwise stay open for the whole drag,
+          // following nothing and covering every drop target on the way.
+          cancelHover();
+          setAnchorRect(null);
+          onDragStart?.(event);
+        }}
         onContextMenu={(event) => {
           // Tearing down the hover card first: the menu opens over the top of
           // it, so the pointer never leaves and it would sit there underneath.

@@ -25,6 +25,7 @@ import { PeekPanel } from "./PeekPanel";
 import { setWatched, updateItem } from "@/lib/mediaItemApi";
 import { useUndoable } from "@/lib/undo";
 import { recordRecent } from "@/lib/recent";
+import { setMediaDragData } from "@/lib/dragMedia";
 import { isTypingTarget, openSearch, playItem } from "@/lib/appEvents";
 import { useQueryClient } from "@tanstack/react-query";
 import { readPins } from "@/lib/pinned";
@@ -577,6 +578,28 @@ export function MediaGrid({
     queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
   }
 
+  /**
+   * Begins a drag of one card, or of the whole selection if it is in it.
+   *
+   * Dragging a selected card carries every selected item, which is what
+   * makes bulk drag-and-drop work without a separate gesture. Dragging an
+   * *unselected* card carries only that card, and deliberately does not
+   * clear the selection — a drag is not a click, and losing a carefully
+   * built selection to a stray drag would be worse than the feature is
+   * worth.
+   */
+  function startDrag(event: React.DragEvent, item: MediaCardItem) {
+    const dragging =
+      selectedIds.has(item.id) && selectedIds.size > 0
+        ? [...selectedIds]
+        : [item.id];
+    setMediaDragData(event.dataTransfer, {
+      ids: dragging,
+      label:
+        dragging.length === 1 ? item.title : `${dragging.length} items`,
+    });
+  }
+
   function queueItemFor(item: MediaCardItem): QueueItem {
     return {
       id: item.id,
@@ -991,6 +1014,7 @@ export function MediaGrid({
                     onContextMenu={(event) =>
                       openContextMenu(event, item, index)
                     }
+                    onDragStart={(event) => startDrag(event, item)}
                     selectable={selectionMode}
                     selected={selectedIds.has(item.id)}
                   />
