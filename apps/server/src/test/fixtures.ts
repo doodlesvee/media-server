@@ -4,10 +4,12 @@ import {
   libraryRoots,
   mediaFiles,
   mediaItemPerformers,
+  mediaItemTags,
   mediaItemTypes,
   mediaItems,
   performers,
   studios,
+  tags,
 } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 
@@ -84,13 +86,14 @@ export async function attachFile(
   mediaItemId: number,
   rootId: number,
   path: string,
-  contentHash: string | null = null
+  contentHash: string | null = null,
+  sizeBytes = 1000
 ): Promise<void> {
   await db.insert(mediaFiles).values({
     mediaItemId,
     rootId,
     path,
-    sizeBytes: 1000,
+    sizeBytes,
     mtime: new Date(),
     mimeType: "video/mp4",
     contentHash,
@@ -104,6 +107,15 @@ export async function makePerformer(name: string): Promise<number> {
 
 export async function linkPerformer(mediaItemId: number, performerId: number): Promise<void> {
   await db.insert(mediaItemPerformers).values({ mediaItemId, performerId }).onConflictDoNothing();
+}
+
+export async function makeTag(name: string): Promise<number> {
+  const [row] = await db.insert(tags).values({ name }).returning();
+  return row.id;
+}
+
+export async function linkTag(mediaItemId: number, tagId: number): Promise<void> {
+  await db.insert(mediaItemTags).values({ mediaItemId, tagId }).onConflictDoNothing();
 }
 
 export async function makeStudio(name: string): Promise<number> {

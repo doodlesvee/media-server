@@ -31,6 +31,13 @@ import {
   columnsForWidth,
   columnWidthFor,
 } from "@/lib/gridLayout";
+import {
+  EMPTY_FILTERS,
+  SORT_OPTIONS,
+  filterParams,
+  type Filters,
+  type SortValue,
+} from "@/lib/filters";
 
 export type GridSource =
   | {
@@ -41,19 +48,12 @@ export type GridSource =
       kind: string | null;
       q: string | null;
       parentId: number | null;
+      /** The composable filters (§7). Absent on a collection, which is a
+          fixed list rather than a query. */
+      filters?: Filters;
     }
   | { type: "collection"; id: number };
 
-/** Mirrors the server's `SORTS` in `api/mediaItems.ts`. */
-const SORT_OPTIONS = [
-  { value: "newest", label: "Recently added" },
-  { value: "oldest", label: "Oldest first" },
-  { value: "title", label: "Title A–Z" },
-  { value: "longest", label: "Longest" },
-  { value: "shortest", label: "Shortest" },
-] as const;
-
-type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
 type ReleaseYear = { year: number; total: number };
 
@@ -75,6 +75,7 @@ async function fetchMediaItems(
   sort: SortValue,
   year: string,
   page: number,
+  randomSeed: number,
 ): Promise<MediaItemsResponse> {
   if (source.type === "collection") {
     const res = await fetch(`/api/collections/${source.id}/items?page=${page}`);
@@ -82,7 +83,10 @@ async function fetchMediaItems(
     return res.json();
   }
 
-  const params = new URLSearchParams();
+  // Seeded from the filters so the composable set and the single-value entry
+  // points end up in one query string, with the filters written first and
+  // the explicit props able to override them.
+  const params = filterParams(source.filters ?? EMPTY_FILTERS);
   if (source.tag) params.set("tag", source.tag);
   if (source.performer) params.set("performer", source.performer);
   if (source.studio) params.set("studio", source.studio);
@@ -91,6 +95,9 @@ async function fetchMediaItems(
   if (source.parentId !== null) params.set("parentId", String(source.parentId));
   params.set("sort", sort);
   if (year) params.set("year", year);
+  // One seed for the life of the grid, so a shuffled view keeps a single
+  // order across its pages instead of reshuffling under the scroll.
+  if (sort === "random") params.set("seed", String(randomSeed));
   params.set("page", String(page));
 
   const res = await fetch(`/api/media-items?${params}`);
@@ -147,6 +154,18 @@ export function MediaGrid({
   const anchorIndex = useRef<number | null>(null);
   const [sort, setSort] = useState<SortValue>(initialSort);
   const [year, setYear] = useState(initialYear);
+  /**
+   * The shuffle's seed.
+   *
+   * Held rather than re-rolled per request: every page of a random sort has
+   * to be drawn from the *same* shuffle, or paging would show one item twice
+   * and skip another. Re-rolled only when the user picks Random again, which
+   * is what makes choosing it a second time mean "shuffle again" rather than
+   * a no-op.
+   */
+  const [randomSeed, setRandomSeed] = useState(() =>
+    Math.floor(Math.random() * 1_000_000),
+  );
 
   const { data: yearData } = useQuery({
     queryKey: ["release-years"],
@@ -177,8 +196,14 @@ export function MediaGrid({
             // Must be in the key: without it React Query serves one year's
             // results for another, which reads as the filter doing nothing.
             year,
+            // Same reasoning, and the same failure: serialised rather than
+            // spread so adding a filter later cannot silently fall out of
+            // the key and start serving another filter's results.
+            filterParams(source.filters ?? EMPTY_FILTERS).toString(),
+            sort === "random" ? randomSeed : null,
           ],
-    queryFn: ({ pageParam }) => fetchMediaItems(source, sort, year, pageParam),
+    queryFn: ({ pageParam }) =>
+      fetchMediaItems(source, sort, year, pageParam, randomSeed),
     initialPageParam: 1,
     // The server returns one row past the page size to answer this, so
     // there's no COUNT(*) behind it. Older responses without `hasMore` fall
@@ -697,7 +722,13 @@ export function MediaGrid({
     const all: QueueItem[] = [];
     let page = 1;
     while (true) {
-      const response = await fetchMediaItems(source, sort, year, page);
+      const response = await fetchMediaItems(
+        source,
+        sort,
+        year,
+        page,
+        randomSeed,
+      );
       all.push(
         ...response.items
           .filter((item) => item.itemType === "video")
@@ -827,6 +858,11 @@ export function MediaGrid({
                   value={sort}
                   onChange={(e) => {
                     const next = e.target.value as SortValue;
+                    // Picking Random again reshuffles. Without this it is the
+                    // one option in the list that does nothing when chosen a
+                    // second time.
+                    if (next === "random")
+                      setRandomSeed(Math.floor(Math.random() * 1_000_000));
                     setSort(next);
                     onViewStateChange?.({ sort: next, year });
                   }}

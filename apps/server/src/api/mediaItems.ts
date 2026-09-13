@@ -59,8 +59,61 @@ const WATCHED_PERCENT = 92;
  * with OFFSET over a non-unique sort duplicates rows on one page and skips
  * them on the next.
  */
-export const SORTS = ["newest", "oldest", "title", "longest", "shortest"] as const;
+export const SORTS = [
+  "newest",
+  "oldest",
+  "title",
+  "longest",
+  "shortest",
+  "watched",
+  "played",
+  "largest",
+  "smallest",
+  "random",
+] as const;
 export type Sort = (typeof SORTS)[number];
+
+/**
+ * An item's size on disk: the total of its files.
+ *
+ * A correlated subquery rather than a join, because an item can have several
+ * files (a video and its stills) and joining would multiply the item's row
+ * by that count — turning one 4GB video into four of them in the grid.
+ */
+const fileSizeExpr = sql`(
+  select coalesce(sum(mf.size_bytes), 0)
+  from ${mediaFiles} mf
+  where mf.media_item_id = ${mediaItems.id}
+)`;
+
+/**
+ * Height bands for the resolution filter (§7).
+ *
+ * The boundaries sit below each nominal height rather than on it, which is
+ * the whole reason this is a table and not a comparison. Real files are 1078
+ * or 1088 tall as often as exactly 1080, and a crop or a letterbox moves the
+ * number again — a band starting at 1080 would put most of a Full HD library
+ * in the HD bucket. Each band is "at least this tall, and shorter than the
+ * next one up".
+ */
+const RESOLUTIONS: Record<string, { min: number; max: number | null }> = {
+  sd: { min: 0, max: 700 },
+  hd: { min: 700, max: 1000 },
+  fullhd: { min: 1000, max: 1800 },
+  "4k": { min: 1800, max: null },
+};
+
+/**
+ * A stable shuffle, seeded per request by the caller.
+ *
+ * `order by random()` would reshuffle on every page, so paging a randomised
+ * grid would show the same item three times and miss others entirely.
+ * Hashing the id against a seed gives an order that is arbitrary but fixed
+ * for as long as the seed is, which is what makes OFFSET paging valid.
+ */
+function randomOrder(seed: number): SQL[] {
+  return [sql`md5(${mediaItems.id}::text || ${String(seed)})`, asc(mediaItems.id)];
+}
 
 /**
  * Ordering while a search is running: anything whose title contains the whole
@@ -80,7 +133,7 @@ function searchOrder(search: string): SQL[] {
   ];
 }
 
-function orderFor(sort: string | undefined): SQL[] {
+function orderFor(sort: string | undefined, randomSeed: number): SQL[] {
   switch (sort) {
     case "oldest":
       return [asc(mediaItems.createdAt), asc(mediaItems.id)];
@@ -92,6 +145,22 @@ function orderFor(sort: string | undefined): SQL[] {
       return [sql`${mediaItems.durationSeconds} desc nulls last`, desc(mediaItems.id)];
     case "shortest":
       return [sql`${mediaItems.durationSeconds} asc nulls last`, asc(mediaItems.id)];
+    // Never-watched items have no playback row at all, so the LEFT JOIN
+    // leaves these NULL. NULLS LAST keeps "recently watched" a list of
+    // things actually watched rather than a wall of untouched items.
+    case "watched":
+      return [
+        sql`${playbackStates.updatedAt} desc nulls last`,
+        desc(mediaItems.id),
+      ];
+    case "played":
+      return [sql`${playbackStates.playCount} desc nulls last`, desc(mediaItems.id)];
+    case "largest":
+      return [sql`${fileSizeExpr} desc nulls last`, desc(mediaItems.id)];
+    case "smallest":
+      return [sql`${fileSizeExpr} asc nulls last`, asc(mediaItems.id)];
+    case "random":
+      return randomOrder(randomSeed);
     default:
       return [desc(mediaItems.createdAt), desc(mediaItems.id)];
   }
@@ -405,6 +474,15 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       noStudio?: string;
       noYear?: string;
       progress?: string;
+      tags?: string;
+      performers?: string;
+      watched?: string;
+      minDuration?: string;
+      maxDuration?: string;
+      resolution?: string;
+      format?: string;
+      addedWithin?: string;
+      seed?: string;
     };
   }>("/api/media-items", async (request) => {
     const {
@@ -423,9 +501,21 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       noStudio,
       noYear,
       progress,
+      tags: tagList,
+      performers: performerList,
+      watched,
+      minDuration,
+      maxDuration,
+      resolution,
+      format,
+      addedWithin,
+      seed,
     } = request.query;
     const pageNum = Math.max(1, Number(page) || 1);
     const search = q?.trim();
+    // The client sends a seed so a shuffled grid keeps one order across its
+    // pages; without one, each page would be shuffled separately.
+    const randomSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
 
     // Items whose folder was removed from the scan list stay in the database
     // but drop out of every view, so removing a folder reads as a clean slate.
@@ -542,22 +632,132 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     if (favoritesOnly) {
       conditions.push(eq(mediaItems.isFavorite, true));
     }
+
+    /**
+     * The composable half of §7.
+     *
+     * These stack with each other and with the single-value filters above,
+     * because every entry in `conditions` is ANDed. The multi-value ones are
+     * AND too, not OR: picking two tags means "has both", which is the only
+     * reading under which adding a filter ever narrows the result. OR would
+     * make each extra tag return *more*, which is not what a filter is.
+     */
+    const csv = (value: string | undefined): string[] =>
+      (value ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        // Capped for the same reason the search terms are: a hand-built URL
+        // should not be able to ask for a hundred subselects.
+        .slice(0, 10);
+
+    for (const name of csv(tagList)) {
+      conditions.push(
+        inArray(
+          mediaItems.id,
+          db
+            .select({ id: mediaItemTags.mediaItemId })
+            .from(mediaItemTags)
+            .innerJoin(tags, eq(tags.id, mediaItemTags.tagId))
+            .where(sql`lower(${tags.name}) = lower(${name})`)
+        )
+      );
+    }
+    for (const name of csv(performerList)) {
+      conditions.push(
+        inArray(
+          mediaItems.id,
+          db
+            .select({ id: mediaItemPerformers.mediaItemId })
+            .from(mediaItemPerformers)
+            .innerJoin(performers, eq(performers.id, mediaItemPerformers.performerId))
+            .where(sql`lower(${performers.name}) = lower(${name})`)
+        )
+      );
+    }
+
+    // Tri-state: absent means "either", which is not the same as false.
+    const watchedFilter =
+      watched === "true" ? true : watched === "false" ? false : null;
+    if (watchedFilter === true) {
+      conditions.push(isNotNull(playbackStates.completedAt));
+    } else if (watchedFilter === false) {
+      // Never played at all is unwatched too, so this cannot be a plain
+      // `is null` on the joined row — that reads as false for both.
+      conditions.push(
+        sql`not exists (
+          select 1 from ${playbackStates} ps
+          where ps.media_item_id = ${mediaItems.id}
+            and ps.completed_at is not null
+        )`
+      );
+    }
+
+    const minSeconds = Number(minDuration);
+    if (Number.isFinite(minSeconds) && minSeconds > 0) {
+      conditions.push(sql`${mediaItems.durationSeconds} >= ${Math.round(minSeconds)}`);
+    }
+    const maxSeconds = Number(maxDuration);
+    if (Number.isFinite(maxSeconds) && maxSeconds > 0) {
+      conditions.push(sql`${mediaItems.durationSeconds} <= ${Math.round(maxSeconds)}`);
+    }
+
+    const band = resolution ? RESOLUTIONS[resolution.toLowerCase()] : undefined;
+    if (band) {
+      // Height comes out of the probe metadata rather than a column, so it is
+      // read from the JSON. Cast explicitly: a JSON number compared against
+      // an integer parameter is a type error in Postgres, not a coercion.
+      conditions.push(
+        sql`(${mediaItems.extraMetadata} ->> 'height')::int >= ${band.min}`
+      );
+      if (band.max !== null) {
+        conditions.push(
+          sql`(${mediaItems.extraMetadata} ->> 'height')::int < ${band.max}`
+        );
+      }
+    }
+
+    if (format) {
+      conditions.push(
+        sql`lower(${mediaItems.extraMetadata} ->> 'containerFormat') = lower(${format})`
+      );
+    }
+
+    const withinDays = Number(addedWithin);
+    if (Number.isFinite(withinDays) && withinDays > 0) {
+      conditions.push(
+        sql`${mediaItems.createdAt} >= now() - make_interval(days => ${Math.round(withinDays)})`
+      );
+    }
     // With no global filter, default to the current folder level (root when
     // parentId is omitted) so nested items don't leak into the top view. Tag,
     // performer and search all deliberately ignore folder nesting — they're
     // global lookups, you shouldn't have to drill into folders to hit them.
-    if (
-      !tag &&
-      !performer &&
-      !search &&
-      !favoritesOnly &&
-      !studio &&
-      !kind &&
-      filterYear === null &&
-      !unsetStudio &&
-      !unsetYear &&
-      !inProgressOnly
-    ) {
+    //
+    // Every filter has to be listed: one that is missed here silently gets
+    // scoped to the root folder, which reads as the filter matching almost
+    // nothing rather than as a folder default being applied.
+    const anyGlobalFilter =
+      Boolean(tag) ||
+      Boolean(performer) ||
+      Boolean(search) ||
+      favoritesOnly ||
+      Boolean(studio) ||
+      Boolean(kind) ||
+      filterYear !== null ||
+      unsetStudio ||
+      unsetYear ||
+      inProgressOnly ||
+      csv(tagList).length > 0 ||
+      csv(performerList).length > 0 ||
+      watchedFilter !== null ||
+      (Number.isFinite(minSeconds) && minSeconds > 0) ||
+      (Number.isFinite(maxSeconds) && maxSeconds > 0) ||
+      Boolean(band) ||
+      Boolean(format) ||
+      (Number.isFinite(withinDays) && withinDays > 0);
+
+    if (!anyGlobalFilter) {
       conditions.push(
         parentId ? eq(mediaItems.parentId, Number(parentId)) : isNull(mediaItems.parentId)
       );
@@ -573,7 +773,11 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     // Fetching one extra row answers "is there another page?" without a
     // second COUNT(*) over the same filtered set.
     const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
-      .orderBy(...(search && (!sort || sort === "newest") ? searchOrder(search) : orderFor(sort)))
+      .orderBy(
+        ...(search && (!sort || sort === "newest")
+          ? searchOrder(search)
+          : orderFor(sort, randomSeed))
+      )
       .limit(PAGE_SIZE + 1)
       .offset((pageNum - 1) * PAGE_SIZE);
 

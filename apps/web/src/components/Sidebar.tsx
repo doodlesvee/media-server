@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  Bookmark,
   Clapperboard,
   FolderOpen,
   Home,
@@ -31,6 +32,11 @@ import {
   type Pin as PinnedItem,
 } from "@/lib/pinned";
 import { useLibraryStats } from "@/lib/statsApi";
+import {
+  readSavedSearches,
+  removeSavedSearch,
+  savedSearchesChangedEvent,
+} from "@/lib/savedSearches";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 type TagRow = { id: number; name: string };
@@ -58,14 +64,22 @@ export function Sidebar({
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [pins, setPins] = useState<PinnedItem[]>(readPins);
+  const [saved, setSaved] = useState(readSavedSearches);
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const refresh = () => setPins(readPins());
+    // "storage" covers another tab; the custom events cover this one, which
+    // does not fire "storage" for its own writes.
+    const refresh = () => {
+      setPins(readPins());
+      setSaved(readSavedSearches());
+    };
     window.addEventListener(pinsChangedEvent(), refresh);
+    window.addEventListener(savedSearchesChangedEvent(), refresh);
     window.addEventListener("storage", refresh);
     return () => {
       window.removeEventListener(pinsChangedEvent(), refresh);
+      window.removeEventListener(savedSearchesChangedEvent(), refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -289,6 +303,39 @@ export function Sidebar({
                 <span className="truncate">{t.name}</span>
               </Link>
             ))}
+
+            {saved.length > 0 && (
+              <>
+                <SectionLabel>Saved searches</SectionLabel>
+                {saved.map((entry) => (
+                  <div key={entry.id} className="group flex items-center">
+                    <Link
+                      to="/browse"
+                      // Parsed back into a search object rather than
+                      // navigated to as a raw href: the router owns the
+                      // shape of this route's search, and handing it a
+                      // string would skip its own validation.
+                      search={Object.fromEntries(
+                        new URLSearchParams(entry.search),
+                      )}
+                      className={cn(navItemClass, "min-w-0 flex-1 truncate")}
+                      title={entry.name}
+                    >
+                      <Bookmark className="size-4 shrink-0" />
+                      <span className="truncate">{entry.name}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => removeSavedSearch(entry.id)}
+                      aria-label={`Delete saved search ${entry.name}`}
+                      className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
 
             {pins.length > 0 && (
               <>

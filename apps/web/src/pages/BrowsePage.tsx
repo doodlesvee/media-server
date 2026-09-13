@@ -8,6 +8,14 @@ import { MediaGrid, type GridSource } from "@/components/MediaGrid";
 import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
+import { FilterBar } from "@/components/FilterBar";
+import { SaveSearchButton } from "@/components/SaveSearchButton";
+import {
+  filtersFromSearch,
+  filtersToSearch,
+  hasActiveFilters,
+  type Filters,
+} from "@/lib/filters";
 
 const routeApi = getRouteApi("/browse");
 
@@ -88,17 +96,10 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
-  const {
-    tag,
-    performer,
-    studio,
-    kind,
-    collectionId,
-    parentId,
-    q,
-    sort,
-    year,
-  } = routeApi.useSearch();
+  const search = routeApi.useSearch();
+  const { tag, performer, studio, kind, collectionId, parentId, q, sort, year } =
+    search;
+  const filters = filtersFromSearch(search as Record<string, unknown>);
   const navigate = useNavigate();
   const { data: folderData } = useQuery({
     queryKey: ["folders"],
@@ -154,10 +155,34 @@ export function BrowsePage() {
           kind: kind ?? null,
           q: q ?? null,
           parentId: currentParentId,
+          filters,
         };
 
   function clearFilters() {
     void navigate({ to: "/browse", search: {} });
+  }
+
+  /**
+   * Writes a filter change back to the URL.
+   *
+   * Merged over the current search rather than replacing it, so the folder
+   * and sort survive a filter change; the cleared entries come through as
+   * explicit `undefined`, which is what removes them from the href.
+   *
+   * `parentId` is dropped whenever a filter is applied. The filters are
+   * global lookups — the server stops scoping to a folder as soon as one is
+   * set — so leaving a folder in the URL would show a breadcrumb that no
+   * longer describes what is on screen.
+   */
+  function applyFilters(next: Filters) {
+    void navigate({
+      to: "/browse",
+      search: (current) => ({
+        ...current,
+        ...filtersToSearch(next),
+        parentId: hasActiveFilters(next) ? undefined : current.parentId,
+      }),
+    });
   }
 
   /**
@@ -272,6 +297,24 @@ export function BrowsePage() {
             !kind &&
             !q && <NewFolderButton parentId={currentParentId} />}
         </div>
+
+        {source.type === "library" && (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <FilterBar
+              filters={filters}
+              onChange={applyFilters}
+              onClear={clearFilters}
+            />
+            {/* Only once there is something worth coming back to. */}
+            {(hasActiveFilters(filters) || q) && (
+              <SaveSearchButton
+                filters={filters}
+                query={q}
+                search={window.location.search.replace(/^\?/, "")}
+              />
+            )}
+          </div>
+        )}
 
         {collectionId != null && (
           <PlaySurface
