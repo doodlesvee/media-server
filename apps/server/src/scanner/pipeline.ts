@@ -83,6 +83,26 @@ export async function startScan(): Promise<number> {
   return job.id;
 }
 
+/**
+ * The one-column bump for a file outcome.
+ *
+ * A lookup rather than a switch at the call site so the set of outcomes and
+ * the set of columns cannot drift apart: adding an outcome without a column
+ * fails to compile here rather than silently counting nothing.
+ */
+function outcomeIncrement(outcome: FileOutcome) {
+  switch (outcome) {
+    case "new":
+      return { itemsNew: sql`${scanJobs.itemsNew} + 1` };
+    case "updated":
+      return { itemsUpdated: sql`${scanJobs.itemsUpdated} + 1` };
+    case "moved":
+      return { itemsMoved: sql`${scanJobs.itemsMoved} + 1` };
+    case "skipped":
+      return { itemsSkipped: sql`${scanJobs.itemsSkipped} + 1` };
+  }
+}
+
 async function runScan(jobId: number): Promise<void> {
   try {
     const typeRows = await db.select().from(mediaItemTypes);
@@ -116,13 +136,23 @@ async function runScan(jobId: number): Promise<void> {
 
         tasks.push(
           limit(async () => {
-            await processFile(filePath, kind, root, itemTypeIdByKind);
-            // Atomic DB-side increment: concurrent tasks finishing out of
-            // order must not clobber each other's count (a JS-side counter
-            // read-then-write across an `await` would race here).
+            const outcome = await processFile(
+              filePath,
+              kind,
+              root,
+              itemTypeIdByKind,
+            );
+            // Atomic DB-side increments: concurrent tasks finishing out of
+            // order must not clobber each other's counts (a JS-side counter
+            // read-then-write across an `await` would race here). The
+            // outcome tally has exactly the same hazard as filesScanned, so
+            // it is incremented the same way and in the same statement.
             await db
               .update(scanJobs)
-              .set({ filesScanned: sql`${scanJobs.filesScanned} + 1` })
+              .set({
+                filesScanned: sql`${scanJobs.filesScanned} + 1`,
+                ...outcomeIncrement(outcome),
+              })
               .where(eq(scanJobs.id, jobId));
           }),
         );
@@ -140,7 +170,7 @@ async function runScan(jobId: number): Promise<void> {
     // yet, so deciding per-file would give different answers depending on the
     // order things happened to be visited.
     await assignAlbums(roots);
-    await markMissingFiles(
+    const missing = await markMissingFiles(
       seenPaths,
       roots.map((r) => r.path),
     );
@@ -152,11 +182,27 @@ async function runScan(jobId: number): Promise<void> {
     // regenerable, so deleting too much only costs CPU, never data.
     await sweepOrphanedArtwork();
 
-    await db
+    const [finished] = await db
       .update(scanJobs)
-      .set({ status: "completed", finishedAt: new Date() })
-      .where(eq(scanJobs.id, jobId));
-    await logActivity("scan", "Library scan completed", { jobId });
+      .set({
+        status: "completed",
+        finishedAt: new Date(),
+        itemsMissing: missing,
+      })
+      .where(eq(scanJobs.id, jobId))
+      .returning();
+
+    // The summary goes into the activity log as well as onto the job row, so
+    // "what did the scan on Tuesday do" is answerable after the next scan has
+    // replaced the latest-job view (§19).
+    await logActivity("scan", "Library scan completed", {
+      jobId,
+      new: finished?.itemsNew ?? 0,
+      updated: finished?.itemsUpdated ?? 0,
+      moved: finished?.itemsMoved ?? 0,
+      missing: finished?.itemsMissing ?? 0,
+      skipped: finished?.itemsSkipped ?? 0,
+    });
   } catch (err) {
     await db
       .update(scanJobs)
@@ -172,12 +218,21 @@ async function runScan(jobId: number): Promise<void> {
   }
 }
 
+/**
+ * What a scan did to one file, for the "What Changed" summary (§15).
+ *
+ * "skipped" means known and unchanged — most files, on every scan after the
+ * first. It is reported rather than left out because a summary of all zeroes
+ * cannot otherwise be told apart from a scan that looked at nothing.
+ */
+export type FileOutcome = "new" | "updated" | "moved" | "skipped";
+
 async function processFile(
   filePath: string,
   kind: MediaKind,
   root: { id: number; libraryId: number; path: string },
   itemTypeIdByKind: Map<string, number>,
-): Promise<void> {
+): Promise<FileOutcome> {
   const libraryId = root.libraryId;
   const stats = await stat(filePath);
 
@@ -210,14 +265,14 @@ async function processFile(
     const unchanged =
       Number(existingFile.sizeBytes) === stats.size &&
       existingFile.mtime.getTime() === stats.mtime.getTime();
-    if (unchanged) return;
+    if (unchanged) return "skipped";
 
     const contentHash = await partialContentHash(filePath, stats.size);
     await db
       .update(mediaFiles)
       .set({ sizeBytes: stats.size, mtime: stats.mtime, contentHash })
       .where(eq(mediaFiles.id, existingFile.id));
-    return;
+    return "updated";
   }
 
   const contentHash = await partialContentHash(filePath, stats.size);
@@ -247,7 +302,7 @@ async function processFile(
     await syncStudioWithFilename(movedFile.mediaItemId, filePath, root.path);
     await syncReleaseDateWithFilename(movedFile.mediaItemId, filePath);
     await syncSeriesFromFilename(movedFile.mediaItemId, libraryId, filePath);
-    return;
+    return "moved";
   }
 
   const itemTypeId = itemTypeIdByKind.get(kind);
@@ -314,6 +369,8 @@ async function processFile(
     await generatePosterFrame(filePath, item.id, contentHash, durationSeconds);
     await ensurePreviewClip(filePath, item.id, contentHash, durationSeconds);
   }
+
+  return "new";
 }
 
 async function ensureSeriesId(libraryId: number, name: string): Promise<number> {
@@ -786,9 +843,14 @@ async function clearMissingSince(mediaItemId: number): Promise<void> {
 async function markMissingFiles(
   seenPaths: Set<string>,
   rootPaths: string[],
-): Promise<void> {
+): Promise<number> {
   const allFiles = await db.select().from(mediaFiles);
   const now = new Date();
+  // Counted here rather than re-queried afterwards: this is the only place
+  // that knows which items went missing *on this scan*, as opposed to which
+  // are missing in total — the latter includes everything that vanished
+  // during previous scans and never came back.
+  let newlyMissing = 0;
 
   const isWatched = (filePath: string): boolean =>
     rootPaths.some(
@@ -808,6 +870,9 @@ async function markMissingFiles(
         .update(mediaItems)
         .set({ missingSince: now })
         .where(eq(mediaItems.id, item.id));
+      newlyMissing += 1;
     }
   }
+
+  return newlyMissing;
 }

@@ -239,6 +239,13 @@
       "when": 1789141531015,
       "tag": "0033_cute_jasper_sitwell",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789272852940,
+      "tag": "0034_tense_vampiro",
+      "breakpoints": true
     }
   ]
 }

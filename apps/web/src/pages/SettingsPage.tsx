@@ -7,6 +7,7 @@ import { HeroSettingsSection } from "@/components/HeroSettingsSection";
 import { LibraryCleanupSection } from "@/components/LibraryCleanupSection";
 import { LibrarySettingsSection } from "@/components/LibrarySettingsSection";
 import { LibraryHealthSection } from "@/components/LibraryHealthSection";
+import { DuplicatesSection } from "@/components/DuplicatesSection";
 import { PrivacySettingsSection } from "@/components/PrivacySettingsSection";
 import { ActivityLogSection } from "@/components/ActivityLogSection";
 import { cn } from "@/lib/utils";
@@ -74,6 +75,7 @@ export function SettingsPage() {
           {active === "library" && (
             <>
               <LibraryHealthSection />
+              <DuplicatesSection />
               <LibraryCleanupSection />
               <LibrarySettingsSection />
               <CategorySettings />

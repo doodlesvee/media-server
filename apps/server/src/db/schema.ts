@@ -135,6 +135,21 @@ export const scanJobs = pgTable("scan_jobs", {
   status: text("status").notNull(), // 'running' | 'completed' | 'failed'
   filesScanned: integer("files_scanned").notNull().default(0),
   filesTotal: integer("files_total"),
+  // What the scan actually did, for the "What Changed" summary (§15).
+  //
+  // Counted per file rather than derived afterwards by comparing snapshots:
+  // a diff of before and after cannot tell a move from a delete plus an add,
+  // and the move case is the one the incremental scanner exists to get right.
+  //
+  // "Skipped" is a file that was already known and unchanged, which is most
+  // of them on every scan after the first. Stated rather than left implicit
+  // because a summary reading "+0 New" is otherwise indistinguishable from a
+  // scan that failed to look at anything.
+  itemsNew: integer("items_new").notNull().default(0),
+  itemsUpdated: integer("items_updated").notNull().default(0),
+  itemsMoved: integer("items_moved").notNull().default(0),
+  itemsMissing: integer("items_missing").notNull().default(0),
+  itemsSkipped: integer("items_skipped").notNull().default(0),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
   error: text("error"),
