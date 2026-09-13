@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
 import { FilterBar } from "@/components/FilterBar";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
+import { Timeline } from "@/components/Timeline";
 import {
   filtersFromSearch,
   filtersToSearch,
@@ -97,8 +98,18 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 
 export function BrowsePage() {
   const search = routeApi.useSearch();
-  const { tag, performer, studio, kind, collectionId, parentId, q, sort, year } =
-    search;
+  const {
+    tag,
+    performer,
+    studio,
+    kind,
+    collectionId,
+    parentId,
+    q,
+    sort,
+    year,
+    month,
+  } = search;
   const filters = filtersFromSearch(search as Record<string, unknown>);
   const navigate = useNavigate();
   const { data: folderData } = useQuery({
@@ -300,11 +311,33 @@ export function BrowsePage() {
 
         {source.type === "library" && (
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <FilterBar
-              filters={filters}
-              onChange={applyFilters}
-              onClear={clearFilters}
-            />
+            <div className="flex flex-wrap items-start gap-2">
+              <FilterBar
+                filters={filters}
+                onChange={applyFilters}
+                onClear={clearFilters}
+              />
+              <Timeline
+                year={year}
+                month={month}
+                onSelect={(period) =>
+                  void navigate({
+                    to: "/browse",
+                    search: (current) => ({
+                      ...current,
+                      year: period.year,
+                      // Cleared with the year, or picking a year after a
+                      // month would keep the old month and show one month of
+                      // the new year instead of all of it.
+                      month: period.month,
+                      parentId: period.year === undefined
+                        ? current.parentId
+                        : undefined,
+                    }),
+                  })
+                }
+              />
+            </div>
             {/* Only once there is something worth coming back to. */}
             {(hasActiveFilters(filters) || q) && (
               <SaveSearchButton
@@ -326,6 +359,7 @@ export function BrowsePage() {
           source={source}
           sort={sort as Parameters<typeof MediaGrid>[0]["sort"]}
           year={year != null ? String(year) : ""}
+          month={month}
           onViewStateChange={(state) =>
             void navigate({
               to: "/browse",

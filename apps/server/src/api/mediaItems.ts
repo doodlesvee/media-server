@@ -482,6 +482,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       resolution?: string;
       format?: string;
       addedWithin?: string;
+      month?: string;
       seed?: string;
     };
   }>("/api/media-items", async (request) => {
@@ -509,6 +510,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       resolution,
       format,
       addedWithin,
+      month,
       seed,
     } = request.query;
     const pageNum = Math.max(1, Number(page) || 1);
@@ -605,6 +607,17 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     const filterYear = year && Number.isInteger(yearNum) ? yearNum : null;
     if (filterYear !== null) {
       conditions.push(sql`extract(year from ${mediaItems.releaseDate}) = ${filterYear}`);
+    }
+
+    // Only meaningful alongside a year — "March" across every year is a
+    // question nobody asks of a library, and the timeline never offers it.
+    const monthNum = Number(month);
+    const filterMonth =
+      filterYear !== null && Number.isInteger(monthNum) && monthNum >= 1 && monthNum <= 12
+        ? monthNum
+        : null;
+    if (filterMonth !== null) {
+      conditions.push(sql`extract(month from ${mediaItems.releaseDate}) = ${filterMonth}`);
     }
 
     // Explicit "unset" filters, so a grouped view can show the items that
@@ -927,6 +940,46 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(sql`extract(year from ${mediaItems.releaseDate}) desc`);
 
     return { years: rows };
+  });
+
+  /**
+   * A month-by-month histogram for timeline navigation (§14).
+   *
+   * Release date rather than the date a file was scanned: a timeline of a
+   * library is about when the material is from, and "added" would collapse
+   * to a spike on whichever day the initial scan ran.
+   *
+   * One row per month, newest first, with the years derivable by grouping
+   * client-side. Returning nested years would mean the client could not
+   * render a flat list without flattening it again, and a library covers
+   * decades at most — a few hundred rows, once.
+   */
+  app.get("/api/timeline", async () => {
+    const rows = await db
+      .select({
+        year: sql<number>`extract(year from ${mediaItems.releaseDate})::int`,
+        month: sql<number>`extract(month from ${mediaItems.releaseDate})::int`,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(mediaItems)
+      .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+      .where(
+        and(
+          visibleItems(),
+          ne(mediaItemTypes.name, "photo"),
+          isNotNull(mediaItems.releaseDate)
+        )
+      )
+      .groupBy(
+        sql`extract(year from ${mediaItems.releaseDate})`,
+        sql`extract(month from ${mediaItems.releaseDate})`
+      )
+      .orderBy(
+        sql`extract(year from ${mediaItems.releaseDate}) desc`,
+        sql`extract(month from ${mediaItems.releaseDate}) desc`
+      );
+
+    return { months: rows };
   });
 
   // Resolves the hero setting into actual items, so the homepage doesn't have

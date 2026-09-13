@@ -11,6 +11,7 @@ import { UserMenu } from "./UserMenu";
 import { cn } from "@/lib/utils";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { NotificationCenter } from "./NotificationCenter";
+import { describeHref, writeLastSession } from "@/lib/lastSession";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
@@ -49,6 +50,25 @@ export function AppShell({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const href = useRouterState({
+    select: (state) => state.location.href,
+  });
+
+  /**
+   * Remembers where you were, for the "Welcome back" prompt (§3).
+   *
+   * Recorded in the shell rather than per page, because every page is
+   * wrapped in it and the location is the only thing being stored — a page
+   * that forgot to opt in would be a hole in the feature.
+   *
+   * The home page is skipped: it is where the prompt appears, so recording
+   * it would overwrite the very thing being offered with the page offering
+   * it.
+   */
+  useEffect(() => {
+    if (pathname === "/") return;
+    writeLastSession({ href, label: describeHref(href) });
+  }, [href, pathname]);
 
   useEffect(() => {
     try {

@@ -77,6 +77,7 @@ async function fetchMediaItems(
   year: string,
   page: number,
   randomSeed: number,
+  month?: number,
 ): Promise<MediaItemsResponse> {
   if (source.type === "collection") {
     const res = await fetch(`/api/collections/${source.id}/items?page=${page}`);
@@ -96,6 +97,7 @@ async function fetchMediaItems(
   if (source.parentId !== null) params.set("parentId", String(source.parentId));
   params.set("sort", sort);
   if (year) params.set("year", year);
+  if (month !== undefined) params.set("month", String(month));
   // One seed for the life of the grid, so a shuffled view keeps a single
   // order across its pages instead of reshuffling under the scroll.
   if (sort === "random") params.set("seed", String(randomSeed));
@@ -128,12 +130,15 @@ export function MediaGrid({
   onOpenFolder,
   sort: initialSort = "newest",
   year: initialYear = "",
+  month,
   onViewStateChange,
 }: {
   source: GridSource;
   onOpenFolder: (id: number, title: string) => void;
   sort?: SortValue;
   year?: string;
+  /** 1-12, set by the timeline. Only meaningful alongside a year. */
+  month?: number;
   onViewStateChange?: (state: { sort: SortValue; year: string }) => void;
 }) {
   const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
@@ -201,10 +206,11 @@ export function MediaGrid({
             // spread so adding a filter later cannot silently fall out of
             // the key and start serving another filter's results.
             filterParams(source.filters ?? EMPTY_FILTERS).toString(),
+            month ?? null,
             sort === "random" ? randomSeed : null,
           ],
     queryFn: ({ pageParam }) =>
-      fetchMediaItems(source, sort, year, pageParam, randomSeed),
+      fetchMediaItems(source, sort, year, pageParam, randomSeed, month),
     initialPageParam: 1,
     // The server returns one row past the page size to answer this, so
     // there's no COUNT(*) behind it. Older responses without `hasMore` fall
@@ -744,6 +750,7 @@ export function MediaGrid({
         year,
         page,
         randomSeed,
+        month,
       );
       all.push(
         ...response.items

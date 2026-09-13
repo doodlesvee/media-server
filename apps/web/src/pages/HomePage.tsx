@@ -13,6 +13,7 @@ import { useAppearance, PageScope } from "@/lib/appearance";
 import { StudioRow } from "@/components/StudioRow";
 import { RecentRow } from "@/components/RecentRow";
 import { PinnedRow } from "@/components/PinnedRow";
+import { WelcomeBack } from "@/components/WelcomeBack";
 
 type Tag = { id: number; name: string };
 type Collection = { id: number; name: string; type: "manual" | "smart" };
@@ -165,6 +166,7 @@ export function HomePage() {
   return (
     <PageScope name="home">
       <AppShell>
+        <WelcomeBack />
         {heroItems.length > 0 && (
           <HeroBanner
             items={heroItems}
