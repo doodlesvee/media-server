@@ -23,6 +23,7 @@ import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { PeekPanel } from "./PeekPanel";
 import { setWatched, updateItem } from "@/lib/mediaItemApi";
 import { useUndoable } from "@/lib/undo";
+import { recordRecent } from "@/lib/recent";
 import { isTypingTarget, openSearch, playItem } from "@/lib/appEvents";
 import { useQueryClient } from "@tanstack/react-query";
 import { readPins } from "@/lib/pinned";
@@ -378,11 +379,15 @@ export function MediaGrid({
         // Space would otherwise scroll the page, and the card is a <button>
         // so it would also re-fire the click that is already bound to open.
         event.preventDefault();
-        if (item.itemType !== "folder") setPeekItemId(item.id);
+        if (item.itemType !== "folder") {
+          recordRecent("browsed", item);
+          setPeekItemId(item.id);
+        }
         break;
       case "p":
         if (item.itemType === "video") {
           event.preventDefault();
+          recordRecent("played", item);
           playItem(item.id);
         }
         break;
@@ -554,6 +559,7 @@ export function MediaGrid({
     if (item.itemType === "folder") {
       onOpenFolder(item.id, item.title);
     } else {
+      recordRecent("browsed", item);
       setOpenItemId(item.id);
     }
   }
@@ -582,6 +588,7 @@ export function MediaGrid({
    * double press ends up setting the opposite of what it says.
    */
   function toggleFavoriteById(id: number, title: string) {
+    recordRecent("favourited", { id, title });
     void runUndoable({
       message: "Favourite updated",
       description: title,
@@ -653,14 +660,20 @@ export function MediaGrid({
               {
                 label: "Play",
                 icon: Play,
-                onSelect: () => playItem(item.id),
+                onSelect: () => {
+                  recordRecent("played", item);
+                  playItem(item.id);
+                },
               },
               ...(item.lastPositionSeconds
                 ? [
                     {
                       label: "Resume",
                       icon: Play,
-                      onSelect: () => playItem(item.id, { resume: true }),
+                      onSelect: () => {
+                        recordRecent("played", item);
+                        playItem(item.id, { resume: true });
+                      },
                     },
                   ]
                 : []),
@@ -672,7 +685,10 @@ export function MediaGrid({
               {
                 label: "Peek",
                 icon: ScanEye,
-                onSelect: () => setPeekItemId(item.id),
+                onSelect: () => {
+                  recordRecent("browsed", item);
+                  setPeekItemId(item.id);
+                },
               },
             ]),
         ...(isVideo

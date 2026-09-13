@@ -31,6 +31,13 @@ export const HOME_ROWS = [
   { key: "performers", label: "Performers" },
   { key: "studios", label: "Studios" },
   { key: "recent", label: "Recently added" },
+  { key: "recentlyWatched", label: "Recently watched" },
+  { key: "mostPlayed", label: "Most played" },
+  { key: "unwatched", label: "Unwatched" },
+  { key: "recentlyBrowsed", label: "Recently browsed" },
+  { key: "recentlyInteracted", label: "Recently interacted" },
+  { key: "randomPicks", label: "Random picks" },
+  { key: "pinned", label: "Pinned" },
   { key: "collections", label: "Collections" },
   { key: "tags", label: "Tags" },
 ] as const;

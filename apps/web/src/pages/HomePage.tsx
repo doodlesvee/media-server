@@ -11,6 +11,8 @@ import { MediaRow } from "@/components/MediaRow";
 import { PerformerRow } from "@/components/PerformerRow";
 import { useAppearance, PageScope } from "@/lib/appearance";
 import { StudioRow } from "@/components/StudioRow";
+import { RecentRow } from "@/components/RecentRow";
+import { PinnedRow } from "@/components/PinnedRow";
 
 type Tag = { id: number; name: string };
 type Collection = { id: number; name: string; type: "manual" | "smart" };
@@ -102,6 +104,41 @@ export function HomePage() {
     queryKey: ["media-items", "favorites"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/media-items?favorite=true"),
   });
+  const { data: recentlyWatched, isLoading: recentlyWatchedLoading } = useQuery({
+    queryKey: ["media-items", "recently-watched"],
+    queryFn: () =>
+      fetchJson<{ items: MediaCardItem[] }>(
+        "/api/media-items?sort=watched&watched=true",
+      ),
+  });
+  const { data: mostPlayed, isLoading: mostPlayedLoading } = useQuery({
+    queryKey: ["media-items", "most-played"],
+    queryFn: () =>
+      fetchJson<{ items: MediaCardItem[] }>(
+        "/api/media-items?sort=played&watched=true",
+      ),
+  });
+  const { data: unwatched, isLoading: unwatchedLoading } = useQuery({
+    queryKey: ["media-items", "unwatched"],
+    queryFn: () =>
+      fetchJson<{ items: MediaCardItem[] }>("/api/media-items?watched=false"),
+  });
+  /**
+   * A shuffle that holds for the session rather than re-rolling per render.
+   *
+   * The seed is state with a lazy initialiser, so "Random picks" is a
+   * different set each time you come back to the home page but the same set
+   * while you are on it — a row that reshuffled under the pointer would be
+   * unusable.
+   */
+  const [randomSeed] = useState(() => Math.floor(Math.random() * 1_000_000));
+  const { data: randomPicks, isLoading: randomLoading } = useQuery({
+    queryKey: ["media-items", "random-picks", randomSeed],
+    queryFn: () =>
+      fetchJson<{ items: MediaCardItem[] }>(
+        `/api/media-items?sort=random&seed=${randomSeed}`,
+      ),
+  });
   const { data: continueWatching, isLoading: continueLoading } = useQuery({
     queryKey: ["continue-watching"],
     queryFn: () => fetchJson<{ items: MediaCardItem[] }>("/api/continue-watching"),
@@ -189,6 +226,91 @@ export function HomePage() {
                       onOpenFolder={noopOpenFolder}
                     />
                   );
+                case "recentlyWatched":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Recently Watched"
+                      seeMore={{ to: "/browse", search: { sort: "watched" } }}
+                      items={withoutFolders(recentlyWatched?.items ?? []).slice(
+                        0,
+                        ROW_TILE_LIMIT,
+                      )}
+                      loading={recentlyWatchedLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "mostPlayed":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Most Played"
+                      seeMore={{ to: "/browse", search: { sort: "played" } }}
+                      items={withoutFolders(mostPlayed?.items ?? []).slice(
+                        0,
+                        ROW_TILE_LIMIT,
+                      )}
+                      loading={mostPlayedLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "unwatched":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Unwatched"
+                      seeMore={{ to: "/browse", search: { watched: "false" } }}
+                      items={withoutFolders(unwatched?.items ?? []).slice(
+                        0,
+                        ROW_TILE_LIMIT,
+                      )}
+                      loading={unwatchedLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "recentlyBrowsed":
+                  return (
+                    <RecentRow
+                      key={key}
+                      title="Recently Browsed"
+                      kind="browsed"
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                    />
+                  );
+                case "recentlyInteracted":
+                  return (
+                    <RecentRow
+                      key={key}
+                      title="Recently Interacted"
+                      kind="interacted"
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                    />
+                  );
+                case "randomPicks":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Random Picks"
+                      items={withoutFolders(randomPicks?.items ?? []).slice(
+                        0,
+                        ROW_TILE_LIMIT,
+                      )}
+                      loading={randomLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "pinned":
+                  return <PinnedRow key={key} />;
                 case "collections":
                   return collectionsData?.collections.map((collection) => (
                     <CollectionRow
