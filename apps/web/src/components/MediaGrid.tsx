@@ -7,7 +7,24 @@ import { tileWidthPx, useAppearance } from "@/lib/appearance";
 import { cardLayout } from "@/lib/layout";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { useQueue, type QueueItem } from "@/lib/queue";
-import { Dices, ListPlus } from "lucide-react";
+import {
+  Dices,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Heart,
+  ListPlus,
+  ListVideo,
+  Pencil,
+  Play,
+  ScanEye,
+} from "lucide-react";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { PeekPanel } from "./PeekPanel";
+import { setWatched, updateItem } from "@/lib/mediaItemApi";
+import { useUndoable } from "@/lib/undo";
+import { isTypingTarget, openSearch, playItem } from "@/lib/appEvents";
+import { useQueryClient } from "@tanstack/react-query";
 import { readPins } from "@/lib/pinned";
 import {
   chunkIntoRows,
@@ -112,15 +129,21 @@ export function MediaGrid({
   onViewStateChange?: (state: { sort: SortValue; year: string }) => void;
 }) {
   const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
-  const { add, clear } = useQueue();
+  const { add, addNext, clear } = useQueue();
+  const queryClient = useQueryClient();
+  const runUndoable = useUndoable();
   // Every length the grid needs comes from here, so the mode and density can
   // change the shape of the page without this component knowing what either
   // of them means.
   const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
   const tileWidth = layout.widthPx;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
+  const [peekItemId, setPeekItemId] = useState<number | null>(null);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Where a Shift-click range starts: the last card clicked without Shift.
+  const anchorIndex = useRef<number | null>(null);
   const [sort, setSort] = useState<SortValue>(initialSort);
   const [year, setYear] = useState(initialYear);
 
@@ -271,6 +294,20 @@ export function MediaGrid({
   }
 
   function handleGridKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    // Escape leaves selection before it closes anything else, so the way out
+    // of a selection you opened by accident is the key you already reach for.
+    if (event.key === "Escape" && selectionMode) {
+      event.preventDefault();
+      exitSelectionMode();
+      return;
+    }
+    // Ctrl/Cmd-A inside the grid means the grid's items, not the page's text.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      selectAll();
+      return;
+    }
+
     const moves: Record<string, number> = {
       ArrowRight: safeTabStop + 1,
       ArrowLeft: safeTabStop - 1,
@@ -278,11 +315,111 @@ export function MediaGrid({
       ArrowUp: safeTabStop - columns,
       Home: 0,
       End: items.length - 1,
+      // J/K walk the list linearly rather than by row, which is what they
+      // mean everywhere else they appear — the arrows already do geometry.
+      j: safeTabStop + 1,
+      k: safeTabStop - 1,
     };
     const next = moves[event.key];
-    if (next === undefined) return;
-    event.preventDefault();
-    moveFocus(next);
+    if (next !== undefined) {
+      event.preventDefault();
+      moveFocus(next);
+      return;
+    }
+
+    // Everything past here acts on the focused card (§24). Guarded so a
+    // single letter never fires while a field on the page has the caret —
+    // the tag input in the bulk bar sits inside this same subtree.
+    if (isTypingTarget(event.target)) return;
+    const item = items[safeTabStop];
+    if (!item) return;
+
+    switch (event.key) {
+      case "Enter":
+        event.preventDefault();
+        if (item.itemType === "folder") onOpenFolder(item.id, item.title);
+        else setOpenItemId(item.id);
+        break;
+      case " ":
+        // Space would otherwise scroll the page, and the card is a <button>
+        // so it would also re-fire the click that is already bound to open.
+        event.preventDefault();
+        if (item.itemType !== "folder") setPeekItemId(item.id);
+        break;
+      case "p":
+        if (item.itemType === "video") {
+          event.preventDefault();
+          playItem(item.id);
+        }
+        break;
+      case "f":
+        if (item.itemType !== "folder") {
+          event.preventDefault();
+          toggleFavoriteById(item.id, item.title);
+        }
+        break;
+      case "w":
+        if (item.itemType === "video") {
+          event.preventDefault();
+          toggleWatchedById(item.id, item.title);
+        }
+        break;
+      case "e":
+        if (item.itemType !== "folder") {
+          event.preventDefault();
+          setOpenItemId(item.id);
+        }
+        break;
+      case "q":
+        if (item.itemType === "video") {
+          event.preventDefault();
+          add(queueItemFor(item));
+        }
+        break;
+      case "c":
+        // Opens the card's own menu rather than a bare collection picker:
+        // "add to collection" is one entry there, and a second surface for
+        // it would be a dialog that does less than the menu already does.
+        event.preventDefault();
+        openContextMenuAtCard(item, safeTabStop);
+        break;
+      case "r": {
+        event.preventDefault();
+        const playable = items.filter((entry) => entry.itemType !== "folder");
+        const pick = playable[Math.floor(Math.random() * playable.length)];
+        if (pick) setOpenItemId(pick.id);
+        break;
+      }
+      case "/":
+        event.preventDefault();
+        openSearch();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * The keyboard's way into the context menu.
+   *
+   * A key press has no cursor to anchor to, so the menu is placed against the
+   * focused card's own box — which is where a mouse user would have had to be
+   * standing to open it anyway.
+   */
+  function openContextMenuAtCard(item: MediaCardItem, index: number) {
+    const node = gridNode?.querySelector<HTMLElement>(
+      `[data-grid-index="${index}"]`,
+    );
+    const rect = node?.getBoundingClientRect();
+    openContextMenu(
+      {
+        preventDefault: () => {},
+        clientX: rect ? rect.left + 16 : 0,
+        clientY: rect ? rect.top + 16 : 0,
+      } as React.MouseEvent,
+      item,
+      index,
+    );
   }
 
   // Keeps the tab stop on whatever was last focused, so clicking one card and
@@ -317,6 +454,7 @@ export function MediaGrid({
   function exitSelectionMode() {
     setSelectionMode(false);
     setSelectedIds(new Set());
+    anchorIndex.current = null;
   }
 
   function toggleSelected(id: number) {
@@ -328,16 +466,222 @@ export function MediaGrid({
     });
   }
 
-  function handleCardClick(item: MediaCardItem) {
-    if (selectionMode) {
-      toggleSelected(item.id);
+  function selectRange(from: number, to: number) {
+    const [start, end] = from <= to ? [from, to] : [to, from];
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (let i = start; i <= end; i += 1) {
+        const item = items[i];
+        if (item) next.add(item.id);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectionMode(true);
+    setSelectedIds(new Set(items.map((item) => item.id)));
+  }
+
+  /**
+   * One click handler for three jobs, decided by the modifier keys (§13).
+   *
+   * Ctrl/Cmd-click and Shift-click both *enter* selection mode rather than
+   * requiring the Select button first: reaching for a modifier is already an
+   * unambiguous statement that you mean to select, and making it a no-op
+   * until a mode is armed is the thing that makes bulk editing feel like a
+   * separate application.
+   *
+   * `anchorIndex` is the last item touched without Shift, which is what a
+   * range extends from. Held in a ref because a range drawn across two
+   * renders must not depend on one having happened in between.
+   */
+  function handleCardClick(
+    item: MediaCardItem,
+    index: number,
+    event: React.MouseEvent | React.KeyboardEvent,
+  ) {
+    const additive = event.ctrlKey || event.metaKey;
+    const ranged = event.shiftKey;
+
+    if (ranged && anchorIndex.current !== null) {
+      setSelectionMode(true);
+      selectRange(anchorIndex.current, index);
       return;
     }
+    if (additive || selectionMode) {
+      setSelectionMode(true);
+      toggleSelected(item.id);
+      anchorIndex.current = index;
+      return;
+    }
+
+    anchorIndex.current = index;
     if (item.itemType === "folder") {
       onOpenFolder(item.id, item.title);
     } else {
       setOpenItemId(item.id);
     }
+  }
+
+  function refreshItem(id: number) {
+    queryClient.invalidateQueries({ queryKey: ["media-item", id] });
+    queryClient.invalidateQueries({ queryKey: ["media-items"] });
+    queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
+  }
+
+  function queueItemFor(item: MediaCardItem): QueueItem {
+    return {
+      id: item.id,
+      title: item.title,
+      thumbnailFile: item.thumbnailFile,
+      durationSeconds: item.durationSeconds,
+    };
+  }
+
+  /**
+   * Favourite and watched, from the grid, with an undo (§19).
+   *
+   * The card list doesn't carry either flag, so both read the item first
+   * rather than assuming a starting state. That read is also what gives the
+   * inverse something true to restore — toggling from a guess is how a
+   * double press ends up setting the opposite of what it says.
+   */
+  function toggleFavoriteById(id: number, title: string) {
+    void runUndoable({
+      message: "Favourite updated",
+      description: title,
+      apply: async () => {
+        const res = await fetch(`/api/media-items/${id}`);
+        if (!res.ok) throw new Error("Could not read that item");
+        const { isFavorite } = (await res.json()) as { isFavorite: boolean };
+        await updateItem(id, { isFavorite: !isFavorite });
+        return isFavorite;
+      },
+      revert: (wasFavorite) => updateItem(id, { isFavorite: wasFavorite }),
+      onSettled: () => refreshItem(id),
+    });
+  }
+
+  function toggleWatchedById(id: number, title: string) {
+    void runUndoable({
+      message: "Watch state updated",
+      description: title,
+      apply: async () => {
+        const res = await fetch(`/api/media-items/${id}`);
+        if (!res.ok) throw new Error("Could not read that item");
+        const { watched } = (await res.json()) as { watched: boolean };
+        await setWatched(id, !watched);
+        return watched;
+      },
+      revert: (wasWatched) => setWatched(id, wasWatched),
+      onSettled: () => refreshItem(id),
+    });
+  }
+
+  /**
+   * The right-click menu for one card (§13).
+   *
+   * Built per item rather than once, because which entries make sense depends
+   * on what the card is: a folder has nothing to play or queue, and a photo
+   * has no watch state to toggle. Offering them greyed out would be a longer
+   * menu that says less.
+   *
+   * Nothing here deletes or moves an original — the menu tops out at metadata
+   * and navigation, per §29.
+   */
+  function openContextMenu(
+    event: React.MouseEvent,
+    item: MediaCardItem,
+    index: number,
+  ) {
+    event.preventDefault();
+    anchorIndex.current = index;
+
+    const isVideo = item.itemType === "video";
+    const isFolder = item.itemType === "folder";
+
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        ...(isFolder
+          ? [
+              {
+                label: "Open folder",
+                icon: FolderOpen,
+                onSelect: () => onOpenFolder(item.id, item.title),
+              },
+            ]
+          : []),
+        ...(isVideo
+          ? [
+              {
+                label: "Play",
+                icon: Play,
+                onSelect: () => playItem(item.id),
+              },
+              ...(item.lastPositionSeconds
+                ? [
+                    {
+                      label: "Resume",
+                      icon: Play,
+                      onSelect: () => playItem(item.id, { resume: true }),
+                    },
+                  ]
+                : []),
+            ]
+          : []),
+        ...(isFolder
+          ? []
+          : [
+              {
+                label: "Peek",
+                icon: ScanEye,
+                onSelect: () => setPeekItemId(item.id),
+              },
+            ]),
+        ...(isVideo
+          ? [
+              { separator: true as const },
+              {
+                label: "Add to queue",
+                icon: ListPlus,
+                onSelect: () => add(queueItemFor(item)),
+              },
+              {
+                label: "Play next",
+                icon: ListVideo,
+                onSelect: () => addNext(queueItemFor(item)),
+              },
+            ]
+          : []),
+        ...(isFolder
+          ? []
+          : [
+              { separator: true as const },
+              {
+                label: "Favourite",
+                icon: Heart,
+                onSelect: () => toggleFavoriteById(item.id, item.title),
+              },
+              ...(isVideo
+                ? [
+                    {
+                      label: "Toggle watched",
+                      icon: item.lastPositionSeconds ? Eye : EyeOff,
+                      onSelect: () => toggleWatchedById(item.id, item.title),
+                    },
+                  ]
+                : []),
+              {
+                label: "Edit details",
+                icon: Pencil,
+                onSelect: () => setOpenItemId(item.id),
+              },
+            ]),
+      ],
+    });
   }
 
   async function fetchAllQueueItems(): Promise<QueueItem[]> {
@@ -493,6 +837,11 @@ export function MediaGrid({
         <BulkActionBar
           selectedIds={[...selectedIds]}
           onDone={exitSelectionMode}
+          onSelectAll={selectAll}
+          totalCount={items.length}
+          collectionId={
+            source.type === "collection" ? source.id : undefined
+          }
         />
       )}
 
@@ -536,7 +885,10 @@ export function MediaGrid({
                     item={item}
                     gridIndex={index}
                     tabIndex={index === safeTabStop ? 0 : -1}
-                    onClick={() => handleCardClick(item)}
+                    onClick={(event) => handleCardClick(item, index, event)}
+                    onContextMenu={(event) =>
+                      openContextMenu(event, item, index)
+                    }
                     selectable={selectionMode}
                     selected={selectedIds.has(item.id)}
                   />
@@ -566,6 +918,23 @@ export function MediaGrid({
             />
           ))}
         </div>
+      )}
+
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
+
+      {peekItemId !== null && (
+        <PeekPanel
+          itemId={peekItemId}
+          onClose={() => setPeekItemId(null)}
+          onOpenDetails={(id) => {
+            setPeekItemId(null);
+            setOpenItemId(id);
+          }}
+          onPlay={(id, { resume }) => {
+            setPeekItemId(null);
+            playItem(id, { resume });
+          }}
+        />
       )}
 
       {openItemId !== null && (

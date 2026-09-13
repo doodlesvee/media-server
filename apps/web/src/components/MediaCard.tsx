@@ -42,6 +42,7 @@ export function MediaCard({
   item,
   onClick,
   onPlay,
+  onContextMenu,
   selectable = false,
   selected = false,
   className,
@@ -49,8 +50,14 @@ export function MediaCard({
   gridIndex,
 }: {
   item: MediaCardItem;
-  onClick: () => void;
-  onPlay?: () => void;
+  /**
+   * Receives the event so a grid running a selection can read Ctrl/Cmd and
+   * Shift off it. Card-level behaviour never looks at them.
+   */
+  onClick: (event: React.MouseEvent | React.KeyboardEvent) => void;
+  onPlay?: (event: React.MouseEvent | React.KeyboardEvent) => void;
+  /** Right-click. The grid owns the menu; the card only reports the event. */
+  onContextMenu?: (event: React.MouseEvent) => void;
   selectable?: boolean;
   selected?: boolean;
   className?: string;
@@ -166,10 +173,13 @@ export function MediaCard({
    * Both entry points (the tile, and the buttons on the expanded card) go
    * through here.
    */
-  function openItem(action: () => void) {
+  function openItem(
+    action: (event: React.MouseEvent | React.KeyboardEvent) => void,
+    event: React.MouseEvent | React.KeyboardEvent,
+  ) {
     cancelHover();
     setAnchorRect(null);
-    action();
+    action(event);
   }
 
   return (
@@ -179,7 +189,14 @@ export function MediaCard({
         type="button"
         tabIndex={tabIndex}
         data-grid-index={gridIndex}
-        onClick={() => openItem(onClick)}
+        onClick={(event) => openItem(onClick, event)}
+        onContextMenu={(event) => {
+          // Tearing down the hover card first: the menu opens over the top of
+          // it, so the pointer never leaves and it would sit there underneath.
+          cancelHover();
+          setAnchorRect(null);
+          onContextMenu?.(event);
+        }}
         onMouseEnter={handleMouseEnter}
         // The expanded card overlays this one, so only cancel a *pending*
         // hover here — dismissing the open card is its own mouseleave.
@@ -349,8 +366,8 @@ export function MediaCard({
         <HoverPreviewCard
           item={item}
           anchorRect={anchorRect}
-          onOpen={() => openItem(onClick)}
-          onPlay={() => openItem(onPlay ?? onClick)}
+          onOpen={(event) => openItem(onClick, event)}
+          onPlay={(event) => openItem(onPlay ?? onClick, event)}
           onDismiss={() => setAnchorRect(null)}
         />
       )}

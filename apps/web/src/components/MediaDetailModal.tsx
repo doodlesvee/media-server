@@ -51,7 +51,7 @@ import {
   writeVolume,
 } from "@/lib/playerPrefs";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import { QueuePanel } from "./QueuePanel";
 import { useQueue } from "@/lib/queue";
 import { SeriesAssignment } from "./SeriesAssignment";
@@ -96,13 +96,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.matches(
     "input, textarea, select, [contenteditable], [contenteditable=true]",
   );
-}
-
-function formatDuration(seconds: number | null): string | null {
-  if (seconds === null) return null;
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
-  return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 }
 
 export function MediaDetailModal({
