@@ -44,6 +44,7 @@ export function MediaCard({
   onPlay,
   onContextMenu,
   onDragStart,
+  onHoverChange,
   selectable = false,
   selected = false,
   className,
@@ -59,6 +60,17 @@ export function MediaCard({
   onPlay?: (event: React.MouseEvent | React.KeyboardEvent) => void;
   /** Right-click. The grid owns the menu; the card only reports the event. */
   onContextMenu?: (event: React.MouseEvent) => void;
+  /**
+   * Whether the pointer is engaged with this card, so the grid can aim its
+   * single-key shortcuts at it (§24).
+   *
+   * "Engaged" is wider than `:hover` on the tile: once the expanded preview
+   * card is open the pointer is over *that*, which is portalled to the body
+   * and is not a descendant of the tile at all. Reporting false there would
+   * take the shortcuts away at exactly the moment you are looking at the
+   * thing you want to act on.
+   */
+  onHoverChange?: (hovering: boolean) => void;
   /**
    * What this card contributes to a drag (§13). The grid decides, because a
    * drag of a selected card carries the whole selection rather than just the
@@ -146,6 +158,7 @@ export function MediaCard({
   }
 
   function handleMouseEnter() {
+    onHoverChange?.(true);
     // The same dwell delay either way: sweeping the pointer along a row
     // shouldn't start a dozen clip downloads any more than it should throw up
     // a dozen cards.
@@ -172,6 +185,18 @@ export function MediaCard({
     // Unmounts the clip rather than pausing it, so leaving a tile actually
     // stops the download instead of leaving it buffering off-screen.
     setPreviewing(false);
+  }
+
+  /**
+   * Leaving the tile itself.
+   *
+   * Only gives up the shortcut target when no expanded card is open — when
+   * one is, the pointer has moved *onto* it rather than away, and the card's
+   * own dismissal is what ends the engagement.
+   */
+  function handleMouseLeave() {
+    cancelHover();
+    if (!anchorRect) onHoverChange?.(false);
   }
 
   /**
@@ -217,11 +242,12 @@ export function MediaCard({
         onMouseEnter={handleMouseEnter}
         // The expanded card overlays this one, so only cancel a *pending*
         // hover here — dismissing the open card is its own mouseleave.
-        onMouseLeave={cancelHover}
+        onMouseLeave={handleMouseLeave}
         onFocus={handleFocus}
         onBlur={() => {
           cancelHover();
           setAnchorRect(null);
+          onHoverChange?.(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") setAnchorRect(null);
@@ -421,7 +447,10 @@ export function MediaCard({
           anchorRect={anchorRect}
           onOpen={(event) => openItem(onClick, event)}
           onPlay={(event) => openItem(onPlay ?? onClick, event)}
-          onDismiss={() => setAnchorRect(null)}
+          onDismiss={() => {
+            setAnchorRect(null);
+            onHoverChange?.(false);
+          }}
         />
       )}
     </>

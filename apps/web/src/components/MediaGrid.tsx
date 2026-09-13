@@ -156,6 +156,10 @@ export function MediaGrid({
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [peekItemId, setPeekItemId] = useState<number | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  // Which card the pointer is engaged with, so the shortcuts have a target
+  // when nothing is focused. Not state the render depends on, but it has to
+  // trigger one so the key listener closes over the current value.
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // Where a Shift-click range starts: the last card clicked without Shift.
@@ -367,84 +371,129 @@ export function MediaGrid({
     if (next !== undefined) {
       event.preventDefault();
       moveFocus(next);
-      return;
     }
-
-    // Everything past here acts on the focused card (§24). Guarded so a
-    // single letter never fires while a field on the page has the caret —
-    // the tag input in the bulk bar sits inside this same subtree.
-    if (isTypingTarget(event.target)) return;
-    const item = items[safeTabStop];
-    if (!item) return;
-
-    switch (event.key) {
-      case "Enter":
-        event.preventDefault();
-        if (item.itemType === "folder") onOpenFolder(item.id, item.title);
-        else setOpenItemId(item.id);
-        break;
-      case " ":
-        // Space would otherwise scroll the page, and the card is a <button>
-        // so it would also re-fire the click that is already bound to open.
-        event.preventDefault();
-        if (item.itemType !== "folder") {
-          recordRecent("browsed", item);
-          setPeekItemId(item.id);
-        }
-        break;
-      case "p":
-        if (item.itemType === "video") {
-          event.preventDefault();
-          recordRecent("played", item);
-          playItem(item.id);
-        }
-        break;
-      case "f":
-        if (item.itemType !== "folder") {
-          event.preventDefault();
-          toggleFavoriteById(item.id, item.title);
-        }
-        break;
-      case "w":
-        if (item.itemType === "video") {
-          event.preventDefault();
-          toggleWatchedById(item.id, item.title);
-        }
-        break;
-      case "e":
-        if (item.itemType !== "folder") {
-          event.preventDefault();
-          setOpenItemId(item.id);
-        }
-        break;
-      case "q":
-        if (item.itemType === "video") {
-          event.preventDefault();
-          add(queueItemFor(item));
-        }
-        break;
-      case "c":
-        // Opens the card's own menu rather than a bare collection picker:
-        // "add to collection" is one entry there, and a second surface for
-        // it would be a dialog that does less than the menu already does.
-        event.preventDefault();
-        openContextMenuAtCard(item, safeTabStop);
-        break;
-      case "r": {
-        event.preventDefault();
-        const playable = items.filter((entry) => entry.itemType !== "folder");
-        const pick = playable[Math.floor(Math.random() * playable.length)];
-        if (pick) setOpenItemId(pick.id);
-        break;
-      }
-      case "/":
-        event.preventDefault();
-        openSearch();
-        break;
-      default:
-        break;
-    }
+    // Everything else is handled by the window listener below, which also
+    // accepts a hovered card as its target.
   }
+
+  /**
+   * The card the single-key shortcuts act on (§24).
+   *
+   * Focus first, then hover. Binding these to focus alone was wrong in the
+   * way that matters: reaching for the keyboard while *pointing* at a tile is
+   * the ordinary way to use them, and with a mouse nothing in the grid is
+   * focused at all — the keypress goes to <body> and never arrives.
+   *
+   * Focus still wins where both apply, so a keyboard user tabbing through
+   * the grid is never hijacked by wherever the pointer happens to be resting.
+   */
+  function shortcutTarget(): { item: MediaCardItem; index: number } | null {
+    const focused = gridNode?.contains(document.activeElement)
+      ? Number(
+          (document.activeElement as HTMLElement)
+            ?.closest?.("[data-grid-index]")
+            ?.getAttribute("data-grid-index"),
+        )
+      : Number.NaN;
+
+    const index = Number.isNaN(focused) ? hoveredIndex : focused;
+    if (index === null || index === undefined) return null;
+    const item = items[index];
+    return item ? { item, index } : null;
+  }
+
+  /**
+   * The card shortcuts, at the window rather than on the grid.
+   *
+   * Has to be the window: with a mouse there is nothing focused inside the
+   * grid for a React key handler to bubble from. The guards below are what
+   * keep a window-level listener from being a menace — it stands down while
+   * you are typing, and while anything is open over the top of the grid,
+   * since the modal, the peek panel and the menu each own these keys.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+      // Something is covering the grid and has its own bindings for these.
+      if (openItemId !== null || peekItemId !== null || menu !== null) return;
+
+      const target = shortcutTarget();
+      if (!target) return;
+      const { item } = target;
+
+      switch (event.key) {
+        case "Enter":
+          event.preventDefault();
+          if (item.itemType === "folder") onOpenFolder(item.id, item.title);
+          else setOpenItemId(item.id);
+          break;
+        case " ":
+          // Space would otherwise scroll the page, and the card is a <button>
+          // so it would also re-fire the click that is already bound to open.
+          event.preventDefault();
+          if (item.itemType !== "folder") {
+            recordRecent("browsed", item);
+            setPeekItemId(item.id);
+          }
+          break;
+        case "p":
+          if (item.itemType === "video") {
+            event.preventDefault();
+            recordRecent("played", item);
+            playItem(item.id);
+          }
+          break;
+        case "f":
+          if (item.itemType !== "folder") {
+            event.preventDefault();
+            toggleFavoriteById(item.id, item.title);
+          }
+          break;
+        case "w":
+          if (item.itemType === "video") {
+            event.preventDefault();
+            toggleWatchedById(item.id, item.title);
+          }
+          break;
+        case "e":
+          if (item.itemType !== "folder") {
+            event.preventDefault();
+            setOpenItemId(item.id);
+          }
+          break;
+        case "q":
+          if (item.itemType === "video") {
+            event.preventDefault();
+            add(queueItemFor(item));
+          }
+          break;
+        case "c":
+          // Opens the card's own menu rather than a bare collection picker:
+          // "add to collection" is one entry there, and a second surface for
+          // it would be a dialog that does less than the menu already does.
+          event.preventDefault();
+          openContextMenuAtCard(item, target.index);
+          break;
+        case "r": {
+          event.preventDefault();
+          const playable = items.filter((entry) => entry.itemType !== "folder");
+          const pick = playable[Math.floor(Math.random() * playable.length)];
+          if (pick) setOpenItemId(pick.id);
+          break;
+        }
+        case "/":
+          event.preventDefault();
+          openSearch();
+          break;
+        default:
+          break;
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   /**
    * The keyboard's way into the context menu.
@@ -1015,6 +1064,11 @@ export function MediaGrid({
                       openContextMenu(event, item, index)
                     }
                     onDragStart={(event) => startDrag(event, item)}
+                    onHoverChange={(hovering) =>
+                      setHoveredIndex((current) =>
+                        hovering ? index : current === index ? null : current,
+                      )
+                    }
                     selectable={selectionMode}
                     selected={selectedIds.has(item.id)}
                   />
