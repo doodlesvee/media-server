@@ -4,7 +4,6 @@ import { Check, Pencil, Play, RotateCcw, X } from "lucide-react";
 import { fetchItem, framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
 import { formatDuration } from "@/lib/utils";
-import { ClampedText } from "./ClampedText";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { EditableTitle } from "./EditableTitle";
 import { Portal } from "./Portal";
@@ -295,11 +294,19 @@ export function PeekPanel({
                   description={item.description}
                 />
               ) : item.description ? (
-                <ClampedText
-                  text={item.description}
-                  lines={6}
-                  className="sensitive text-sm text-muted-foreground"
-                />
+                // In full, not clamped. ClampedText exists because a long
+                // synopsis can push a page's other content below the fold —
+                // but here the description is the last thing but one in a
+                // panel that already scrolls, so there is nothing below it to
+                // protect and the clamp only costs a click to read what you
+                // opened the panel for.
+                //
+                // `whitespace-pre-wrap` keeps the paragraph breaks that come
+                // with a scraped description; without it the whole thing
+                // collapses into one block.
+                <p className="sensitive whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                  {item.description}
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground/60">
                   No description yet.

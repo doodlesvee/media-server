@@ -7,11 +7,18 @@ import { AppearanceProvider } from "@/lib/appearance";
 import { QueueProvider } from "@/lib/queue";
 import { ToastProvider } from "@/lib/toast";
 
+/** Long enough that a six-line clamp would have cut it. */
+const LONG_DESCRIPTION = [
+  "First paragraph of a scraped synopsis.",
+  "",
+  ...Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of the description.`),
+].join("\n");
+
 const item = {
   id: 1,
   itemType: "video",
   title: "A video",
-  description: null,
+  description: null as string | null,
   performers: [],
   tags: [],
   isFavorite: false,
@@ -236,5 +243,35 @@ describe("PeekPanel edit mode", () => {
     window.removeEventListener("media-server:play-item", listener);
 
     expect(played).toEqual([]);
+  });
+});
+
+describe("PeekPanel description", () => {
+  it("shows the whole thing, with no Read more to click", async () => {
+    item.description = LONG_DESCRIPTION;
+    await renderPanel();
+
+    // The last line is the one a clamp would have hidden.
+    expect(
+      screen.getByText(/Line 12 of the description\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Read more/i }),
+    ).not.toBeInTheDocument();
+    item.description = null;
+  });
+
+  it("keeps the paragraph breaks a scraped description arrives with", async () => {
+    item.description = LONG_DESCRIPTION;
+    await renderPanel();
+
+    const paragraph = screen.getByText(/First paragraph of a scraped synopsis/);
+    expect(paragraph).toHaveClass("whitespace-pre-wrap");
+    item.description = null;
+  });
+
+  it("says so rather than showing an empty section", async () => {
+    await renderPanel();
+    expect(screen.getByText("No description yet.")).toBeInTheDocument();
   });
 });
