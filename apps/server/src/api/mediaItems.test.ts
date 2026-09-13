@@ -10,6 +10,8 @@ import {
   makePerformer,
   makePhoto,
   makeStudio,
+  makeTag,
+  linkTag,
 } from "../test/fixtures.js";
 
 let app: FastifyInstance;
@@ -403,5 +405,203 @@ describe("GET /api/media-items/:id/gallery", () => {
 
     const body = (await get(`/api/media-items/${video}/gallery`)).json();
     expect(body.images).toEqual([]);
+  });
+});
+
+/**
+ * The composable filters and the sorts that read playback or file state
+ * (§7). These are the parts of the query builder most able to be wrong in a
+ * way that still returns plausible-looking rows, which is why they are
+ * asserted on membership rather than on counts.
+ */
+describe("GET /api/media-items — composable filters", () => {
+  const titles = (body: { items: { title: string }[] }) =>
+    body.items.map((item) => item.title).sort();
+
+  it("ANDs multiple tags, so each one narrows the result", async () => {
+    const indoor = await makeTag("indoor");
+    const night = await makeTag("night");
+    const both = await makeItem(libraryId, { title: "Both" });
+    const onlyIndoor = await makeItem(libraryId, { title: "Only indoor" });
+    await linkTag(both, indoor);
+    await linkTag(both, night);
+    await linkTag(onlyIndoor, indoor);
+
+    expect(titles((await get("/api/media-items?tags=indoor")).json())).toEqual([
+      "Both",
+      "Only indoor",
+    ]);
+    // The second tag must remove a row, not add one. OR here would return
+    // more results for more filters, which is not what a filter is.
+    expect(titles((await get("/api/media-items?tags=indoor,night")).json())).toEqual([
+      "Both",
+    ]);
+  });
+
+  it("matches tag and performer filters regardless of case", async () => {
+    const tag = await makeTag("Outdoor");
+    const item = await makeItem(libraryId, { title: "Tagged" });
+    await linkTag(item, tag);
+    expect(titles((await get("/api/media-items?tags=outdoor")).json())).toEqual([
+      "Tagged",
+    ]);
+  });
+
+  it("treats never-played items as unwatched, not as neither", async () => {
+    const watched = await makeItem(libraryId, { title: "Seen" });
+    await makeItem(libraryId, { title: "Never opened" });
+    await app.inject({
+      method: "PUT",
+      url: `/api/media-items/${watched}/watched`,
+      headers: { cookie },
+      payload: { watched: true },
+    });
+
+    expect(titles((await get("/api/media-items?watched=true")).json())).toEqual([
+      "Seen",
+    ]);
+    // The bug this guards: a LEFT JOIN's null completed_at reads as "not
+    // watched" for the joined row, but an item with no playback row at all
+    // has no row to be null — so a plain `is null` would drop it entirely.
+    expect(titles((await get("/api/media-items?watched=false")).json())).toEqual([
+      "Never opened",
+    ]);
+  });
+
+  it("omitting the watched filter means either, not false", async () => {
+    const watched = await makeItem(libraryId, { title: "Seen" });
+    await makeItem(libraryId, { title: "Unseen" });
+    await app.inject({
+      method: "PUT",
+      url: `/api/media-items/${watched}/watched`,
+      headers: { cookie },
+      payload: { watched: true },
+    });
+    expect(titles((await get("/api/media-items")).json())).toEqual([
+      "Seen",
+      "Unseen",
+    ]);
+  });
+
+  it("filters on a duration range, inclusive at both ends", async () => {
+    await makeItem(libraryId, { title: "Short", durationSeconds: 60 });
+    await makeItem(libraryId, { title: "Medium", durationSeconds: 600 });
+    await makeItem(libraryId, { title: "Long", durationSeconds: 6000 });
+
+    expect(
+      titles((await get("/api/media-items?minDuration=600&maxDuration=600")).json())
+    ).toEqual(["Medium"]);
+    expect(titles((await get("/api/media-items?minDuration=600")).json())).toEqual([
+      "Long",
+      "Medium",
+    ]);
+  });
+
+  it("bands resolution by height, so 1078 still counts as Full HD", async () => {
+    await makeItem(libraryId, {
+      title: "Almost 1080",
+      extraMetadata: { width: 1920, height: 1078 },
+    });
+    await makeItem(libraryId, {
+      title: "720p",
+      extraMetadata: { width: 1280, height: 720 },
+    });
+
+    expect(titles((await get("/api/media-items?resolution=fullhd")).json())).toEqual([
+      "Almost 1080",
+    ]);
+    expect(titles((await get("/api/media-items?resolution=hd")).json())).toEqual([
+      "720p",
+    ]);
+  });
+
+  it("ignores an unknown resolution band rather than returning nothing", async () => {
+    await makeItem(libraryId, { title: "Anything" });
+    expect(titles((await get("/api/media-items?resolution=8k")).json())).toEqual([
+      "Anything",
+    ]);
+  });
+
+  it("stacks a filter with a folder-scoped view without falling back to the root", async () => {
+    // The trap: the folder-level default applies whenever no "global" filter
+    // is set, and a filter missed from that list gets silently scoped to the
+    // root folder — which reads as the filter matching almost nothing.
+    const folder = await makeFolder(libraryId, "Nested");
+    const tag = await makeTag("keeper");
+    const nested = await makeItem(libraryId, {
+      title: "Nested keeper",
+      parentId: folder,
+    });
+    await linkTag(nested, tag);
+
+    expect(titles((await get("/api/media-items?tags=keeper")).json())).toEqual([
+      "Nested keeper",
+    ]);
+  });
+});
+
+describe("GET /api/media-items — sorts", () => {
+  const order = (body: { items: { title: string }[] }) =>
+    body.items.map((item) => item.title);
+
+  it("sorts by file size, summing an item's files rather than joining them", async () => {
+    const small = await makeItem(libraryId, { title: "Small" });
+    const big = await makeItem(libraryId, { title: "Big" });
+    await attachFile(small, rootId, "/small.mp4", null, 1_000);
+    // Two files on one item: a join would multiply the row and return "Big"
+    // twice, so this also guards against the grid showing duplicates.
+    await attachFile(big, rootId, "/big.mp4", null, 5_000);
+    await attachFile(big, rootId, "/big-still.jpg", null, 4_000);
+
+    expect(order((await get("/api/media-items?sort=largest")).json())).toEqual([
+      "Big",
+      "Small",
+    ]);
+    expect(order((await get("/api/media-items?sort=smallest")).json())).toEqual([
+      "Small",
+      "Big",
+    ]);
+  });
+
+  it("keeps unwatched items out of the way when sorting by recently watched", async () => {
+    await makeItem(libraryId, { title: "Never watched" });
+    const seen = await makeItem(libraryId, { title: "Watched" });
+    await app.inject({
+      method: "PUT",
+      url: `/api/media-items/${seen}/watched`,
+      headers: { cookie },
+      payload: { watched: true },
+    });
+
+    // NULLS LAST is the whole point: without it "recently watched" opens on a
+    // wall of items that have never been played.
+    expect(order((await get("/api/media-items?sort=watched")).json())[0]).toBe(
+      "Watched"
+    );
+  });
+
+  it("gives a random sort one stable order across pages for a given seed", async () => {
+    for (let i = 0; i < 60; i++) await makeItem(libraryId, { title: `Item ${i}` });
+
+    const first = order((await get("/api/media-items?sort=random&seed=7")).json());
+    const firstAgain = order(
+      (await get("/api/media-items?sort=random&seed=7")).json()
+    );
+    const second = order(
+      (await get("/api/media-items?sort=random&seed=7&page=2")).json()
+    );
+
+    // Re-running the same seed must not reshuffle, or paging would show the
+    // same item on several pages and skip others entirely.
+    expect(first).toEqual(firstAgain);
+    expect(first).toHaveLength(50);
+    expect(second.some((title) => first.includes(title))).toBe(false);
+  });
+
+  it("shuffles differently for a different seed", async () => {
+    for (let i = 0; i < 30; i++) await makeItem(libraryId, { title: `Item ${i}` });
+    const a = order((await get("/api/media-items?sort=random&seed=1")).json());
+    const b = order((await get("/api/media-items?sort=random&seed=2")).json());
+    expect(a).not.toEqual(b);
   });
 });

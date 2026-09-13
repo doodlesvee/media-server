@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { logActivity } from "../activity/log.js";
 import { countRemovableData, purgeRemovableData } from "../library/cleanup.js";
+import { DERIVED_DIRS, cacheUsage, clearDerivedCache } from "../media/cache.js";
 import path from "node:path";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -188,6 +189,154 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
    * Separate from the removal itself because the folder is usually long gone
    * by the time you notice its performers and studios still listed.
    */
+  /**
+   * The duplicate groups behind the count on the health dashboard (§16).
+   *
+   * Content hash, not filename or size: the point of a duplicate report is
+   * to find the same footage stored twice under two different names, which
+   * is exactly what a name comparison cannot see.
+   *
+   * Reports only. §16 is explicit that duplicates are a recommendation and
+   * never an automatic deletion, and §29 that originals are read-only to the
+   * application — so there is no matching DELETE here, by design. Knowing
+   * which paths are duplicates is the whole of what the app can safely offer.
+   *
+   * Scoped the same way the count is, so the dashboard and this list agree:
+   * in-scope videos only. Duplicate stills inside an album are how albums
+   * work rather than a fault, and a folder you stopped scanning should not
+   * still be reporting problems.
+   */
+  app.get("/api/library/duplicates", async () => {
+    const rows = await db.execute<{
+      content_hash: string;
+      media_item_id: number;
+      title: string;
+      path: string;
+      size_bytes: string;
+      created_at: Date;
+    }>(sql`
+      select
+        mf.content_hash,
+        mi.id as media_item_id,
+        mi.title,
+        mf.path,
+        mf.size_bytes,
+        mf.created_at
+      from media_files mf
+      join media_items mi on mi.id = mf.media_item_id
+      join media_item_types mit on mit.id = mi.item_type_id
+      where mf.content_hash is not null
+        and mi.in_scope = true
+        and mit.name = 'video'
+        and mf.content_hash in (
+          select mf2.content_hash
+          from media_files mf2
+          join media_items mi2 on mi2.id = mf2.media_item_id
+          join media_item_types mit2 on mit2.id = mi2.item_type_id
+          where mf2.content_hash is not null
+            and mi2.in_scope = true
+            and mit2.name = 'video'
+          group by mf2.content_hash
+          having count(*) > 1
+        )
+      order by mf.content_hash, mf.created_at asc
+    `);
+
+    // Grouped here rather than in SQL: Postgres would have to return the
+    // members as JSON to group them, and assembling an array in the app is
+    // cheaper to read and to change than a json_agg with five keys in it.
+    const groups = new Map<
+      string,
+      {
+        contentHash: string;
+        files: {
+          mediaItemId: number;
+          title: string;
+          path: string;
+          sizeBytes: number;
+          discoveredAt: Date;
+        }[];
+      }
+    >();
+
+    for (const row of rows.rows) {
+      const group = groups.get(row.content_hash) ?? {
+        contentHash: row.content_hash,
+        files: [],
+      };
+      group.files.push({
+        mediaItemId: row.media_item_id,
+        title: row.title,
+        path: row.path,
+        sizeBytes: Number(row.size_bytes),
+        discoveredAt: row.created_at,
+      });
+      groups.set(row.content_hash, group);
+    }
+
+    const all = [...groups.values()];
+    return {
+      groups: all,
+      // What deleting every copy but the first would free. Stated because a
+      // list of hashes does not answer "is this worth my time", which is the
+      // question someone opening this page actually has.
+      reclaimableBytes: all.reduce(
+        (total, group) =>
+          total +
+          group.files
+            .slice(1)
+            .reduce((sum, file) => sum + file.sizeBytes, 0),
+        0
+      ),
+    };
+  });
+
+  /**
+   * What the generated artwork is costing, split from what it isn't (§17).
+   */
+  app.get("/api/library/cache", async () => {
+    const usage = await cacheUsage();
+    return {
+      entries: usage,
+      derivedBytes: usage
+        .filter((entry) => entry.kind === "derived")
+        .reduce((total, entry) => total + entry.bytes, 0),
+      uploadBytes: usage
+        .filter((entry) => entry.kind === "upload")
+        .reduce((total, entry) => total + entry.bytes, 0),
+    };
+  });
+
+  /**
+   * Deletes generated artwork so the next scan rebuilds it (§17).
+   *
+   * Takes directory *names*, and `clearDerivedCache` ignores any that are not
+   * derived — so the endpoint has no way to reach uploaded artwork whatever
+   * it is sent, and no path for a traversal to travel down. Originals are not
+   * even addressable from here: this only ever touches APP_DATA_DIR.
+   */
+  app.post<{ Body: { names?: unknown } }>(
+    "/api/library/cache/clear",
+    async (request) => {
+      const requested = Array.isArray(request.body?.names)
+        ? (request.body.names as unknown[]).filter(
+            (name): name is string => typeof name === "string"
+          )
+        : // No list means every derived directory, which is the "Clear cache"
+          // button. Uploads are still unreachable — the helper filters them.
+          DERIVED_DIRS.map((entry) => entry.name);
+
+      const removed = await clearDerivedCache(requested);
+      if (removed > 0) {
+        await logActivity("cache", "Generated artwork cleared", {
+          files: removed,
+          directories: requested,
+        });
+      }
+      return { removed };
+    }
+  );
+
   app.get("/api/library/cleanup", async () => {
     return { removable: await countRemovableData() };
   });

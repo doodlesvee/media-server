@@ -33,12 +33,33 @@ describe("cardLayout", () => {
     }
   });
 
-  // Cover art is 16:10 and stays that way. A wide 21:9 mode used to exist and
-  // cropped the sides off the artwork, which is the one thing a library of
-  // artwork should not do to itself.
+  // Cover art is 16:10 and stays that way in every mode. Two modes that
+  // broke this have existed and been removed: a 21:9 one that cropped the
+  // sides off the artwork, and a Cinematic 2:1 that cropped it less but for
+  // the same reason. The modes differ by how much width a card asks for,
+  // and by nothing else.
   it("keeps every mode on the same frame, so nothing crops the artwork", () => {
     for (const { value } of VIEW_MODES) {
       expect(cardLayout(400, value, "comfortable", "full").aspectRatio).toBe("16 / 10");
+    }
+  });
+
+  // Three, and they are three sizes of one card. A picker with five entries
+  // was a decision where a size control was wanted.
+  it("offers three modes", () => {
+    expect(VIEW_MODES.map((mode) => mode.value)).toEqual([
+      "grid",
+      "compact",
+      "large",
+    ]);
+  });
+
+  // No mode overrides the label setting any more. Cinematic did, stepping
+  // "full" down to the title alone, and went with the mode.
+  it("passes the label setting straight through in every mode", () => {
+    for (const { value } of VIEW_MODES) {
+      expect(cardLayout(400, value, "comfortable", "full").tileInfo).toBe("full");
+      expect(cardLayout(400, value, "comfortable", "none").tileInfo).toBe("none");
     }
   });
 

@@ -1,19 +1,21 @@
-import path from "node:path";
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
+import viteConfig from "./vite.config";
 
-export default defineConfig({
-  resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
-  test: {
-    environment: "jsdom",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "json-summary"],
-      include: ["src/lib/**/*.ts"],
-      // Components are excluded: they are overwhelmingly layout, and asserting
-      // on their markup tests the JSX rather than any behaviour. The logic
-      // worth testing was deliberately extracted into src/lib.
-      exclude: ["src/**/*.test.*"],
+/**
+ * Test configuration, separate from vite.config.ts.
+ *
+ * Merged from it rather than restated, so the `@` alias and the React plugin
+ * stay in one place — a second copy of the alias is how a test starts
+ * resolving a different module than the app does.
+ */
+export default mergeConfig(
+  viteConfig,
+  defineConfig({
+    test: {
+      environment: "jsdom",
+      // Registers the jest-dom matchers and stubs the browser APIs jsdom
+      // lacks but the components construct on mount.
+      setupFiles: ["./src/test/setup.ts"],
     },
-  },
-});
+  }),
+);

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { scanJobs } from "../db/schema.js";
@@ -14,6 +14,25 @@ export async function scanRoutes(app: FastifyInstance): Promise<void> {
     const id = await startScan();
     reply.code(202);
     return { id };
+  });
+
+  /**
+   * The most recent scan, for the "What Changed" summary (§15).
+   *
+   * Registered before the `:id` route, and a static segment besides, so
+   * "latest" is never parsed as a job id. A client that had to know the id
+   * would have to have been the one that started the scan, which the summary
+   * on a freshly-loaded page never was.
+   */
+  app.get("/api/scan/latest", async () => {
+    const [job] = await db
+      .select()
+      .from(scanJobs)
+      .orderBy(desc(scanJobs.id))
+      .limit(1);
+    // Null rather than a 404: "no scan has ever run" is an ordinary state on
+    // a new install, not a failed lookup.
+    return { job: job ?? null };
   });
 
   app.get<{ Params: { id: string } }>("/api/scan/:id", async (request, reply) => {

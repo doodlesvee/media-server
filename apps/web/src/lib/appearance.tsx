@@ -31,6 +31,13 @@ export const HOME_ROWS = [
   { key: "performers", label: "Performers" },
   { key: "studios", label: "Studios" },
   { key: "recent", label: "Recently added" },
+  { key: "recentlyWatched", label: "Recently watched" },
+  { key: "mostPlayed", label: "Most played" },
+  { key: "unwatched", label: "Unwatched" },
+  { key: "recentlyBrowsed", label: "Recently browsed" },
+  { key: "recentlyInteracted", label: "Recently interacted" },
+  { key: "randomPicks", label: "Random picks" },
+  { key: "pinned", label: "Pinned" },
   { key: "collections", label: "Collections" },
   { key: "tags", label: "Tags" },
 ] as const;
@@ -49,10 +56,21 @@ const DEFAULT_HOME_ROWS: HomeRowSetting[] = HOME_ROWS.map((row) => ({
  * Reconciles a stored order against the rows this build actually has.
  *
  * Keeps the saved order and visibility, drops keys that no longer exist, and
- * appends any new section at the end — so shipping a new row doesn't make it
- * invisible to anyone who has ever opened this panel.
+ * slots any new section in at the position this build gives it — relative to
+ * the rows the stored order already has.
+ *
+ * New rows used to be appended to the end, which was meant to stop a shipped
+ * row being invisible and achieved the opposite. `collections` and `tags`
+ * each render one row *per* collection and per tag, so the end of the list is
+ * below twenty rows of content on a real library — far enough down that
+ * Pinned, a row of navigation shortcuts, was reported as simply not there.
+ *
+ * Inserting by position keeps the two things that matter about a stored
+ * order: the rows you arranged stay in the order you arranged them, and the
+ * ones you hid stay hidden. Only the rows you have never seen move, and they
+ * move to where they were designed to sit.
  */
-function readHomeRows(value: unknown): HomeRowSetting[] {
+export function readHomeRows(value: unknown): HomeRowSetting[] {
   if (!Array.isArray(value)) return DEFAULT_HOME_ROWS;
 
   const known = new Set<string>(HOME_ROWS.map((row) => row.key));
@@ -69,9 +87,69 @@ function readHomeRows(value: unknown): HomeRowSetting[] {
     });
   }
 
+  const order = HOME_ROWS.map((row) => row.key as string);
   for (const row of HOME_ROWS) {
-    if (!seen.has(row.key)) out.push({ key: row.key, visible: true });
+    if (seen.has(row.key)) continue;
+
+    // Land after the last row that this build puts ahead of it. Searching
+    // from the end rather than the start matters when the stored order has
+    // been rearranged: what decides the spot is the nearest preceding
+    // neighbour as it actually sits now, not as this build lists it.
+    //
+    // Rows inserted earlier in this loop count as neighbours too, which is
+    // what keeps several new rows in their own relative order.
+    const precedes = new Set(order.slice(0, order.indexOf(row.key)));
+    let at = 0;
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      if (precedes.has(out[i].key)) {
+        at = i + 1;
+        break;
+      }
+    }
+    out.splice(at, 0, { key: row.key, visible: true });
   }
+
+  return out;
+}
+
+/**
+ * Validates a stored override map.
+ *
+ * Same discipline as every other key: a hand-edited entry, or one written by
+ * a build that had a view mode this one doesn't, must not be able to render
+ * a page with `viewMode: undefined`. Unknown values are dropped rather than
+ * corrected, so the page falls back to the global setting.
+ */
+function readPageOverrides(value: unknown): Record<string, PageOverride> {
+  if (typeof value !== "object" || value === null) return {};
+  const out: Record<string, PageOverride> = {};
+
+  for (const [scope, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const entry = raw as PageOverride;
+    const next: PageOverride = {};
+
+    if (VIEW_MODES.some((option) => option.value === entry.viewMode))
+      next.viewMode = entry.viewMode;
+    if (DENSITIES.some((option) => option.value === entry.density))
+      next.density = entry.density;
+    if (TILE_INFO_OPTIONS.some((option) => option.value === entry.tileInfo))
+      next.tileInfo = entry.tileInfo;
+    if (
+      typeof entry.tileSizePercent === "number" &&
+      Number.isFinite(entry.tileSizePercent)
+    ) {
+      next.tileSizePercent = Math.min(
+        TILE_MAX,
+        Math.max(TILE_MIN, Math.round(entry.tileSizePercent)),
+      );
+    }
+
+    // An override that survived validation with nothing in it is the same as
+    // no override, and keeping it would show the page as "customised".
+    if (Object.keys(next).length > 0) out[scope] = next;
+  }
+
   return out;
 }
 
@@ -83,6 +161,36 @@ export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
   { value: "title", label: "Title" },
   { value: "none", label: "None" },
 ];
+
+export type MotionLevel = "full" | "reduced" | "none";
+
+export const MOTION_LEVELS: {
+  value: MotionLevel;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "full", label: "Full", hint: "Entrances, hover lifts, the lot." },
+  {
+    value: "reduced",
+    label: "Reduced",
+    hint: "State still changes visibly, but nothing travels.",
+  },
+  { value: "none", label: "None", hint: "Nothing moves or fades." },
+];
+
+/** The rounding range, in rem. Square to noticeably soft. */
+export const RADIUS_MIN = 0;
+export const RADIUS_MAX = 1.5;
+
+/**
+ * The type-scale range.
+ *
+ * Narrow on purpose: this is a legibility adjustment, not a zoom. The browser
+ * already has a zoom and it scales images and layout along with the text,
+ * which is what you actually want when everything is too small.
+ */
+export const TYPE_SCALE_MIN = 0.85;
+export const TYPE_SCALE_MAX = 1.3;
 
 export type Appearance = {
   /**
@@ -166,9 +274,52 @@ export type Appearance = {
    * viewport. See `heroHeight` for why these are separate.
    */
   bannerHeight: number;
+  /**
+   * Whether finishing a video starts the next queued one (§10).
+   *
+   * A setting rather than always-on: autoplay is right when you have built a
+   * queue and wrong when you have not, and the app cannot tell which from
+   * the fact that something happened to be next in the list.
+   */
+  autoplayNext: boolean;
+  /**
+   * How much the interface moves (§24).
+   *
+   * "full" is the designed behaviour. The OS `prefers-reduced-motion` setting
+   * still wins over this where the two disagree — someone who has asked their
+   * whole system for less motion has not opted into more of it by leaving an
+   * app on its default.
+   */
+  motion: MotionLevel;
+  /** Corner rounding, in rem. Drives every radius in the app at once. */
+  cardRadiusRem: number;
+  /** Multiplies every font size. 1 is the designed scale. */
+  typeScale: number;
   /** Which homepage sections show, and in what order. */
   homeRows: HomeRowSetting[];
+  /**
+   * Per-context layout overrides, keyed by scope name (§1).
+   *
+   * Only the four layout settings, not the whole of Appearance. Discreet
+   * Mode in particular must never be per-page — a privacy control that holds
+   * on the library and not on Favourites is worse than not having it.
+   *
+   * Sparse: a scope appears here only once it has been given a setting of
+   * its own, so "follows the global setting" stays the default and stays
+   * free. Clearing a scope deletes its key rather than writing the globals
+   * into it, which is what lets a later change to the global setting reach
+   * pages that never opted out.
+   */
+  pageOverrides: Record<string, PageOverride>;
 };
+
+/** The settings a single page may pin for itself. */
+export type PageOverride = Partial<{
+  viewMode: ViewMode;
+  density: Density;
+  tileInfo: TileInfo;
+  tileSizePercent: number;
+}>;
 
 // The slider's range, in percent of TILE_MAX_PX. Starting at 40% rather than
 // 0 because everything below about 200px is too small to read a title in, so
@@ -214,7 +365,12 @@ export const DEFAULTS: Appearance = {
   discreetText: false,
   heroHeight: 70,
   bannerHeight: 70,
+  autoplayNext: true,
+  motion: "full",
+  cardRadiusRem: 0.625,
+  typeScale: 1,
   homeRows: DEFAULT_HOME_ROWS,
+  pageOverrides: {},
 };
 
 const STORAGE_KEY = "appearance";
@@ -242,6 +398,23 @@ export const SEARCH_SHORTCUT = "Ctrl/⌘ + K";
 // localStorage throws outright in some privacy configurations, and an
 // unguarded read here would white-screen the whole app — the same discipline
 // the sidebar's collapsed state already uses.
+/**
+ * Clamps a stored fractional value into range.
+ *
+ * Distinct from clampPercent below, which rounds to a whole number — these
+ * two are rem and a multiplier, where rounding to an integer would snap
+ * 0.625rem to 1rem and a 1.15 scale to 1.
+ */
+function clampRange(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
 function clampPercent(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(BANNER_MAX, Math.max(BANNER_MIN, Math.round(value)));
@@ -314,7 +487,27 @@ function read(): Appearance {
         DEFAULTS.heroHeight,
       ),
       bannerHeight: clampPercent(parsed.bannerHeight, DEFAULTS.bannerHeight),
+      autoplayNext:
+        typeof parsed.autoplayNext === "boolean"
+          ? parsed.autoplayNext
+          : DEFAULTS.autoplayNext,
+      motion: MOTION_LEVELS.some((option) => option.value === parsed.motion)
+        ? (parsed.motion as MotionLevel)
+        : DEFAULTS.motion,
+      cardRadiusRem: clampRange(
+        parsed.cardRadiusRem,
+        RADIUS_MIN,
+        RADIUS_MAX,
+        DEFAULTS.cardRadiusRem,
+      ),
+      typeScale: clampRange(
+        parsed.typeScale,
+        TYPE_SCALE_MIN,
+        TYPE_SCALE_MAX,
+        DEFAULTS.typeScale,
+      ),
       homeRows: readHomeRows(parsed.homeRows),
+      pageOverrides: readPageOverrides(parsed.pageOverrides),
     };
   } catch {
     return DEFAULTS;
@@ -337,6 +530,38 @@ type Store = Appearance & {
 };
 
 const AppearanceContext = createContext<Store | null>(null);
+
+/**
+ * The page currently asking for settings, or null for "the global ones".
+ *
+ * A context rather than a route lookup, because the scope is not always the
+ * route: Favourites and Collections are both rendered by BrowsePage with
+ * different search params, and §1 names them as separate contexts. The page
+ * says what it is; the router doesn't have to know.
+ */
+const PageScopeContext = createContext<string | null>(null);
+
+/**
+ * Declares which context the subtree's layout settings belong to (§1).
+ *
+ * Wrapping rather than a hook call so the scope covers everything rendered
+ * inside it — the grid, its cards and the appearance menu all have to agree
+ * on which page they are on, and a hook in one of them would not reach the
+ * other two.
+ */
+export function PageScope({
+  name,
+  children,
+}: {
+  name: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <PageScopeContext.Provider value={name}>
+      {children}
+    </PageScopeContext.Provider>
+  );
+}
 
 /**
  * Display preferences that change how every tile in the app is drawn.
@@ -371,6 +596,9 @@ export function AppearanceProvider({
         // default instead of becoming undefined.
         setValue((current) => {
           const merged = { ...current, ...stored };
+          if (stored.homeRows) {
+            merged.homeRows = readHomeRows(stored.homeRows);
+          }
           // The same migration `read` does, for the server's copy: a install
           // that set a banner height before the hero got its own slider has
           // only the old key, and a browser with no localStorage yet would
@@ -437,6 +665,29 @@ export function AppearanceProvider({
     }
   }, [value]);
 
+  /**
+   * Motion, rounding and type scale, applied at the document root.
+   *
+   * The same argument as discreet mode below: these have to reach every
+   * component including the ones rendered into portals, and a prop threaded
+   * through the tree would miss the modals and the toast stack, which are
+   * siblings of the app rather than descendants of it.
+   *
+   * "full" removes the attribute rather than setting it, so the default
+   * costs no selector matching at all.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (value.motion === "full") root.removeAttribute("data-motion");
+    else root.setAttribute("data-motion", value.motion);
+  }, [value.motion]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--radius", `${value.cardRadiusRem}rem`);
+    root.style.setProperty("--type-scale", String(value.typeScale));
+  }, [value.cardRadiusRem, value.typeScale]);
+
   // Discreet mode is a single attribute on <html> rather than a prop threaded
   // through every component that renders an image. There are dozens of those —
   // tiles, hero, portraits, banners, album covers, the lightbox — and any one
@@ -477,9 +728,77 @@ export function AppearanceProvider({
   );
 }
 
+/**
+ * Display settings as the current page should see them.
+ *
+ * Merges the page's own overrides over the globals, so every existing caller
+ * — grids, cards, rows — gets per-page layout for free without knowing that
+ * per-page layout exists. `set` stays global on purpose: a component that
+ * reaches for it is changing a preference, not a page's exception to one,
+ * and the panel uses `useAppearanceScope` below for the scoped half.
+ */
 export function useAppearance(): Store {
   const store = useContext(AppearanceContext);
+  const scope = useContext(PageScopeContext);
   // Falls back to the defaults rather than throwing, so a component rendered
   // outside the provider (a test, a future embed) still draws correctly.
-  return store ?? { ...DEFAULTS, set: () => {}, reset: () => {} };
+  const base = store ?? { ...DEFAULTS, set: () => {}, reset: () => {} };
+
+  const override = scope ? base.pageOverrides[scope] : undefined;
+  return useMemo(
+    () => (override ? { ...base, ...override } : base),
+    // `base` is rebuilt by the provider's own memo, so comparing it by
+    // identity is correct and avoids re-merging on every render.
+    [base, override],
+  );
+}
+
+export type AppearanceScope = {
+  /** The current page's name, or null outside any PageScope. */
+  scope: string | null;
+  /** What this page has pinned for itself. Empty when it follows the globals. */
+  override: PageOverride;
+  /** True when this page has any setting of its own. */
+  isOverridden: boolean;
+  /** Pins settings to this page. A no-op outside a PageScope. */
+  setForScope: (patch: PageOverride) => void;
+  /** Drops this page's overrides, returning it to the global settings. */
+  clearScope: () => void;
+};
+
+export function useAppearanceScope(): AppearanceScope {
+  const store = useContext(AppearanceContext);
+  const scope = useContext(PageScopeContext);
+  const override = (scope && store?.pageOverrides[scope]) || {};
+
+  const setForScope = useCallback(
+    (patch: PageOverride) => {
+      if (!scope || !store) return;
+      store.set({
+        pageOverrides: {
+          ...store.pageOverrides,
+          [scope]: { ...store.pageOverrides[scope], ...patch },
+        },
+      });
+    },
+    [scope, store],
+  );
+
+  const clearScope = useCallback(() => {
+    if (!scope || !store) return;
+    // Deleted rather than emptied: an empty object would still count as an
+    // override and keep the page pinned to whatever the globals were when it
+    // was cleared.
+    const next = { ...store.pageOverrides };
+    delete next[scope];
+    store.set({ pageOverrides: next });
+  }, [scope, store]);
+
+  return {
+    scope,
+    override,
+    isOverridden: Object.keys(override).length > 0,
+    setForScope,
+    clearScope,
+  };
 }

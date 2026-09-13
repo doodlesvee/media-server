@@ -3,6 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   Aperture,
   Bookmark,
+  Clapperboard,
+  Clock,
+  EyeOff,
   Focus,
   Heart,
   Home,
@@ -20,6 +23,8 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Portal } from "./Portal";
 import { useAppearance } from "@/lib/appearance";
+import { SurpriseMe } from "./SurpriseMe";
+import { readRecentSearches, recordRecentSearch } from "@/lib/recentSearches";
 import {
   GROUP_LABEL,
   ItemRowContent,
@@ -64,6 +69,8 @@ export function SpotlightSearch() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [active, setActive] = useState(0);
+  const [surprise, setSurprise] = useState(false);
+  const [recents, setRecents] = useState<string[]>(readRecentSearches);
   const navigate = useNavigate();
   const listRef = useRef<HTMLUListElement>(null);
   const appearance = useAppearance();
@@ -93,14 +100,37 @@ export function SpotlightSearch() {
         group: "Actions",
         shortcut: "S",
         icon: Sparkles,
-        run: () => void navigate({ to: "/browse", search: {} }),
+        // Opens the constrained picker rather than navigating. A blind jump
+        // into an unfiltered library is the version §7 explicitly rules out.
+        run: () => setSurprise(true),
       },
       {
         id: "favorites",
         label: "Open favorites",
         icon: Heart,
         group: "Actions",
-        run: () => void navigate({ to: "/browse", search: {} }),
+        run: () =>
+          void navigate({ to: "/browse", search: { favorite: "true" } }),
+      },
+      {
+        id: "unwatched",
+        label: "Open unwatched",
+        icon: EyeOff,
+        group: "Actions",
+        run: () =>
+          void navigate({ to: "/browse", search: { watched: "false" } }),
+      },
+      {
+        id: "cinema",
+        label: "Toggle cinema mode",
+        icon: Clapperboard,
+        group: "Actions",
+        // Cinema mode belongs to the player, so this is only meaningful with
+        // something playing — the modal's own handler ignores it otherwise.
+        run: () =>
+          window.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+          ),
       },
       {
         id: "scan",
@@ -245,7 +275,16 @@ export function SpotlightSearch() {
 
   function choose(row: Row) {
     setOpen(false);
+    // Recorded on the way out rather than as you type, so the list holds
+    // searches you ran and not every prefix on the way to one.
+    setRecents(recordRecentSearch(value));
     void navigate({ to: "/browse", search: rowTarget(row) });
+  }
+
+  function runQuery(query: string) {
+    setOpen(false);
+    setRecents(recordRecentSearch(query));
+    void navigate({ to: "/browse", search: { q: query } });
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -269,14 +308,22 @@ export function SpotlightSearch() {
       const row = entries[active - visibleCommands.length];
       if (command) chooseCommand(command);
       else if (row) choose(row);
-      else if (value.trim())
-        void navigate({ to: "/browse", search: { q: value.trim() } });
+      else if (value.trim()) runQuery(value.trim());
     }
   }
 
-  if (!open) return null;
+  // Rendered outside the `!open` guard: choosing "Surprise me" closes the
+  // palette, and a dialog nested inside it would be unmounted by the same
+  // click that opened it.
+  const surpriseDialog = surprise ? (
+    <SurpriseMe onClose={() => setSurprise(false)} />
+  ) : null;
+
+  if (!open) return surpriseDialog;
 
   return (
+    <>
+      {surpriseDialog}
     <Portal>
       <div
         onMouseDown={(event) => {
@@ -306,6 +353,30 @@ export function SpotlightSearch() {
               Esc
             </kbd>
           </div>
+
+          {!value.trim() && recents.length > 0 && (
+            <div className="border-b border-border px-1.5 py-2">
+              <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Recent searches
+              </div>
+              {/* Outside the arrow-key list on purpose. These are shortcuts
+                  you click, and folding them into the keyboard order would
+                  push the commands down the list every time you searched. */}
+              <div className="flex flex-wrap gap-1 px-2.5 pt-1">
+                {recents.map((query) => (
+                  <button
+                    key={query}
+                    type="button"
+                    onClick={() => runQuery(query)}
+                    className="flex items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <Clock className="size-3" />
+                    {query}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(!value.trim() || ready || visibleCommands.length > 0) && (
             <ul ref={listRef} className="max-h-[60vh] overflow-y-auto p-1.5">
@@ -382,5 +453,6 @@ export function SpotlightSearch() {
         </div>
       </div>
     </Portal>
+    </>
   );
 }

@@ -11,7 +11,21 @@ import { ArrowRight } from "lucide-react";
 export type SeeMoreDestination =
   | { to: "/performers" }
   | { to: "/studios" }
-  | { to: "/browse"; search?: { tag?: string; collectionId?: number } };
+  | {
+      to: "/browse";
+      /**
+       * Narrower than the route's full search on purpose: a "see more" tile
+       * continues one row into the browse page, so it carries the one thing
+       * that row was about rather than an arbitrary view.
+       */
+      search?: {
+        tag?: string;
+        collectionId?: number;
+        sort?: string;
+        watched?: string;
+        favorite?: string;
+      };
+    };
 
 /**
  * The last tile in a truncated row.

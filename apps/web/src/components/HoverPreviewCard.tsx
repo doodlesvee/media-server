@@ -43,8 +43,8 @@ export function HoverPreviewCard({
 }: {
   item: MediaCardItem;
   anchorRect: DOMRect;
-  onOpen: () => void;
-  onPlay: () => void;
+  onOpen: (event: React.MouseEvent | React.KeyboardEvent) => void;
+  onPlay: (event: React.MouseEvent | React.KeyboardEvent) => void;
   onDismiss: () => void;
 }) {
   const { hoverPreview, discreet } = useAppearance();
@@ -186,7 +186,7 @@ export function HoverPreviewCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onPlay();
+              onPlay(e);
             }}
             aria-label="Play"
             tabIndex={-1}
@@ -230,7 +230,7 @@ export function HoverPreviewCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onOpen();
+              onOpen(e);
             }}
             aria-label="More info"
             tabIndex={-1}

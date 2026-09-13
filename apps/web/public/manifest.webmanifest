@@ -1,0 +1,19 @@
+{
+  "name": "Media Server",
+  "short_name": "Media",
+  "description": "A private personal media library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

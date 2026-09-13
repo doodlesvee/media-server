@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Circle,
+  Eye,
+  Heart,
   Film,
   Folder,
   Image as ImageIcon,
@@ -14,6 +16,7 @@ import { worthExpanding } from "@/lib/hoverCard";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { isPinned, togglePin } from "@/lib/pinned";
+import { useCardShortcuts } from "@/lib/cardShortcuts";
 
 export type MediaCardItem = {
   id: number;
@@ -28,6 +31,16 @@ export type MediaCardItem = {
   thumbnailPositionY?: number;
   thumbnailScale?: number;
   description?: string | null;
+  /**
+   * State the tile shows, and which the list endpoint has always returned —
+   * it simply was not declared here, so nothing drew it (§2).
+   *
+   * Without these a keyboard favourite or watch toggle leaves no trace on the
+   * grid at all: the action works, the toast confirms it, and then the tile
+   * looks exactly as it did. The shortcut reads as broken.
+   */
+  isFavorite?: boolean;
+  watched?: boolean;
   tags?: { id: number; name: string }[];
   performers?: { id: number; name: string }[];
   studio?: string | null;
@@ -42,6 +55,8 @@ export function MediaCard({
   item,
   onClick,
   onPlay,
+  onContextMenu,
+  onDragStart,
   selectable = false,
   selected = false,
   className,
@@ -49,8 +64,20 @@ export function MediaCard({
   gridIndex,
 }: {
   item: MediaCardItem;
-  onClick: () => void;
-  onPlay?: () => void;
+  /**
+   * Receives the event so a grid running a selection can read Ctrl/Cmd and
+   * Shift off it. Card-level behaviour never looks at them.
+   */
+  onClick: (event: React.MouseEvent | React.KeyboardEvent) => void;
+  onPlay?: (event: React.MouseEvent | React.KeyboardEvent) => void;
+  /** Right-click. The grid owns the menu; the card only reports the event. */
+  onContextMenu?: (event: React.MouseEvent) => void;
+  /**
+   * What this card contributes to a drag (§13). The grid decides, because a
+   * drag of a selected card carries the whole selection rather than just the
+   * one under the pointer.
+   */
+  onDragStart?: (event: React.DragEvent) => void;
   selectable?: boolean;
   selected?: boolean;
   className?: string;
@@ -80,6 +107,30 @@ export function MediaCard({
   const chrome = cardChrome(density, tileInfoSetting);
   const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
+  /**
+   * Reported to the shortcut layer so the keys act on this card (§24).
+   *
+   * "Engaged" is wider than `:hover` on the tile: once the expanded preview
+   * card opens, the pointer is over *that*, which is portalled to the body
+   * and is not a descendant of the tile at all. Giving up the target there
+   * would take the shortcuts away at exactly the moment you are looking at
+   * the thing you want to act on — so the tile's own mouseleave only
+   * releases it when no preview card is standing.
+   */
+  const { setEngagement } = useCardShortcuts();
+  const engage = (via: "focus" | "hover", on: boolean) =>
+    setEngagement(
+      {
+        id: item.id,
+        title: item.title,
+        itemType: item.itemType,
+        thumbnailFile: item.thumbnailFile,
+        durationSeconds: item.durationSeconds,
+      },
+      via,
+      on,
+    );
+
   const [pinned, setPinned] = useState(
     () => item.itemType === "folder" && isPinned(`folder:${item.id}`),
   );
@@ -130,6 +181,7 @@ export function MediaCard({
   }
 
   function handleMouseEnter() {
+    engage("hover", true);
     // The same dwell delay either way: sweeping the pointer along a row
     // shouldn't start a dozen clip downloads any more than it should throw up
     // a dozen cards.
@@ -145,6 +197,7 @@ export function MediaCard({
   // a mouse sweeping across a row, and waiting after a deliberate Tab would
   // just feel broken.
   function handleFocus() {
+    engage("focus", true);
     if (canExpand) expand();
   }
 
@@ -159,6 +212,18 @@ export function MediaCard({
   }
 
   /**
+   * Leaving the tile itself.
+   *
+   * Only gives up the shortcut target when no expanded card is open — when
+   * one is, the pointer has moved *onto* it rather than away, and the card's
+   * own dismissal is what ends the engagement.
+   */
+  function handleMouseLeave() {
+    cancelHover();
+    if (!anchorRect) engage("hover", false);
+  }
+
+  /**
    * Opening the detail modal must also tear down the hover card.
    *
    * The hover card only dismissed on its own mouseleave — but the modal
@@ -166,10 +231,13 @@ export function MediaCard({
    * Both entry points (the tile, and the buttons on the expanded card) go
    * through here.
    */
-  function openItem(action: () => void) {
+  function openItem(
+    action: (event: React.MouseEvent | React.KeyboardEvent) => void,
+    event: React.MouseEvent | React.KeyboardEvent,
+  ) {
     cancelHover();
     setAnchorRect(null);
-    action();
+    action(event);
   }
 
   return (
@@ -179,15 +247,31 @@ export function MediaCard({
         type="button"
         tabIndex={tabIndex}
         data-grid-index={gridIndex}
-        onClick={() => openItem(onClick)}
+        onClick={(event) => openItem(onClick, event)}
+        draggable={Boolean(onDragStart) && item.itemType !== "folder"}
+        onDragStart={(event) => {
+          // The hover card would otherwise stay open for the whole drag,
+          // following nothing and covering every drop target on the way.
+          cancelHover();
+          setAnchorRect(null);
+          onDragStart?.(event);
+        }}
+        onContextMenu={(event) => {
+          // Tearing down the hover card first: the menu opens over the top of
+          // it, so the pointer never leaves and it would sit there underneath.
+          cancelHover();
+          setAnchorRect(null);
+          onContextMenu?.(event);
+        }}
         onMouseEnter={handleMouseEnter}
         // The expanded card overlays this one, so only cancel a *pending*
         // hover here — dismissing the open card is its own mouseleave.
-        onMouseLeave={cancelHover}
+        onMouseLeave={handleMouseLeave}
         onFocus={handleFocus}
         onBlur={() => {
           cancelHover();
           setAnchorRect(null);
+          engage("focus", false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") setAnchorRect(null);
@@ -206,7 +290,8 @@ export function MediaCard({
             // 16:10 rather than 16:9. The frames themselves are widescreen, so this
             // crops a sliver off each side — the tile reads as slightly taller
             // without the artwork losing anything that matters.
-            "relative w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
+            "relative overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
+            "w-full",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
             item.missingSince && "opacity-50",
@@ -263,6 +348,28 @@ export function MediaCard({
           {item.missingSince && (
             <span className="absolute left-1 top-1 rounded bg-destructive/90 px-1.5 py-0.5 text-[10px] text-white">
               missing
+            </span>
+          )}
+
+          {/* Favourite and watched, shown in every mode including "None".
+              They are state rather than a label — the same reasoning the
+              progress bar below already follows — and losing track of what
+              you have marked would be a real cost rather than less clutter.
+
+              Hidden while selecting, where the top-right corner belongs to
+              the selection tick and two indicators in one place would read
+              as one confusing control. */}
+          {!selectable && (item.isFavorite || item.watched) && (
+            <span className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-1 ring-1 ring-white/15">
+              {item.isFavorite && (
+                <Heart
+                  aria-label="Favourite"
+                  className="size-3 fill-red-500 text-red-500"
+                />
+              )}
+              {item.watched && (
+                <Eye aria-label="Watched" className="size-3 text-white/90" />
+              )}
             </span>
           )}
 
@@ -343,15 +450,19 @@ export function MediaCard({
             </span>
           )}
         </div>
+
       </button>
 
       {anchorRect && (
         <HoverPreviewCard
           item={item}
           anchorRect={anchorRect}
-          onOpen={() => openItem(onClick)}
-          onPlay={() => openItem(onPlay ?? onClick)}
-          onDismiss={() => setAnchorRect(null)}
+          onOpen={(event) => openItem(onClick, event)}
+          onPlay={(event) => openItem(onPlay ?? onClick, event)}
+          onDismiss={() => {
+            setAnchorRect(null);
+            engage("hover", false);
+          }}
         />
       )}
     </>

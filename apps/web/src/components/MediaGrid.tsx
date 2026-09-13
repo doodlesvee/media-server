@@ -1,19 +1,45 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
 import { cardLayout } from "@/lib/layout";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { useQueue, type QueueItem } from "@/lib/queue";
-import { Dices, ListPlus } from "lucide-react";
+import {
+  Dices,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Heart,
+  ListPlus,
+  ListStart,
+  ListVideo,
+  Pencil,
+  Play,
+  ScanEye,
+} from "lucide-react";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { Timeline } from "./Timeline";
+import { FilterMenu } from "./FilterBar";
+import { recordRecent } from "@/lib/recent";
+import { setMediaDragData } from "@/lib/dragMedia";
+import { isTypingTarget, playItem } from "@/lib/appEvents";
+import { useCardShortcuts } from "@/lib/cardShortcuts";
 import { readPins } from "@/lib/pinned";
 import {
   chunkIntoRows,
   columnsForWidth,
   columnWidthFor,
 } from "@/lib/gridLayout";
+import {
+  EMPTY_FILTERS,
+  SORT_OPTIONS,
+  filterParams,
+  type Filters,
+  type SortValue,
+} from "@/lib/filters";
 
 export type GridSource =
   | {
@@ -24,27 +50,11 @@ export type GridSource =
       kind: string | null;
       q: string | null;
       parentId: number | null;
+      /** The composable filters (§7). Absent on a collection, which is a
+          fixed list rather than a query. */
+      filters?: Filters;
     }
   | { type: "collection"; id: number };
-
-/** Mirrors the server's `SORTS` in `api/mediaItems.ts`. */
-const SORT_OPTIONS = [
-  { value: "newest", label: "Recently added" },
-  { value: "oldest", label: "Oldest first" },
-  { value: "title", label: "Title A–Z" },
-  { value: "longest", label: "Longest" },
-  { value: "shortest", label: "Shortest" },
-] as const;
-
-type SortValue = (typeof SORT_OPTIONS)[number]["value"];
-
-type ReleaseYear = { year: number; total: number };
-
-async function fetchReleaseYears(): Promise<{ years: ReleaseYear[] }> {
-  const res = await fetch("/api/release-years");
-  if (!res.ok) throw new Error(`Failed to load years: ${res.status}`);
-  return res.json();
-}
 
 type MediaItemsResponse = {
   items: MediaCardItem[];
@@ -58,6 +68,8 @@ async function fetchMediaItems(
   sort: SortValue,
   year: string,
   page: number,
+  randomSeed: number,
+  month?: number,
 ): Promise<MediaItemsResponse> {
   if (source.type === "collection") {
     const res = await fetch(`/api/collections/${source.id}/items?page=${page}`);
@@ -65,7 +77,10 @@ async function fetchMediaItems(
     return res.json();
   }
 
-  const params = new URLSearchParams();
+  // Seeded from the filters so the composable set and the single-value entry
+  // points end up in one query string, with the filters written first and
+  // the explicit props able to override them.
+  const params = filterParams(source.filters ?? EMPTY_FILTERS);
   if (source.tag) params.set("tag", source.tag);
   if (source.performer) params.set("performer", source.performer);
   if (source.studio) params.set("studio", source.studio);
@@ -74,6 +89,10 @@ async function fetchMediaItems(
   if (source.parentId !== null) params.set("parentId", String(source.parentId));
   params.set("sort", sort);
   if (year) params.set("year", year);
+  if (month !== undefined) params.set("month", String(month));
+  // One seed for the life of the grid, so a shuffled view keeps a single
+  // order across its pages instead of reshuffling under the scroll.
+  if (sort === "random") params.set("seed", String(randomSeed));
   params.set("page", String(page));
 
   const res = await fetch(`/api/media-items?${params}`);
@@ -103,32 +122,77 @@ export function MediaGrid({
   onOpenFolder,
   sort: initialSort = "newest",
   year: initialYear = "",
+  month: initialMonth,
+  onFiltersChange,
   onViewStateChange,
 }: {
   source: GridSource;
   onOpenFolder: (id: number, title: string) => void;
   sort?: SortValue;
   year?: string;
-  onViewStateChange?: (state: { sort: SortValue; year: string }) => void;
+  /** 1-12, set by the timeline. Only meaningful alongside a year. */
+  month?: number;
+  /**
+   * Lets the toolbar offer the filter menu. Omitted by the surfaces that do
+   * not own a filter set — a performer's videos, a studio's — where the
+   * button would open a panel whose choices had nowhere to be written.
+   */
+  onFiltersChange?: (next: Filters) => void;
+  onViewStateChange?: (state: {
+    sort: SortValue;
+    year: string;
+    month?: number;
+  }) => void;
 }) {
   const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
-  const { add, clear } = useQueue();
+  const { add, addNext, clear } = useQueue();
   // Every length the grid needs comes from here, so the mode and density can
   // change the shape of the page without this component knowing what either
   // of them means.
-  const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
+  const layout = cardLayout(
+    tileWidthPx(tileSizePercent),
+    viewMode,
+    density,
+    tileInfo,
+  );
   const tileWidth = layout.widthPx;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  // Which card the keyboard is pointing at, hover or focus. Owned by the
+  // shortcut layer so a row and a grid agree about it.
+  const { engaged, peek, toggleFavourite, toggleWatched } = useCardShortcuts();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Where a Shift-click range starts: the last card clicked without Shift.
+  const anchorIndex = useRef<number | null>(null);
   const [sort, setSort] = useState<SortValue>(initialSort);
   const [year, setYear] = useState(initialYear);
+  const [month, setMonth] = useState(initialMonth);
 
-  const { data: yearData } = useQuery({
-    queryKey: ["release-years"],
-    queryFn: fetchReleaseYears,
-  });
-  const years = yearData?.years ?? [];
+  /**
+   * Follow the period in the URL when it changes underneath us.
+   *
+   * Without this the grid keeps whatever it was mounted with. That was not
+   * hypothetical: the timeline navigated, the page re-rendered without
+   * remounting — AppShell keys its main region on the pathname, and only the
+   * search string had changed — and the grid went on requesting the old
+   * period. The month reached the server without its year, which the server
+   * ignores, so picking a month filtered nothing at all.
+   */
+  useEffect(() => setYear(initialYear), [initialYear]);
+  useEffect(() => setMonth(initialMonth), [initialMonth]);
+  /**
+   * The shuffle's seed.
+   *
+   * Held rather than re-rolled per request: every page of a random sort has
+   * to be drawn from the *same* shuffle, or paging would show one item twice
+   * and skip another. Re-rolled only when the user picks Random again, which
+   * is what makes choosing it a second time mean "shuffle again" rather than
+   * a no-op.
+   */
+  const [randomSeed, setRandomSeed] = useState(() =>
+    Math.floor(Math.random() * 1_000_000),
+  );
 
   const {
     data,
@@ -153,8 +217,15 @@ export function MediaGrid({
             // Must be in the key: without it React Query serves one year's
             // results for another, which reads as the filter doing nothing.
             year,
+            // Same reasoning, and the same failure: serialised rather than
+            // spread so adding a filter later cannot silently fall out of
+            // the key and start serving another filter's results.
+            filterParams(source.filters ?? EMPTY_FILTERS).toString(),
+            month ?? null,
+            sort === "random" ? randomSeed : null,
           ],
-    queryFn: ({ pageParam }) => fetchMediaItems(source, sort, year, pageParam),
+    queryFn: ({ pageParam }) =>
+      fetchMediaItems(source, sort, year, pageParam, randomSeed, month),
     initialPageParam: 1,
     // The server returns one row past the page size to answer this, so
     // there's no COUNT(*) behind it. Older responses without `hasMore` fall
@@ -271,6 +342,20 @@ export function MediaGrid({
   }
 
   function handleGridKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    // Escape leaves selection before it closes anything else, so the way out
+    // of a selection you opened by accident is the key you already reach for.
+    if (event.key === "Escape" && selectionMode) {
+      event.preventDefault();
+      exitSelectionMode();
+      return;
+    }
+    // Ctrl/Cmd-A inside the grid means the grid's items, not the page's text.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      selectAll();
+      return;
+    }
+
     const moves: Record<string, number> = {
       ArrowRight: safeTabStop + 1,
       ArrowLeft: safeTabStop - 1,
@@ -278,11 +363,77 @@ export function MediaGrid({
       ArrowUp: safeTabStop - columns,
       Home: 0,
       End: items.length - 1,
+      // J/K walk the list linearly rather than by row, which is what they
+      // mean everywhere else they appear — the arrows already do geometry.
+      j: safeTabStop + 1,
+      k: safeTabStop - 1,
     };
     const next = moves[event.key];
-    if (next === undefined) return;
-    event.preventDefault();
-    moveFocus(next);
+    if (next !== undefined) {
+      event.preventDefault();
+      moveFocus(next);
+    }
+    // Everything else is handled by the window listener below, which also
+    // accepts a hovered card as its target.
+  }
+
+  /**
+   * The grid-only shortcuts.
+   *
+   * The card actions — Space, P, F, W, E, Q — live in CardShortcutProvider,
+   * because they act on a card and cards are rendered by rows and pickers
+   * too. These two are different: R needs the list the grid is showing, and
+   * C opens a menu whose entries are grid-specific (open folder, play from
+   * here). Both read the engaged card from the shortcut layer so they aim at
+   * the same place the rest do.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (!engaged) return;
+
+      const index = items.findIndex((entry) => entry.id === engaged.id);
+      const item = items[index];
+      if (!item) return;
+
+      if (event.key === "c") {
+        event.preventDefault();
+        openContextMenuAtCard(item, index);
+      } else if (event.key === "r") {
+        event.preventDefault();
+        const playable = items.filter((entry) => entry.itemType !== "folder");
+        const pick = playable[Math.floor(Math.random() * playable.length)];
+        if (pick) setOpenItemId(pick.id);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  /**
+   * The keyboard's way into the context menu.
+   *
+   * A key press has no cursor to anchor to, so the menu is placed against the
+   * focused card's own box — which is where a mouse user would have had to be
+   * standing to open it anyway.
+   */
+  function openContextMenuAtCard(item: MediaCardItem, index: number) {
+    const node = gridNode?.querySelector<HTMLElement>(
+      `[data-grid-index="${index}"]`,
+    );
+    const rect = node?.getBoundingClientRect();
+    openContextMenu(
+      {
+        preventDefault: () => {},
+        clientX: rect ? rect.left + 16 : 0,
+        clientY: rect ? rect.top + 16 : 0,
+      } as React.MouseEvent,
+      item,
+      index,
+    );
   }
 
   // Keeps the tab stop on whatever was last focused, so clicking one card and
@@ -317,6 +468,7 @@ export function MediaGrid({
   function exitSelectionMode() {
     setSelectionMode(false);
     setSelectedIds(new Set());
+    anchorIndex.current = null;
   }
 
   function toggleSelected(id: number) {
@@ -328,23 +480,223 @@ export function MediaGrid({
     });
   }
 
-  function handleCardClick(item: MediaCardItem) {
-    if (selectionMode) {
-      toggleSelected(item.id);
+  function selectRange(from: number, to: number) {
+    const [start, end] = from <= to ? [from, to] : [to, from];
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (let i = start; i <= end; i += 1) {
+        const item = items[i];
+        if (item) next.add(item.id);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectionMode(true);
+    setSelectedIds(new Set(items.map((item) => item.id)));
+  }
+
+  /**
+   * One click handler for three jobs, decided by the modifier keys (§13).
+   *
+   * Ctrl/Cmd-click and Shift-click both *enter* selection mode rather than
+   * requiring the Select button first: reaching for a modifier is already an
+   * unambiguous statement that you mean to select, and making it a no-op
+   * until a mode is armed is the thing that makes bulk editing feel like a
+   * separate application.
+   *
+   * `anchorIndex` is the last item touched without Shift, which is what a
+   * range extends from. Held in a ref because a range drawn across two
+   * renders must not depend on one having happened in between.
+   */
+  function handleCardClick(
+    item: MediaCardItem,
+    index: number,
+    event: React.MouseEvent | React.KeyboardEvent,
+  ) {
+    const additive = event.ctrlKey || event.metaKey;
+    const ranged = event.shiftKey;
+
+    if (ranged && anchorIndex.current !== null) {
+      setSelectionMode(true);
+      selectRange(anchorIndex.current, index);
       return;
     }
+    if (additive || selectionMode) {
+      setSelectionMode(true);
+      toggleSelected(item.id);
+      anchorIndex.current = index;
+      return;
+    }
+
+    anchorIndex.current = index;
     if (item.itemType === "folder") {
       onOpenFolder(item.id, item.title);
     } else {
+      recordRecent("browsed", item);
       setOpenItemId(item.id);
     }
+  }
+
+  /**
+   * Begins a drag of one card, or of the whole selection if it is in it.
+   *
+   * Dragging a selected card carries every selected item, which is what
+   * makes bulk drag-and-drop work without a separate gesture. Dragging an
+   * *unselected* card carries only that card, and deliberately does not
+   * clear the selection — a drag is not a click, and losing a carefully
+   * built selection to a stray drag would be worse than the feature is
+   * worth.
+   */
+  function startDrag(event: React.DragEvent, item: MediaCardItem) {
+    const dragging =
+      selectedIds.has(item.id) && selectedIds.size > 0
+        ? [...selectedIds]
+        : [item.id];
+    setMediaDragData(event.dataTransfer, {
+      ids: dragging,
+      label: dragging.length === 1 ? item.title : `${dragging.length} items`,
+    });
+  }
+
+  function queueItemFor(item: MediaCardItem): QueueItem {
+    return {
+      id: item.id,
+      title: item.title,
+      thumbnailFile: item.thumbnailFile,
+      durationSeconds: item.durationSeconds,
+    };
+  }
+
+  /**
+   * The right-click menu for one card (§13).
+   *
+   * Built per item rather than once, because which entries make sense depends
+   * on what the card is: a folder has nothing to play or queue, and a photo
+   * has no watch state to toggle. Offering them greyed out would be a longer
+   * menu that says less.
+   *
+   * Nothing here deletes or moves an original — the menu tops out at metadata
+   * and navigation, per §29.
+   */
+  function openContextMenu(
+    event: React.MouseEvent,
+    item: MediaCardItem,
+    index: number,
+  ) {
+    event.preventDefault();
+    anchorIndex.current = index;
+
+    const isVideo = item.itemType === "video";
+    const isFolder = item.itemType === "folder";
+
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        ...(isFolder
+          ? [
+              {
+                label: "Open folder",
+                icon: FolderOpen,
+                onSelect: () => onOpenFolder(item.id, item.title),
+              },
+            ]
+          : []),
+        ...(isVideo
+          ? [
+              {
+                label: "Play",
+                icon: Play,
+                onSelect: () => {
+                  recordRecent("played", item);
+                  playItem(item.id);
+                },
+              },
+              ...(item.lastPositionSeconds
+                ? [
+                    {
+                      label: "Resume",
+                      icon: Play,
+                      onSelect: () => {
+                        recordRecent("played", item);
+                        playItem(item.id, { resume: true });
+                      },
+                    },
+                  ]
+                : []),
+            ]
+          : []),
+        ...(isFolder
+          ? []
+          : [
+              {
+                label: "Peek",
+                icon: ScanEye,
+                onSelect: () => peek(item),
+              },
+            ]),
+        ...(isVideo
+          ? [
+              { separator: true as const },
+              {
+                label: "Add to queue",
+                icon: ListPlus,
+                onSelect: () => add(queueItemFor(item)),
+              },
+              {
+                label: "Play next",
+                icon: ListVideo,
+                onSelect: () => addNext(queueItemFor(item)),
+              },
+              {
+                label: "Play from here",
+                icon: ListStart,
+                onSelect: () => void playFromHere(item.id),
+              },
+            ]
+          : []),
+        ...(isFolder
+          ? []
+          : [
+              { separator: true as const },
+              {
+                label: "Favourite",
+                icon: Heart,
+                onSelect: () => toggleFavourite(item),
+              },
+              ...(isVideo
+                ? [
+                    {
+                      label: "Toggle watched",
+                      icon: item.lastPositionSeconds ? Eye : EyeOff,
+                      onSelect: () => toggleWatched(item),
+                    },
+                  ]
+                : []),
+              {
+                label: "Edit details",
+                icon: Pencil,
+                onSelect: () => setOpenItemId(item.id),
+              },
+            ]),
+      ],
+    });
   }
 
   async function fetchAllQueueItems(): Promise<QueueItem[]> {
     const all: QueueItem[] = [];
     let page = 1;
     while (true) {
-      const response = await fetchMediaItems(source, sort, year, page);
+      const response = await fetchMediaItems(
+        source,
+        sort,
+        year,
+        page,
+        randomSeed,
+        month,
+      );
       all.push(
         ...response.items
           .filter((item) => item.itemType === "video")
@@ -374,6 +726,32 @@ export function MediaGrid({
     clear();
     queueItems.slice(1).forEach(add);
     setOpenItemId(queueItems[0].id);
+  }
+
+  /**
+   * Play All, but starting at the item you clicked (§10).
+   *
+   * The distinction from Play All matters on a sorted view: an album or a
+   * series in order is exactly the case where you want the rest of the list
+   * to follow on from where you are, rather than restarting it from the top
+   * or queueing only the one item.
+   *
+   * It queues every *later* item and none of the earlier ones, which is what
+   * "from here" means — wrapping around to the beginning would be Play All
+   * with a different starting point, a different feature.
+   */
+  async function playFromHere(startId: number) {
+    const queueItems = await fetchAllQueueItems();
+    const start = queueItems.findIndex((entry) => entry.id === startId);
+    // Not in the playable list at all — a photo, or a folder. Opening it is
+    // still the right response to the click.
+    if (start === -1) {
+      setOpenItemId(startId);
+      return;
+    }
+    clear();
+    queueItems.slice(start + 1).forEach(add);
+    setOpenItemId(startId);
   }
 
   if (isLoading) {
@@ -445,26 +823,33 @@ export function MediaGrid({
           </button>
           {source.type === "library" && (
             <>
-              {years.length > 0 && (
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Year</span>
-                  <select
-                    value={year}
-                    onChange={(e) => {
-                      setYear(e.target.value);
-                      onViewStateChange?.({ sort, year: e.target.value });
-                    }}
-                    className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
-                  >
-                    <option value="">All</option>
-                    {years.map((entry) => (
-                      <option key={entry.year} value={String(entry.year)}>
-                        {entry.year} ({entry.total})
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {onFiltersChange && (
+                <FilterMenu
+                  filters={source.filters ?? EMPTY_FILTERS}
+                  onChange={onFiltersChange}
+                />
               )}
+
+              {/* The period control, and the only one. A plain Year select
+                  used to sit here as well as the timeline on the browse page
+                  — two controls for one filter, in two places, disagreeing
+                  about whether months exist. The timeline is the superset, so
+                  it took the slot. */}
+              <Timeline
+                year={year === "" ? undefined : Number(year)}
+                month={month}
+                onSelect={(period) => {
+                  const nextYear =
+                    period.year === undefined ? "" : String(period.year);
+                  setYear(nextYear);
+                  setMonth(period.month);
+                  onViewStateChange?.({
+                    sort,
+                    year: nextYear,
+                    month: period.month,
+                  });
+                }}
+              />
 
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>Sort</span>
@@ -472,8 +857,13 @@ export function MediaGrid({
                   value={sort}
                   onChange={(e) => {
                     const next = e.target.value as SortValue;
+                    // Picking Random again reshuffles. Without this it is the
+                    // one option in the list that does nothing when chosen a
+                    // second time.
+                    if (next === "random")
+                      setRandomSeed(Math.floor(Math.random() * 1_000_000));
                     setSort(next);
-                    onViewStateChange?.({ sort: next, year });
+                    onViewStateChange?.({ sort: next, year, month });
                   }}
                   className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
                 >
@@ -493,6 +883,9 @@ export function MediaGrid({
         <BulkActionBar
           selectedIds={[...selectedIds]}
           onDone={exitSelectionMode}
+          onSelectAll={selectAll}
+          totalCount={items.length}
+          collectionId={source.type === "collection" ? source.id : undefined}
         />
       )}
 
@@ -536,7 +929,11 @@ export function MediaGrid({
                     item={item}
                     gridIndex={index}
                     tabIndex={index === safeTabStop ? 0 : -1}
-                    onClick={() => handleCardClick(item)}
+                    onClick={(event) => handleCardClick(item, index, event)}
+                    onContextMenu={(event) =>
+                      openContextMenu(event, item, index)
+                    }
+                    onDragStart={(event) => startDrag(event, item)}
                     selectable={selectionMode}
                     selected={selectedIds.has(item.id)}
                   />
@@ -567,6 +964,8 @@ export function MediaGrid({
           ))}
         </div>
       )}
+
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
 
       {openItemId !== null && (
         <MediaDetailModal

@@ -71,12 +71,47 @@ export function HelpPage() {
           </Row>
         </Group>
 
+        <Group title="In a grid of items">
+          <Row keys={["J", "→"]}>Next item. The arrows move by row; J and K move one at a time.</Row>
+          <Row keys={["K", "←"]}>Previous item.</Row>
+          <Row keys={["↑", "↓"]}>Up or down a row.</Row>
+          <Row keys={["Enter"]}>Open it.</Row>
+          <Row keys={["Space"]}>
+            Peek — details beside the grid, without leaving the page or losing
+            your place in it.
+          </Row>
+          <Row keys={["P"]}>Play it.</Row>
+          <Row keys={["F"]}>Favourite or unfavourite. The toast offers an undo.</Row>
+          <Row keys={["W"]}>Mark watched or unwatched.</Row>
+          <Row keys={["E"]}>Edit — opens the full details.</Row>
+          <Row keys={["Q"]}>Add it to the queue.</Row>
+          <Row keys={["C"]}>Its menu — the same one right-click opens.</Row>
+          <Row keys={["R"]}>Open something at random from what's on screen.</Row>
+          <Row keys={["/"]}>Search.</Row>
+          <Row keys={["⌘A", "Ctrl A"]}>Select everything in the grid.</Row>
+          <Row keys={["Esc"]}>Leave selection mode.</Row>
+        </Group>
+
+        <Group title="Selecting several items">
+          <Row keys={["⌘click", "Ctrl click"]}>
+            Add one item to the selection, or take it out. Starts a selection
+            if none is running.
+          </Row>
+          <Row keys={["⇧click"]}>
+            Everything between the last item you clicked and this one.
+          </Row>
+        </Group>
+
         <Group title="Playing a video">
           <Row keys={["Space", "K"]}>Play or pause.</Row>
           <Row keys={["←", "→"]}>Skip back or forward 10 seconds.</Row>
           <Row keys={["↑", "↓"]}>Volume up or down. It's remembered for next time.</Row>
           <Row keys={["M"]}>Mute or unmute.</Row>
           <Row keys={["F"]}>Fullscreen.</Row>
+          <Row keys={["I"]}>
+            Picture in picture — the video pops out into its own small window
+            and keeps playing over other applications.
+          </Row>
           {/* Was missing, on a page whose whole point is that every shortcut
               is listed somewhere findable. */}
           <Row keys={["C"]}>
@@ -90,7 +125,15 @@ export function HelpPage() {
 
         <Group title="Looking at photos">
           <Row keys={["←", "→"]}>Previous or next photo.</Row>
-          <Row keys={["Esc"]}>Close the viewer, leaving the page behind it as it was.</Row>
+          <Row keys={["+", "-"]}>Zoom in or out. The scroll wheel does it too.</Row>
+          <Row keys={["0"]}>Back to fitting the screen.</Row>
+          <Row keys={["Space"]}>Start or stop the slideshow.</Row>
+          <Row keys={["F"]}>Fullscreen.</Row>
+          <Row keys={["T"]}>Show or hide the thumbnail strip.</Row>
+          <Row keys={["Esc"]}>
+            Zoom out if you are zoomed in, otherwise close the viewer — one
+            press, one layer.
+          </Row>
         </Group>
 
         <Group title="Search">

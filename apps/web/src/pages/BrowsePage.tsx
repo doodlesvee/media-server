@@ -7,6 +7,15 @@ import { AppShell } from "@/components/AppShell";
 import { MediaGrid, type GridSource } from "@/components/MediaGrid";
 import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
+import { PageScope } from "@/lib/appearance";
+import { FilterChips } from "@/components/FilterBar";
+import { SaveSearchButton } from "@/components/SaveSearchButton";
+import {
+  filtersFromSearch,
+  filtersToSearch,
+  hasActiveFilters,
+  type Filters,
+} from "@/lib/filters";
 
 const routeApi = getRouteApi("/browse");
 
@@ -87,6 +96,7 @@ function NewFolderButton({ parentId }: { parentId: number | null }) {
 }
 
 export function BrowsePage() {
+  const search = routeApi.useSearch();
   const {
     tag,
     performer,
@@ -97,7 +107,9 @@ export function BrowsePage() {
     q,
     sort,
     year,
-  } = routeApi.useSearch();
+    month,
+  } = search;
+  const filters = filtersFromSearch(search as Record<string, unknown>);
   const navigate = useNavigate();
   const { data: folderData } = useQuery({
     queryKey: ["folders"],
@@ -153,11 +165,56 @@ export function BrowsePage() {
           kind: kind ?? null,
           q: q ?? null,
           parentId: currentParentId,
+          filters,
         };
 
   function clearFilters() {
     void navigate({ to: "/browse", search: {} });
   }
+
+  /**
+   * Writes a filter change back to the URL.
+   *
+   * Merged over the current search rather than replacing it, so the folder
+   * and sort survive a filter change; the cleared entries come through as
+   * explicit `undefined`, which is what removes them from the href.
+   *
+   * `parentId` is dropped whenever a filter is applied. The filters are
+   * global lookups — the server stops scoping to a folder as soon as one is
+   * set — so leaving a folder in the URL would show a breadcrumb that no
+   * longer describes what is on screen.
+   */
+  function applyFilters(next: Filters) {
+    void navigate({
+      to: "/browse",
+      search: (current) => ({
+        ...current,
+        ...filtersToSearch(next),
+        parentId: hasActiveFilters(next) ? undefined : current.parentId,
+      }),
+    });
+  }
+
+  /**
+   * Which layout context this page counts as (§1).
+   *
+   * BrowsePage renders several of the contexts the spec names — the library,
+   * a collection, a performer's or studio's items — so the scope comes from
+   * the search params rather than the route. Keeping collections on one
+   * shared "collection" scope rather than one per id is deliberate: a
+   * per-collection layout is a setting nobody asked for and hundreds of
+   * stored entries nobody will ever clear.
+   */
+  const scope =
+    collectionId != null
+      ? "collection"
+      : performer
+        ? "performer"
+        : studio
+          ? "studio"
+          : q
+            ? "search"
+            : "library";
 
   const activeFilter = tag
     ? `Tag: ${tag}`
@@ -172,8 +229,12 @@ export function BrowsePage() {
             : null;
 
   return (
-    <AppShell>
-      <div className="space-y-5 px-6 py-6">
+    // Outside AppShell, not inside it: the appearance menu lives in the
+    // shell's header, and it has to read the same scope the grid below it
+    // writes to or the panel would be editing a page it isn't on.
+    <PageScope name={scope}>
+      <AppShell>
+        <div className="space-y-5 px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             <div className="flex min-w-0 items-center gap-1 text-muted-foreground">
@@ -247,6 +308,29 @@ export function BrowsePage() {
             !q && <NewFolderButton parentId={currentParentId} />}
         </div>
 
+        {/* The chips get a row of their own, left-aligned and full width.
+            The control that adds filters lives in the grid's toolbar with the
+            other controls; this is the state it produces, and five chips
+            squeezed in beside Sort made both unreadable. Renders nothing at
+            all when nothing is filtered. */}
+        {source.type === "library" && (
+          <div className="flex flex-wrap items-start justify-between gap-3 empty:hidden">
+            <FilterChips
+              filters={filters}
+              onChange={applyFilters}
+              onClear={clearFilters}
+            />
+            {/* Only once there is something worth coming back to. */}
+            {(hasActiveFilters(filters) || q) && (
+              <SaveSearchButton
+                filters={filters}
+                query={q}
+                search={window.location.search.replace(/^\?/, "")}
+              />
+            )}
+          </div>
+        )}
+
         {collectionId != null && (
           <PlaySurface
             source={{ type: "collection", id: collectionId }}
@@ -257,6 +341,7 @@ export function BrowsePage() {
           source={source}
           sort={sort as Parameters<typeof MediaGrid>[0]["sort"]}
           year={year != null ? String(year) : ""}
+          month={month}
           onViewStateChange={(state) =>
             void navigate({
               to: "/browse",
@@ -264,14 +349,21 @@ export function BrowsePage() {
                 ...current,
                 sort: state.sort,
                 year: state.year ? Number(state.year) : undefined,
+                // Written even when undefined, which is what clears a month
+                // that is already in the URL — picking a whole year after a
+                // month would otherwise keep the old month and show one month
+                // of the new year instead of all of it.
+                month: state.month,
               }),
             })
           }
+          onFiltersChange={applyFilters}
           onOpenFolder={(id) =>
             void navigate({ to: "/browse", search: { parentId: id } })
           }
         />
-      </div>
-    </AppShell>
+        </div>
+      </AppShell>
+    </PageScope>
   );
 }

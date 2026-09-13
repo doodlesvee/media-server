@@ -36,13 +36,22 @@ export function PrivacyUnlockForm({
   useEffect(() => {
     if (!hasPasskey || prompted.current) return;
     prompted.current = true;
-    void useTouchId();
+    void tryTouchId();
     // Once per mount: a declined prompt must not immediately reappear, or
     // there'd be no way to reach the password underneath it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasPasskey]);
 
-  async function useTouchId() {
+  /**
+   * Named `tryTouchId` rather than `useTouchId`.
+   *
+   * It is an ordinary async function, not a hook, and the `use` prefix made
+   * it look like one to every reader and to the lint rule — which failed the
+   * build over a hook being "called inside a callback" that was never a hook
+   * at all. A name that claims a contract this does not keep is worth
+   * changing even where the code behind it is correct.
+   */
+  async function tryTouchId() {
     setChecking(true);
     setProblem(null);
     try {
@@ -83,7 +92,7 @@ export function PrivacyUnlockForm({
         <>
           <button
             type="button"
-            onClick={() => void useTouchId()}
+            onClick={() => void tryTouchId()}
             disabled={checking}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-secondary px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
           >

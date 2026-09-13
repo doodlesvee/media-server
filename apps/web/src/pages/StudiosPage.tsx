@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
+import { PageScope } from "@/lib/appearance";
 import { StudioCard } from "@/components/StudioCard";
 import { fetchStudios } from "@/lib/studioApi";
 import { AlphabetIndex } from "@/components/AlphabetIndex";
@@ -48,60 +49,62 @@ export function StudiosPage() {
   );
 
   return (
-    <AppShell
-      title="Studios"
-      subtitle={
-        studios.length > 0
-          ? `${studios.length} ${studios.length === 1 ? "studio" : "studios"}`
-          : undefined
-      }
-    >
-      <div className="space-y-8 px-6 py-6">
-        <AlphabetIndex
-          value={letter}
-          onChange={setLetter}
-          available={studios.map((studio) => studio.name)}
-        />
-        {isLoading && (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton aspect-video rounded-lg" />
-            ))}
-          </div>
-        )}
+    <PageScope name="studios">
+      <AppShell
+        title="Studios"
+        subtitle={
+          studios.length > 0
+            ? `${studios.length} ${studios.length === 1 ? "studio" : "studios"}`
+            : undefined
+        }
+      >
+        <div className="space-y-8 px-6 py-6">
+          <AlphabetIndex
+            value={letter}
+            onChange={setLetter}
+            available={studios.map((studio) => studio.name)}
+          />
+          {isLoading && (
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skeleton aspect-video rounded-lg" />
+              ))}
+            </div>
+          )}
 
-        {!isLoading && visibleStudios.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No studios yet. They're picked up from a filename's leading [Studio]
-            tag, or from the folder above your videos, when you scan.
-          </p>
-        )}
-
-        {visibleWithVideos.length > 0 && (
-          <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {visibleWithVideos.map((studio) => (
-              <StudioCard key={studio.id} studio={studio} />
-            ))}
-          </div>
-        )}
-
-        {visibleEmpty.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
-              No videos right now
-            </h2>
-            <p className="max-w-prose text-xs text-muted-foreground/70">
-              Their folder isn't currently being scanned. Nothing about them is
-              lost.
+          {!isLoading && visibleStudios.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No studios yet. They're picked up from a filename's leading [Studio]
+              tag, or from the folder above your videos, when you scan.
             </p>
+          )}
+
+          {visibleWithVideos.length > 0 && (
             <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-              {visibleEmpty.map((studio) => (
+              {visibleWithVideos.map((studio) => (
                 <StudioCard key={studio.id} studio={studio} />
               ))}
             </div>
-          </section>
-        )}
-      </div>
-    </AppShell>
+          )}
+
+          {visibleEmpty.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
+                No videos right now
+              </h2>
+              <p className="max-w-prose text-xs text-muted-foreground/70">
+                Their folder isn't currently being scanned. Nothing about them is
+                lost.
+              </p>
+              <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                {visibleEmpty.map((studio) => (
+                  <StudioCard key={studio.id} studio={studio} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </AppShell>
+    </PageScope>
   );
 }

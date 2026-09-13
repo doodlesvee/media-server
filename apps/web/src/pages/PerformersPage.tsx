@@ -9,7 +9,7 @@ import {
 } from "@/components/PerformerCard";
 import { AlphabetIndex } from "@/components/AlphabetIndex";
 import { pinsChangedEvent, readPins } from "@/lib/pinned";
-import { tileWidthPx, useAppearance } from "@/lib/appearance";
+import { tileWidthPx, useAppearance, PageScope } from "@/lib/appearance";
 import { cardLayout } from "@/lib/layout";
 
 /**
@@ -115,66 +115,68 @@ export function PerformersPage() {
   );
 
   return (
-    <AppShell
-      title="Performers"
-      subtitle={
-        performers.length > 0
-          ? `${performers.length} ${performers.length === 1 ? "performer" : "performers"}`
-          : undefined
-      }
-    >
-      <div className="space-y-8 px-6 py-8">
-        <AlphabetIndex
-          value={letter}
-          onChange={setLetter}
-          available={performers.map((performer) => performer.name)}
-        />
-        {visiblePerformers.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No performers yet. They're created automatically from your folder
-            names when you scan.
-          </p>
-        )}
-
-        {visibleFavorites.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-              <Heart className="size-3.5 fill-red-500 text-red-500" />
-              Favourites
-            </h2>
-            <PerformerList
-              performers={visibleFavorites}
-              onOpen={openPerformer}
-              layout={layout}
-            />
-          </section>
-        )}
-
-        {visibleWithVideos.length > 0 && (
-          <PerformerList
-            performers={visibleWithVideos}
-            onOpen={openPerformer}
-            layout={layout}
+    <PageScope name="performers">
+      <AppShell
+        title="Performers"
+        subtitle={
+          performers.length > 0
+            ? `${performers.length} ${performers.length === 1 ? "performer" : "performers"}`
+            : undefined
+        }
+      >
+        <div className="space-y-8 px-6 py-8">
+          <AlphabetIndex
+            value={letter}
+            onChange={setLetter}
+            available={performers.map((performer) => performer.name)}
           />
-        )}
-
-        {visibleEmpty.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
-              No videos right now
-            </h2>
-            <p className="max-w-prose text-xs text-muted-foreground/70">
-              Either added by hand, or their folder isn't currently being
-              scanned. Their details are kept either way.
+          {visiblePerformers.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No performers yet. They're created automatically from your folder
+              names when you scan.
             </p>
+          )}
+
+          {visibleFavorites.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+                <Heart className="size-3.5 fill-red-500 text-red-500" />
+                Favourites
+              </h2>
+              <PerformerList
+                performers={visibleFavorites}
+                onOpen={openPerformer}
+                layout={layout}
+              />
+            </section>
+          )}
+
+          {visibleWithVideos.length > 0 && (
             <PerformerList
-              performers={visibleEmpty}
+              performers={visibleWithVideos}
               onOpen={openPerformer}
               layout={layout}
             />
-          </section>
-        )}
-      </div>
-    </AppShell>
+          )}
+
+          {visibleEmpty.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
+                No videos right now
+              </h2>
+              <p className="max-w-prose text-xs text-muted-foreground/70">
+                Either added by hand, or their folder isn't currently being
+                scanned. Their details are kept either way.
+              </p>
+              <PerformerList
+                performers={visibleEmpty}
+                onOpen={openPerformer}
+                layout={layout}
+              />
+            </section>
+          )}
+        </div>
+      </AppShell>
+    </PageScope>
   );
 }

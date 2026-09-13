@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  Bookmark,
   Clapperboard,
   FolderOpen,
   Home,
@@ -31,6 +32,21 @@ import {
   type Pin as PinnedItem,
 } from "@/lib/pinned";
 import { useLibraryStats } from "@/lib/statsApi";
+import {
+  isMediaDrag,
+  readMediaDragData,
+  type MediaDragPayload,
+} from "@/lib/dragMedia";
+import {
+  addItemsToCollection,
+  removeItemsFromCollection,
+} from "@/lib/bulkActions";
+import { useUndoable } from "@/lib/undo";
+import {
+  readSavedSearches,
+  removeSavedSearch,
+  savedSearchesChangedEvent,
+} from "@/lib/savedSearches";
 
 type Collection = { id: number; name: string; type: "manual" | "smart" };
 type TagRow = { id: number; name: string };
@@ -58,14 +74,24 @@ export function Sidebar({
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [pins, setPins] = useState<PinnedItem[]>(readPins);
+  const [saved, setSaved] = useState(readSavedSearches);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const runUndoable = useUndoable();
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const refresh = () => setPins(readPins());
+    // "storage" covers another tab; the custom events cover this one, which
+    // does not fire "storage" for its own writes.
+    const refresh = () => {
+      setPins(readPins());
+      setSaved(readSavedSearches());
+    };
     window.addEventListener(pinsChangedEvent(), refresh);
+    window.addEventListener(savedSearchesChangedEvent(), refresh);
     window.addEventListener("storage", refresh);
     return () => {
       window.removeEventListener(pinsChangedEvent(), refresh);
+      window.removeEventListener(savedSearchesChangedEvent(), refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -93,6 +119,33 @@ export function Sidebar({
         : health.videoDuplicateGroups > 0
           ? `${health.videoDuplicateGroups} duplicate${health.videoDuplicateGroups === 1 ? "" : "s"}`
           : "Library healthy";
+
+  /**
+   * Adds dropped items to a collection (§13).
+   *
+   * Reuses the same bulk helper the action bar uses rather than a second
+   * path, so a drop and a menu choice cannot end up behaving differently.
+   * The toast carries an undo: a drop is the easiest gesture in the app to
+   * make by accident.
+   */
+  async function dropOnCollection(
+    payload: MediaDragPayload,
+    collection: Collection,
+  ) {
+    await runUndoable({
+      message: `Added to ${collection.name}`,
+      description:
+        payload.ids.length === 1 ? payload.label : `${payload.ids.length} items`,
+      apply: () => addItemsToCollection(payload.ids, collection.id, () => {}),
+      revert: async () => {
+        await removeItemsFromCollection(payload.ids, collection.id, () => {});
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ["collection-items"] });
+        queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      },
+    });
+  }
 
   const deleteCollection = useMutation({
     mutationFn: async (id: number) => {
@@ -230,7 +283,35 @@ export function Sidebar({
               <p className="px-3 text-xs text-muted-foreground/60">None yet</p>
             )}
             {collections?.collections.map((c) => (
-              <div key={c.id} className="group flex items-center">
+              <div
+                key={c.id}
+                className={cn(
+                  "group flex items-center rounded-md",
+                  // Only a manual collection is a drop target. A smart one is
+                  // a saved query — adding an item to it by hand would either
+                  // do nothing or quietly contradict its rule.
+                  dropTarget === c.id && "ring-1 ring-foreground/40",
+                )}
+                onDragOver={(event) => {
+                  if (c.type !== "manual" || !isMediaDrag(event.dataTransfer))
+                    return;
+                  // Both are required: without preventDefault the browser
+                  // refuses the drop, and the drop handler never runs.
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setDropTarget(c.id);
+                }}
+                onDragLeave={() =>
+                  setDropTarget((current) => (current === c.id ? null : current))
+                }
+                onDrop={(event) => {
+                  if (c.type !== "manual") return;
+                  event.preventDefault();
+                  setDropTarget(null);
+                  const payload = readMediaDragData(event.dataTransfer);
+                  if (payload) void dropOnCollection(payload, c);
+                }}
+              >
                 <Link
                   to="/browse"
                   search={{ collectionId: c.id }}
@@ -289,6 +370,39 @@ export function Sidebar({
                 <span className="truncate">{t.name}</span>
               </Link>
             ))}
+
+            {saved.length > 0 && (
+              <>
+                <SectionLabel>Saved searches</SectionLabel>
+                {saved.map((entry) => (
+                  <div key={entry.id} className="group flex items-center">
+                    <Link
+                      to="/browse"
+                      // Parsed back into a search object rather than
+                      // navigated to as a raw href: the router owns the
+                      // shape of this route's search, and handing it a
+                      // string would skip its own validation.
+                      search={Object.fromEntries(
+                        new URLSearchParams(entry.search),
+                      )}
+                      className={cn(navItemClass, "min-w-0 flex-1 truncate")}
+                      title={entry.name}
+                    >
+                      <Bookmark className="size-4 shrink-0" />
+                      <span className="truncate">{entry.name}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => removeSavedSearch(entry.id)}
+                      aria-label={`Delete saved search ${entry.name}`}
+                      className="hidden rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
 
             {pins.length > 0 && (
               <>

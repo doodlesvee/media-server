@@ -30,6 +30,19 @@ const homeRoute = createRoute({
 const browseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/browse",
+  /**
+   * Everything that makes this view what it is lives in the URL.
+   *
+   * The composable filters (§7) join the sort and the folder here rather
+   * than living in component state, so a filtered view survives a reload,
+   * pastes as a link, and gets its own remembered scroll position — the
+   * router keys those on the full href.
+   *
+   * `tag`, `performer` and `studio` are the single-value entry points other
+   * pages already link to (a tag chip, a performer page). They stay as they
+   * are; `tags` and `performers` are the multi-value filters the filter bar
+   * writes. Keeping both means no existing link has to be rewritten.
+   */
   validateSearch: (
     search: Record<string, unknown>,
   ): {
@@ -42,6 +55,16 @@ const browseRoute = createRoute({
     sort?: string;
     year?: number;
     q?: string;
+    tags?: string;
+    performers?: string;
+    watched?: string;
+    favorite?: string;
+    minDuration?: number;
+    maxDuration?: number;
+    resolution?: string;
+    format?: string;
+    addedWithin?: number;
+    month?: number;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
     performer:
@@ -54,6 +77,21 @@ const browseRoute = createRoute({
     sort: typeof search.sort === "string" ? search.sort : undefined,
     year: search.year != null ? Number(search.year) : undefined,
     q: typeof search.q === "string" ? search.q : undefined,
+    tags: typeof search.tags === "string" ? search.tags : undefined,
+    performers:
+      typeof search.performers === "string" ? search.performers : undefined,
+    watched: typeof search.watched === "string" ? search.watched : undefined,
+    favorite: typeof search.favorite === "string" ? search.favorite : undefined,
+    minDuration:
+      search.minDuration != null ? Number(search.minDuration) : undefined,
+    maxDuration:
+      search.maxDuration != null ? Number(search.maxDuration) : undefined,
+    resolution:
+      typeof search.resolution === "string" ? search.resolution : undefined,
+    format: typeof search.format === "string" ? search.format : undefined,
+    addedWithin:
+      search.addedWithin != null ? Number(search.addedWithin) : undefined,
+    month: search.month != null ? Number(search.month) : undefined,
   }),
   component: BrowsePage,
 });

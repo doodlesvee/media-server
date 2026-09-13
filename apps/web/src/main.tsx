@@ -12,6 +12,23 @@ import { router } from "./router";
 
 const queryClient = new QueryClient();
 
+/**
+ * Registers the service worker, so the app can be installed (§33).
+ *
+ * Production only. In dev the worker would sit in front of Vite's module
+ * graph and serve a stale shell after every edit, which is a confusing way to
+ * spend an afternoon.
+ *
+ * After load, so registering never competes with the first render for the
+ * network. A failure is swallowed: an app that cannot be installed is a
+ * missing convenience, not a broken library.
+ */
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* The last resort. The router has its own error component, which keeps

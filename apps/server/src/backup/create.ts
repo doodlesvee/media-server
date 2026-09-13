@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -25,6 +27,82 @@ export const BACKUP_NAME_PATTERN = /^media-server-[0-9TZ.-]+\.tar\.gz$/;
 
 const DUMP_TIMEOUT_MS = 300_000;
 const KEEP_BACKUPS = 10;
+
+/**
+ * The shape of meta.json. Bumped only when a restore would have to behave
+ * differently, not when a field is added — an older restore ignores fields
+ * it does not know, and every archive written before this existed has no
+ * version at all, which is version 0.
+ */
+export const BACKUP_FORMAT_VERSION = 1;
+
+/**
+ * What built the archive.
+ *
+ * From package.json via the environment rather than imported: the server is
+ * compiled to dist/, where a relative import of ../package.json resolves
+ * somewhere else entirely.
+ */
+const APP_VERSION = process.env.APP_VERSION ?? "unknown";
+
+export type BackupManifest = {
+  backupVersion: number;
+  appVersion: string;
+  schemaVersion: string | null;
+  createdAt: string;
+  latestMigrationTag: string | null;
+  latestMigrationWhen: number | null;
+  components: string[];
+  /** Archive-relative path to sha256, for every file in the archive. */
+  checksums: Record<string, string>;
+};
+
+/**
+ * sha256 of every file under a directory, keyed by relative path.
+ *
+ * Streamed rather than read whole: a database dump of a large library is
+ * comfortably bigger than it is sensible to hold in memory, and the backup
+ * runs on the same box that is serving video.
+ */
+export async function checksumDirectory(
+  root: string,
+  prefix = "",
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      Object.assign(out, await checksumDirectory(full, relative));
+    } else if (entry.isFile()) {
+      // meta.json is written after this runs and cannot contain its own
+      // hash, so it is never a member of the map. Guarded anyway, because a
+      // re-run over an unpacked archive would otherwise include it and
+      // report a mismatch for a file that was never covered.
+      if (relative === "meta.json") continue;
+      out[relative] = await sha256File(full);
+    }
+  }
+
+  return out;
+}
+
+export function sha256File(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
 
 // What goes in comes from media/cache.ts, which classifies every directory
 // under APP_DATA_DIR as either an upload or derived artwork. It used to be
@@ -194,17 +272,36 @@ export async function createBackup(
     // the app querying columns its schema no longer matches. Recording the
     // level here is what lets a restore refuse that outright.
     const migration = await latestMigration();
+
+    // The manifest §18 asks for: what this archive is, what it holds, and
+    // enough of a fingerprint to tell whether it still holds it.
+    //
+    // Checksums are over the files as they go *into* the tar, not over the
+    // tar itself. A checksum of the archive would only prove the archive
+    // downloaded intact, which gzip's own CRC already does; hashing the
+    // members is what catches a truncated dump or a half-copied image, which
+    // is the failure that actually loses data and the one you find out about
+    // during a restore.
+    const checksums = await checksumDirectory(workDir);
+
+    const manifest: BackupManifest = {
+      backupVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      schemaVersion: migration?.tag ?? null,
+      createdAt: new Date().toISOString(),
+      // Kept at the top level under their original names as well as inside
+      // `manifest`: restore.ts reads these two directly and predates the
+      // rest, so moving them would make every existing archive unreadable
+      // by the version gate that exists to protect them.
+      latestMigrationTag: migration?.tag ?? null,
+      latestMigrationWhen: migration?.when ?? null,
+      components: ["db.sql", ...UPLOAD_DIRS.map((upload) => upload.name)],
+      checksums,
+    };
+
     await writeFile(
       path.join(workDir, "meta.json"),
-      JSON.stringify(
-        {
-          createdAt: new Date().toISOString(),
-          latestMigrationTag: migration?.tag ?? null,
-          latestMigrationWhen: migration?.when ?? null,
-        },
-        null,
-        2,
-      ),
+      JSON.stringify(manifest, null, 2),
     );
 
     await execFileAsync(

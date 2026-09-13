@@ -8,6 +8,15 @@
  * the alternative, and it makes every preset a compromise.
  */
 
+/**
+ * Three modes, and they differ only by how much width a card asks for.
+ *
+ * Cinematic and List existed here and were removed. Both broke that
+ * invariant — one cropped the artwork to a wider frame, the other was not a
+ * tile at all — and neither earned the exception: three sizes of the same
+ * card is a size control, which is what people actually reach for, while a
+ * fourth and fifth entry made the picker a decision rather than a slider.
+ */
 export type ViewMode = "grid" | "compact" | "large";
 
 export const VIEW_MODES: { value: ViewMode; label: string; hint: string }[] = [
@@ -111,13 +120,20 @@ export type CardChrome = {
   tileInfo: TileInfo;
 };
 
+/**
+ * The parts of a card's look that do not depend on how wide the grid made it.
+ *
+ * No view mode here, and that is the point of having only three: they differ
+ * by how much width a card asks for, which is the grid's business, not the
+ * card's. The two modes that needed this to know about them — one cropping
+ * to a wider frame, one laying out as a row — have been removed.
+ */
 export function cardChrome(density: Density, tileInfo: TileInfo): CardChrome {
   return {
     aspectRatio: `${CARD_ASPECT.w} / ${CARD_ASPECT.h}`,
     heightRatio: CARD_ASPECT.h / CARD_ASPECT.w,
     paddingPx: DENSITY_PADDING[density] ?? DENSITY_PADDING.comfortable,
-    // No mode overrides the label setting any more, so it passes straight
-    // through. The one that did was the wide mode, and it is gone.
+    // No mode overrides the label setting, so it passes straight through.
     tileInfo,
   };
 }

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { formatBytes, useLibraryStats } from "@/lib/statsApi";
+import { ScanSummary } from "./ScanSummary";
 
 function formatDate(value: string | null): string {
   if (!value) return "Never";
@@ -114,6 +115,11 @@ export function LibraryHealthSection() {
           tone={scanHealthy ? "positive" : "neutral"}
         />
       </div>
+
+      {/* What the last scan actually did, beneath the standing totals above
+          — the metrics say where the library is, this says what changed to
+          get it there (§15). */}
+      <ScanSummary />
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
         <span>{data.videos.toLocaleString()} videos</span>
