@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
@@ -21,6 +21,7 @@ import {
   ScanEye,
 } from "lucide-react";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { Timeline } from "./Timeline";
 import { recordRecent } from "@/lib/recent";
 import { setMediaDragData } from "@/lib/dragMedia";
 import { isTypingTarget, playItem } from "@/lib/appEvents";
@@ -53,14 +54,6 @@ export type GridSource =
       filters?: Filters;
     }
   | { type: "collection"; id: number };
-
-type ReleaseYear = { year: number; total: number };
-
-async function fetchReleaseYears(): Promise<{ years: ReleaseYear[] }> {
-  const res = await fetch("/api/release-years");
-  if (!res.ok) throw new Error(`Failed to load years: ${res.status}`);
-  return res.json();
-}
 
 type MediaItemsResponse = {
   items: MediaCardItem[];
@@ -128,7 +121,7 @@ export function MediaGrid({
   onOpenFolder,
   sort: initialSort = "newest",
   year: initialYear = "",
-  month,
+  month: initialMonth,
   onViewStateChange,
 }: {
   source: GridSource;
@@ -137,7 +130,11 @@ export function MediaGrid({
   year?: string;
   /** 1-12, set by the timeline. Only meaningful alongside a year. */
   month?: number;
-  onViewStateChange?: (state: { sort: SortValue; year: string }) => void;
+  onViewStateChange?: (state: {
+    sort: SortValue;
+    year: string;
+    month?: number;
+  }) => void;
 }) {
   const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
   const { add, addNext, clear } = useQueue();
@@ -163,6 +160,20 @@ export function MediaGrid({
   const anchorIndex = useRef<number | null>(null);
   const [sort, setSort] = useState<SortValue>(initialSort);
   const [year, setYear] = useState(initialYear);
+  const [month, setMonth] = useState(initialMonth);
+
+  /**
+   * Follow the period in the URL when it changes underneath us.
+   *
+   * Without this the grid keeps whatever it was mounted with. That was not
+   * hypothetical: the timeline navigated, the page re-rendered without
+   * remounting — AppShell keys its main region on the pathname, and only the
+   * search string had changed — and the grid went on requesting the old
+   * period. The month reached the server without its year, which the server
+   * ignores, so picking a month filtered nothing at all.
+   */
+  useEffect(() => setYear(initialYear), [initialYear]);
+  useEffect(() => setMonth(initialMonth), [initialMonth]);
   /**
    * The shuffle's seed.
    *
@@ -175,12 +186,6 @@ export function MediaGrid({
   const [randomSeed, setRandomSeed] = useState(() =>
     Math.floor(Math.random() * 1_000_000),
   );
-
-  const { data: yearData } = useQuery({
-    queryKey: ["release-years"],
-    queryFn: fetchReleaseYears,
-  });
-  const years = yearData?.years ?? [];
 
   const {
     data,
@@ -821,26 +826,26 @@ export function MediaGrid({
           </button>
           {source.type === "library" && (
             <>
-              {years.length > 0 && (
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Year</span>
-                  <select
-                    value={year}
-                    onChange={(e) => {
-                      setYear(e.target.value);
-                      onViewStateChange?.({ sort, year: e.target.value });
-                    }}
-                    className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
-                  >
-                    <option value="">All</option>
-                    {years.map((entry) => (
-                      <option key={entry.year} value={String(entry.year)}>
-                        {entry.year} ({entry.total})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              {/* The period control, and the only one. A plain Year select
+                  used to sit here as well as the timeline on the browse page
+                  — two controls for one filter, in two places, disagreeing
+                  about whether months exist. The timeline is the superset, so
+                  it took the slot. */}
+              <Timeline
+                year={year === "" ? undefined : Number(year)}
+                month={month}
+                onSelect={(period) => {
+                  const nextYear =
+                    period.year === undefined ? "" : String(period.year);
+                  setYear(nextYear);
+                  setMonth(period.month);
+                  onViewStateChange?.({
+                    sort,
+                    year: nextYear,
+                    month: period.month,
+                  });
+                }}
+              />
 
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>Sort</span>
@@ -854,7 +859,7 @@ export function MediaGrid({
                     if (next === "random")
                       setRandomSeed(Math.floor(Math.random() * 1_000_000));
                     setSort(next);
-                    onViewStateChange?.({ sort: next, year });
+                    onViewStateChange?.({ sort: next, year, month });
                   }}
                   className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/30"
                 >

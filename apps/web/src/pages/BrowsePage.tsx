@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
 import { FilterBar } from "@/components/FilterBar";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
-import { Timeline } from "@/components/Timeline";
 import {
   filtersFromSearch,
   filtersToSearch,
@@ -311,33 +310,11 @@ export function BrowsePage() {
 
         {source.type === "library" && (
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex flex-wrap items-start gap-2">
-              <FilterBar
-                filters={filters}
-                onChange={applyFilters}
-                onClear={clearFilters}
-              />
-              <Timeline
-                year={year}
-                month={month}
-                onSelect={(period) =>
-                  void navigate({
-                    to: "/browse",
-                    search: (current) => ({
-                      ...current,
-                      year: period.year,
-                      // Cleared with the year, or picking a year after a
-                      // month would keep the old month and show one month of
-                      // the new year instead of all of it.
-                      month: period.month,
-                      parentId: period.year === undefined
-                        ? current.parentId
-                        : undefined,
-                    }),
-                  })
-                }
-              />
-            </div>
+            <FilterBar
+              filters={filters}
+              onChange={applyFilters}
+              onClear={clearFilters}
+            />
             {/* Only once there is something worth coming back to. */}
             {(hasActiveFilters(filters) || q) && (
               <SaveSearchButton
@@ -367,6 +344,11 @@ export function BrowsePage() {
                 ...current,
                 sort: state.sort,
                 year: state.year ? Number(state.year) : undefined,
+                // Written even when undefined, which is what clears a month
+                // that is already in the URL — picking a whole year after a
+                // month would otherwise keep the old month and show one month
+                // of the new year instead of all of it.
+                month: state.month,
               }),
             })
           }

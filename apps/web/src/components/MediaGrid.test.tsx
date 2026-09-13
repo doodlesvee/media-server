@@ -173,3 +173,89 @@ describe("MediaGrid single-key shortcuts", () => {
     input.remove();
   });
 });
+
+/**
+ * The period filter reaching the server.
+ *
+ * The timeline navigates, which changes the search string but not the
+ * pathname — and AppShell keys its main region on the pathname, so the grid
+ * re-renders without remounting. It used to seed `year` into state once and
+ * never look at the prop again, so the new period never reached the query.
+ * The month did (it was read straight from the prop), and the server ignores
+ * a month with no year, so picking one filtered nothing at all.
+ */
+describe("MediaGrid period filter", () => {
+  function gridWith(props: { year?: string; month?: number }) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return (
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <AppearanceProvider>
+            <QueueProvider>
+              <CardShortcutProvider>
+                <MediaGrid
+                  source={{
+                    type: "library",
+                    tag: null,
+                    performer: null,
+                    studio: null,
+                    kind: null,
+                    q: null,
+                    parentId: null,
+                  }}
+                  onOpenFolder={() => {}}
+                  {...props}
+                />
+              </CardShortcutProvider>
+            </QueueProvider>
+          </AppearanceProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  const listRequests = () =>
+    (globalThis.fetch as unknown as { mock: { calls: [string][] } }).mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/api/media-items?"));
+
+  it("sends a period chosen after mount", async () => {
+    const { rerender } = render(gridWith({}));
+    await waitFor(() => expect(listRequests().length).toBeGreaterThan(0));
+
+    rerender(gridWith({ year: "2019", month: 3 }));
+
+    await waitFor(() => {
+      const latest = listRequests().at(-1) ?? "";
+      expect(latest).toContain("year=2019");
+      expect(latest).toContain("month=3");
+    });
+  });
+
+  it("drops the period again when it is cleared", async () => {
+    const { rerender } = render(gridWith({ year: "2019" }));
+    await waitFor(() =>
+      expect(listRequests().at(-1) ?? "").toContain("year=2019"),
+    );
+
+    rerender(gridWith({}));
+
+    await waitFor(() => {
+      const latest = listRequests().at(-1) ?? "";
+      expect(latest).not.toContain("year=");
+      expect(latest).not.toContain("month=");
+    });
+  });
+
+  // One period control, not two. A plain Year select used to sit in this
+  // toolbar as well as the timeline on the browse page.
+  it("offers the timeline and no separate year select", async () => {
+    render(gridWith({}));
+    expect(
+      await screen.findByRole("button", { name: /Timeline/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Year")).not.toBeInTheDocument();
+  });
+});
