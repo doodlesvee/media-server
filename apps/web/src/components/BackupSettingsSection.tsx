@@ -7,6 +7,7 @@ import {
   Loader2,
   RotateCcw,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import {
@@ -17,13 +18,18 @@ import {
   formatBytes,
   PrivacyLockedError,
   restoreBackup,
+  verifyBackup,
+  isBackupStale,
+  backupAgeDays,
   type BackupFile,
   type RestoreResult,
+  type VerifyResult,
 } from "@/lib/backupApi";
 import { usePrivacyGuard } from "@/lib/privacyGuard";
 import { PrivacyUnlockForm } from "./PrivacyUnlockForm";
 import { RestoreBackupDialog } from "./RestoreBackupDialog";
 import { SettingsSection } from "./SettingsSection";
+import { cn } from "@/lib/utils";
 
 function relativeDate(iso: string): string {
   const then = new Date(iso).getTime();
@@ -49,6 +55,14 @@ export function BackupSettingsSection() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
   const { data } = useQuery({ queryKey: ["backups"], queryFn: fetchBackups });
+  const [verified, setVerified] = useState<VerifyResult | null>(null);
+
+  const verify = useMutation({
+    mutationFn: verifyBackup,
+    onSuccess: setVerified,
+    onError: (err: unknown) =>
+      setError(err instanceof Error ? err.message : "Could not verify."),
+  });
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ["backups"] });
@@ -159,6 +173,24 @@ export function BackupSettingsSection() {
         <p className="rounded-md bg-destructive/15 px-3 py-2 text-sm text-destructive">{error}</p>
       )}
 
+      {/* §18 asks for a warning when backups go stale. Only shown once one
+          actually is, and it names the age rather than saying "old" — the
+          number is what tells you whether it matters. */}
+      {isBackupStale(backups[0]?.createdAt) && (
+        <p className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <ShieldAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            {backups.length === 0
+              ? "This library has never been backed up."
+              : `Your newest backup is ${Math.floor(
+                  backupAgeDays(backups[0].createdAt) ?? 0,
+                )} days old.`}{" "}
+            Back up now, then verify it — an archive nobody has checked is a
+            belief rather than a backup.
+          </span>
+        </p>
+      )}
+
       {backups.length > 0 ? (
         <ul className="space-y-1">
           {backups.map((backup) => (
@@ -173,6 +205,16 @@ export function BackupSettingsSection() {
               <span className="shrink-0 text-muted-foreground/70">
                 {relativeDate(backup.createdAt)}
               </span>
+              <button
+                type="button"
+                onClick={() => verify.mutate(backup.name)}
+                disabled={verify.isPending}
+                aria-label={`Verify ${backup.name}`}
+                title="Check that this archive is restorable"
+                className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                <ShieldCheck className="size-3.5" />
+              </button>
               <a
                 href={backupDownloadUrl(backup.name)}
                 download
@@ -207,6 +249,44 @@ export function BackupSettingsSection() {
         </ul>
       ) : (
         <p className="text-xs text-muted-foreground">No backups yet.</p>
+      )}
+
+      {verified && (
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {verified.ok ? (
+              <ShieldCheck className="size-4 text-emerald-500" />
+            ) : (
+              <ShieldAlert className="size-4 text-destructive" />
+            )}
+            {verified.ok
+              ? "This backup is restorable."
+              : "This backup has problems."}
+          </div>
+          <p className="truncate font-mono text-[11px] text-muted-foreground">
+            {verified.name}
+          </p>
+          <ul className="space-y-1">
+            {verified.checks.map((check) => (
+              <li
+                key={check.name}
+                className="flex items-baseline gap-2 text-xs"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mt-1 size-1.5 shrink-0 rounded-full",
+                    check.ok ? "bg-emerald-500" : "bg-destructive",
+                  )}
+                />
+                <span className="font-medium">{check.name}</span>
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {check.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {pendingRestore && guarded && !unlocked && (

@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { logActivity } from "../activity/log.js";
 import { countRemovableData, purgeRemovableData } from "../library/cleanup.js";
+import { DERIVED_DIRS, cacheUsage, clearDerivedCache } from "../media/cache.js";
 import path from "node:path";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -289,6 +290,52 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
       ),
     };
   });
+
+  /**
+   * What the generated artwork is costing, split from what it isn't (§17).
+   */
+  app.get("/api/library/cache", async () => {
+    const usage = await cacheUsage();
+    return {
+      entries: usage,
+      derivedBytes: usage
+        .filter((entry) => entry.kind === "derived")
+        .reduce((total, entry) => total + entry.bytes, 0),
+      uploadBytes: usage
+        .filter((entry) => entry.kind === "upload")
+        .reduce((total, entry) => total + entry.bytes, 0),
+    };
+  });
+
+  /**
+   * Deletes generated artwork so the next scan rebuilds it (§17).
+   *
+   * Takes directory *names*, and `clearDerivedCache` ignores any that are not
+   * derived — so the endpoint has no way to reach uploaded artwork whatever
+   * it is sent, and no path for a traversal to travel down. Originals are not
+   * even addressable from here: this only ever touches APP_DATA_DIR.
+   */
+  app.post<{ Body: { names?: unknown } }>(
+    "/api/library/cache/clear",
+    async (request) => {
+      const requested = Array.isArray(request.body?.names)
+        ? (request.body.names as unknown[]).filter(
+            (name): name is string => typeof name === "string"
+          )
+        : // No list means every derived directory, which is the "Clear cache"
+          // button. Uploads are still unreachable — the helper filters them.
+          DERIVED_DIRS.map((entry) => entry.name);
+
+      const removed = await clearDerivedCache(requested);
+      if (removed > 0) {
+        await logActivity("cache", "Generated artwork cleared", {
+          files: removed,
+          directories: requested,
+        });
+      }
+      return { removed };
+    }
+  );
 
   app.get("/api/library/cleanup", async () => {
     return { removable: await countRemovableData() };

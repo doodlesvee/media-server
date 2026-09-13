@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -71,6 +71,105 @@ export async function ensureCacheDirs(): Promise<void> {
   await Promise.all(
     APP_DATA_DIRS.map(({ dir }) => mkdir(dir, { recursive: true })),
   );
+}
+
+export type CacheUsage = {
+  name: string;
+  /** "upload" is persistent; "derived" is regenerable. */
+  kind: "upload" | "derived";
+  files: number;
+  bytes: number;
+};
+
+/**
+ * How much space each app-data directory is using (§17).
+ *
+ * Classified rather than totalled, because the whole point of the cache
+ * dashboard is the distinction: clearing a derived directory costs CPU on
+ * the next scan, and clearing an upload directory costs artwork nobody can
+ * get back. A single "cache size" number invites exactly the wrong action.
+ *
+ * Walked on request rather than tracked as files are written. A counter
+ * maintained alongside every poster, preview and thumbnail write is a second
+ * source of truth that drifts the first time a write fails halfway, and this
+ * is a settings page nobody opens in a loop.
+ */
+export async function cacheUsage(): Promise<CacheUsage[]> {
+  return Promise.all(
+    APP_DATA_DIRS.map(async (entry) => {
+      const { files, bytes } = await directorySize(entry.dir);
+      return {
+        name: entry.name,
+        kind: UPLOAD_DIRS.includes(entry) ? "upload" : "derived",
+        files,
+        bytes,
+      } as const;
+    }),
+  );
+}
+
+async function directorySize(
+  dir: string,
+): Promise<{ files: number; bytes: number }> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    // Never created, because nothing of that kind has been generated yet.
+    return { files: 0, bytes: 0 };
+  }
+
+  let files = 0;
+  let bytes = 0;
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await directorySize(full);
+      files += nested.files;
+      bytes += nested.bytes;
+    } else if (entry.isFile()) {
+      try {
+        bytes += (await stat(full)).size;
+        files += 1;
+      } catch {
+        // Swept out from under us by a concurrent scan. Not counting it is
+        // the correct answer a moment later anyway.
+      }
+    }
+  }
+
+  return { files, bytes };
+}
+
+/**
+ * Deletes every generated file in the named derived directories (§17).
+ *
+ * Refuses anything that is not in DERIVED_DIRS, and that refusal is the
+ * whole safety property: "clear cache" must never be able to reach uploaded
+ * artwork, let alone an original. The caller passes names, not paths, so
+ * there is no path for a traversal to travel down.
+ *
+ * The files come back on the next scan. Nothing here touches the database,
+ * so watch state, collections and metadata are untouched by design.
+ */
+export async function clearDerivedCache(names: string[]): Promise<number> {
+  let removed = 0;
+
+  for (const name of names) {
+    const entry = DERIVED_DIRS.find((candidate) => candidate.name === name);
+    // Unknown, or an upload directory. Skipped in silence rather than
+    // thrown: a client asking to clear something it may not is a bug in the
+    // client, and failing the whole request would leave the directories it
+    // *could* clear untouched for no reason.
+    if (!entry) continue;
+
+    const { files } = await directorySize(entry.dir);
+    await rm(entry.dir, { recursive: true, force: true });
+    await mkdir(entry.dir, { recursive: true });
+    removed += files;
+  }
+
+  return removed;
 }
 
 export function cacheFilename(

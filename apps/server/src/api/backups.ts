@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { isUnlocked, privacyIsConfigured } from "../auth/privacyUnlock.js";
 import { createBackup, listBackups, resolveBackupPath } from "../backup/create.js";
 import { RestoreError, restoreBackup } from "../backup/restore.js";
+import { verifyBackup } from "../backup/verify.js";
 import { readRestoreMarker } from "../backup/restoreState.js";
 import { streamFile } from "../media/streamer.js";
 
@@ -51,6 +52,27 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.get("/api/backups", async () => ({ backups: await listBackups() }));
+
+  /**
+   * Checks that an archive is actually restorable (§18).
+   *
+   * POST rather than GET because it costs real work — a full extract and a
+   * hash of every member — and because a GET invites a prefetch doing it
+   * uninvited. It changes nothing, so it is not behind the privacy gate that
+   * restore is: reading a backup you can already download is not the
+   * destructive act that gate protects.
+   */
+  app.post<{ Params: { name: string } }>(
+    "/api/backups/:name/verify",
+    async (request, reply) => {
+      const result = await verifyBackup(request.params.name);
+      // 200 either way. A backup that fails verification is a successful
+      // check with a bad answer, and an error status would make the client
+      // treat the finding as a failure to look.
+      reply.code(200);
+      return result;
+    },
+  );
 
   app.post("/api/backups", async (_request, reply) => {
     try {
