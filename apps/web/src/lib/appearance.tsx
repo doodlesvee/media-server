@@ -214,6 +214,14 @@ export type Appearance = {
    * viewport. See `heroHeight` for why these are separate.
    */
   bannerHeight: number;
+  /**
+   * Whether finishing a video starts the next queued one (§10).
+   *
+   * A setting rather than always-on: autoplay is right when you have built a
+   * queue and wrong when you have not, and the app cannot tell which from
+   * the fact that something happened to be next in the list.
+   */
+  autoplayNext: boolean;
   /** Which homepage sections show, and in what order. */
   homeRows: HomeRowSetting[];
   /**
@@ -284,6 +292,7 @@ export const DEFAULTS: Appearance = {
   discreetText: false,
   heroHeight: 70,
   bannerHeight: 70,
+  autoplayNext: true,
   homeRows: DEFAULT_HOME_ROWS,
   pageOverrides: {},
 };
@@ -385,6 +394,10 @@ function read(): Appearance {
         DEFAULTS.heroHeight,
       ),
       bannerHeight: clampPercent(parsed.bannerHeight, DEFAULTS.bannerHeight),
+      autoplayNext:
+        typeof parsed.autoplayNext === "boolean"
+          ? parsed.autoplayNext
+          : DEFAULTS.autoplayNext,
       homeRows: readHomeRows(parsed.homeRows),
       pageOverrides: readPageOverrides(parsed.pageOverrides),
     };

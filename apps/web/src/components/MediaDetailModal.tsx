@@ -9,6 +9,7 @@ import {
   GripHorizontal,
   Heart,
   Maximize,
+  PictureInPicture2,
   Maximize2,
   MonitorPlay,
   Move,
@@ -132,7 +133,7 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
-  const { discreet, modalPreview } = useAppearance();
+  const { discreet, modalPreview, autoplayNext } = useAppearance();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
   // Opened, but holding the still with nothing running. Only ever true before
   // real playback starts: once you press Play the mode changes and neither
@@ -326,6 +327,34 @@ export function MediaDetailModal({
     }
   }
 
+  /**
+   * Picture-in-Picture (§10).
+   *
+   * Distinct from the mini player, which is this app's own floating window
+   * and only survives while the tab is open. PiP is the browser's, so it
+   * keeps playing over other applications and outlives navigating away —
+   * which is the reason to offer both rather than treating one as the other.
+   *
+   * Guarded on support rather than assumed: Firefox exposes the API only
+   * behind its own UI, and calling it there throws rather than no-opping.
+   */
+  const pipSupported =
+    typeof document !== "undefined" &&
+    "pictureInPictureEnabled" in document &&
+    document.pictureInPictureEnabled;
+
+  async function togglePictureInPicture() {
+    const video = videoRef.current;
+    if (!video || !pipSupported) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      // Denied by the browser (no user gesture, or disabled by policy).
+      // There is nothing to recover — the video keeps playing where it is.
+    }
+  }
+
   function toggleFullscreen() {
     const video = videoRef.current;
     if (!video) return;
@@ -366,11 +395,15 @@ export function MediaDetailModal({
       // The browser's own controls already handle arrows and space once the
       // video itself has focus. Handling them again here would seek twice
       // per press.
+      // The browser's own controls handle arrows and space once the video has
+      // focus; these four have no native binding, so they still have to reach
+      // this handler from there.
       if (
         e.target === videoRef.current &&
         e.key !== "f" &&
         e.key !== "m" &&
-        e.key !== "c"
+        e.key !== "c" &&
+        e.key !== "i"
       )
         return;
 
@@ -407,6 +440,9 @@ export function MediaDetailModal({
           break;
         case "c":
           if (!mini) setCinema((active) => !active);
+          break;
+        case "i":
+          void togglePictureInPicture();
           break;
         default:
           break;
@@ -501,7 +537,10 @@ export function MediaDetailModal({
     // row only ever filtered on having *some* progress.
     toggleWatched.mutate(true);
     const next = queueItems.find((queueItem) => queueItem.id !== item.id);
-    if (next) {
+    // With autoplay off the queue is still consumed — the video is finished
+    // either way — but nothing starts on its own. The Up Next card is still
+    // on screen at this point, so "next" remains one click away.
+    if (next && autoplayNext) {
       remove(item.id);
       remove(next.id);
       autoPlayNext.current = true;
@@ -1021,6 +1060,17 @@ export function MediaDetailModal({
                   )}
                 </div>
 
+                {pipSupported && (
+                  <button
+                    type="button"
+                    onClick={() => void togglePictureInPicture()}
+                    aria-label="Picture in picture"
+                    title="Picture in picture (i)"
+                    className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                  >
+                    <PictureInPicture2 className="size-4" />
+                  </button>
+                )}
                 {!mini && (
                   <button
                     type="button"

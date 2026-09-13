@@ -63,6 +63,7 @@ export function AppearanceMenu() {
     hoverZoom,
     hoverPreview,
     modalPreview,
+    autoplayNext,
     discreet,
     discreetBlurPercent,
     discreetText,
@@ -270,6 +271,13 @@ export function AppearanceMenu() {
                 checked={!discreet && modalPreview}
                 disabled={discreet}
                 onChange={(next) => set({ modalPreview: next })}
+              />
+
+              <Toggle
+                label="Autoplay next in queue"
+                hint="When a video ends, start the next queued one. With this off the queue still advances — the Up next card is there to take it."
+                checked={autoplayNext}
+                onChange={(next) => set({ autoplayNext: next })}
               />
 
               <Section label="Banner" />

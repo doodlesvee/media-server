@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Heart,
   ListPlus,
+  ListStart,
   ListVideo,
   Pencil,
   Play,
@@ -710,6 +711,11 @@ export function MediaGrid({
                 icon: ListVideo,
                 onSelect: () => addNext(queueItemFor(item)),
               },
+              {
+                label: "Play from here",
+                icon: ListStart,
+                onSelect: () => void playFromHere(item.id),
+              },
             ]
           : []),
         ...(isFolder
@@ -781,6 +787,32 @@ export function MediaGrid({
     clear();
     queueItems.slice(1).forEach(add);
     setOpenItemId(queueItems[0].id);
+  }
+
+  /**
+   * Play All, but starting at the item you clicked (§10).
+   *
+   * The distinction from Play All matters on a sorted view: an album or a
+   * series in order is exactly the case where you want the rest of the list
+   * to follow on from where you are, rather than restarting it from the top
+   * or queueing only the one item.
+   *
+   * It queues every *later* item and none of the earlier ones, which is what
+   * "from here" means — wrapping around to the beginning would be Play All
+   * with a different starting point, a different feature.
+   */
+  async function playFromHere(startId: number) {
+    const queueItems = await fetchAllQueueItems();
+    const start = queueItems.findIndex((entry) => entry.id === startId);
+    // Not in the playable list at all — a photo, or a folder. Opening it is
+    // still the right response to the click.
+    if (start === -1) {
+      setOpenItemId(startId);
+      return;
+    }
+    clear();
+    queueItems.slice(start + 1).forEach(add);
+    setOpenItemId(startId);
   }
 
   if (isLoading) {
