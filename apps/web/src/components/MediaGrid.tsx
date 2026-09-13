@@ -21,13 +21,10 @@ import {
   ScanEye,
 } from "lucide-react";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
-import { PeekPanel } from "./PeekPanel";
-import { setWatched, updateItem } from "@/lib/mediaItemApi";
-import { useUndoable } from "@/lib/undo";
 import { recordRecent } from "@/lib/recent";
 import { setMediaDragData } from "@/lib/dragMedia";
-import { isTypingTarget, openSearch, playItem } from "@/lib/appEvents";
-import { useQueryClient } from "@tanstack/react-query";
+import { isTypingTarget, playItem } from "@/lib/appEvents";
+import { useCardShortcuts } from "@/lib/cardShortcuts";
 import { readPins } from "@/lib/pinned";
 import {
   chunkIntoRows,
@@ -56,7 +53,6 @@ export type GridSource =
       filters?: Filters;
     }
   | { type: "collection"; id: number };
-
 
 type ReleaseYear = { year: number; total: number };
 
@@ -145,21 +141,22 @@ export function MediaGrid({
 }) {
   const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
   const { add, addNext, clear } = useQueue();
-  const queryClient = useQueryClient();
-  const runUndoable = useUndoable();
   // Every length the grid needs comes from here, so the mode and density can
   // change the shape of the page without this component knowing what either
   // of them means.
-  const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
+  const layout = cardLayout(
+    tileWidthPx(tileSizePercent),
+    viewMode,
+    density,
+    tileInfo,
+  );
   const tileWidth = layout.widthPx;
   const isRow = layout.isRow;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
-  const [peekItemId, setPeekItemId] = useState<number | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  // Which card the pointer is engaged with, so the shortcuts have a target
-  // when nothing is focused. Not state the render depends on, but it has to
-  // trigger one so the key listener closes over the current value.
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Which card the keyboard is pointing at, hover or focus. Owned by the
+  // shortcut layer so a row and a grid agree about it.
+  const { engaged, peek, toggleFavourite, toggleWatched } = useCardShortcuts();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // Where a Shift-click range starts: the last card clicked without Shift.
@@ -377,117 +374,34 @@ export function MediaGrid({
   }
 
   /**
-   * The card the single-key shortcuts act on (§24).
+   * The grid-only shortcuts.
    *
-   * Focus first, then hover. Binding these to focus alone was wrong in the
-   * way that matters: reaching for the keyboard while *pointing* at a tile is
-   * the ordinary way to use them, and with a mouse nothing in the grid is
-   * focused at all — the keypress goes to <body> and never arrives.
-   *
-   * Focus still wins where both apply, so a keyboard user tabbing through
-   * the grid is never hijacked by wherever the pointer happens to be resting.
-   */
-  function shortcutTarget(): { item: MediaCardItem; index: number } | null {
-    const focused = gridNode?.contains(document.activeElement)
-      ? Number(
-          (document.activeElement as HTMLElement)
-            ?.closest?.("[data-grid-index]")
-            ?.getAttribute("data-grid-index"),
-        )
-      : Number.NaN;
-
-    const index = Number.isNaN(focused) ? hoveredIndex : focused;
-    if (index === null || index === undefined) return null;
-    const item = items[index];
-    return item ? { item, index } : null;
-  }
-
-  /**
-   * The card shortcuts, at the window rather than on the grid.
-   *
-   * Has to be the window: with a mouse there is nothing focused inside the
-   * grid for a React key handler to bubble from. The guards below are what
-   * keep a window-level listener from being a menace — it stands down while
-   * you are typing, and while anything is open over the top of the grid,
-   * since the modal, the peek panel and the menu each own these keys.
+   * The card actions — Space, P, F, W, E, Q — live in CardShortcutProvider,
+   * because they act on a card and cards are rendered by rows and pickers
+   * too. These two are different: R needs the list the grid is showing, and
+   * C opens a menu whose entries are grid-specific (open folder, play from
+   * here). Both read the engaged card from the shortcut layer so they aim at
+   * the same place the rest do.
    */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
-      // Something is covering the grid and has its own bindings for these.
-      if (openItemId !== null || peekItemId !== null || menu !== null) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (!engaged) return;
 
-      const target = shortcutTarget();
-      if (!target) return;
-      const { item } = target;
+      const index = items.findIndex((entry) => entry.id === engaged.id);
+      const item = items[index];
+      if (!item) return;
 
-      switch (event.key) {
-        case "Enter":
-          event.preventDefault();
-          if (item.itemType === "folder") onOpenFolder(item.id, item.title);
-          else setOpenItemId(item.id);
-          break;
-        case " ":
-          // Space would otherwise scroll the page, and the card is a <button>
-          // so it would also re-fire the click that is already bound to open.
-          event.preventDefault();
-          if (item.itemType !== "folder") {
-            recordRecent("browsed", item);
-            setPeekItemId(item.id);
-          }
-          break;
-        case "p":
-          if (item.itemType === "video") {
-            event.preventDefault();
-            recordRecent("played", item);
-            playItem(item.id);
-          }
-          break;
-        case "f":
-          if (item.itemType !== "folder") {
-            event.preventDefault();
-            toggleFavoriteById(item.id, item.title);
-          }
-          break;
-        case "w":
-          if (item.itemType === "video") {
-            event.preventDefault();
-            toggleWatchedById(item.id, item.title);
-          }
-          break;
-        case "e":
-          if (item.itemType !== "folder") {
-            event.preventDefault();
-            setOpenItemId(item.id);
-          }
-          break;
-        case "q":
-          if (item.itemType === "video") {
-            event.preventDefault();
-            add(queueItemFor(item));
-          }
-          break;
-        case "c":
-          // Opens the card's own menu rather than a bare collection picker:
-          // "add to collection" is one entry there, and a second surface for
-          // it would be a dialog that does less than the menu already does.
-          event.preventDefault();
-          openContextMenuAtCard(item, target.index);
-          break;
-        case "r": {
-          event.preventDefault();
-          const playable = items.filter((entry) => entry.itemType !== "folder");
-          const pick = playable[Math.floor(Math.random() * playable.length)];
-          if (pick) setOpenItemId(pick.id);
-          break;
-        }
-        case "/":
-          event.preventDefault();
-          openSearch();
-          break;
-        default:
-          break;
+      if (event.key === "c") {
+        event.preventDefault();
+        openContextMenuAtCard(item, index);
+      } else if (event.key === "r") {
+        event.preventDefault();
+        const playable = items.filter((entry) => entry.itemType !== "folder");
+        const pick = playable[Math.floor(Math.random() * playable.length)];
+        if (pick) setOpenItemId(pick.id);
       }
     }
 
@@ -621,12 +535,6 @@ export function MediaGrid({
     }
   }
 
-  function refreshItem(id: number) {
-    queryClient.invalidateQueries({ queryKey: ["media-item", id] });
-    queryClient.invalidateQueries({ queryKey: ["media-items"] });
-    queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
-  }
-
   /**
    * Begins a drag of one card, or of the whole selection if it is in it.
    *
@@ -644,8 +552,7 @@ export function MediaGrid({
         : [item.id];
     setMediaDragData(event.dataTransfer, {
       ids: dragging,
-      label:
-        dragging.length === 1 ? item.title : `${dragging.length} items`,
+      label: dragging.length === 1 ? item.title : `${dragging.length} items`,
     });
   }
 
@@ -656,47 +563,6 @@ export function MediaGrid({
       thumbnailFile: item.thumbnailFile,
       durationSeconds: item.durationSeconds,
     };
-  }
-
-  /**
-   * Favourite and watched, from the grid, with an undo (§19).
-   *
-   * The card list doesn't carry either flag, so both read the item first
-   * rather than assuming a starting state. That read is also what gives the
-   * inverse something true to restore — toggling from a guess is how a
-   * double press ends up setting the opposite of what it says.
-   */
-  function toggleFavoriteById(id: number, title: string) {
-    recordRecent("favourited", { id, title });
-    void runUndoable({
-      message: "Favourite updated",
-      description: title,
-      apply: async () => {
-        const res = await fetch(`/api/media-items/${id}`);
-        if (!res.ok) throw new Error("Could not read that item");
-        const { isFavorite } = (await res.json()) as { isFavorite: boolean };
-        await updateItem(id, { isFavorite: !isFavorite });
-        return isFavorite;
-      },
-      revert: (wasFavorite) => updateItem(id, { isFavorite: wasFavorite }),
-      onSettled: () => refreshItem(id),
-    });
-  }
-
-  function toggleWatchedById(id: number, title: string) {
-    void runUndoable({
-      message: "Watch state updated",
-      description: title,
-      apply: async () => {
-        const res = await fetch(`/api/media-items/${id}`);
-        if (!res.ok) throw new Error("Could not read that item");
-        const { watched } = (await res.json()) as { watched: boolean };
-        await setWatched(id, !watched);
-        return watched;
-      },
-      revert: (wasWatched) => setWatched(id, wasWatched),
-      onSettled: () => refreshItem(id),
-    });
   }
 
   /**
@@ -764,10 +630,7 @@ export function MediaGrid({
               {
                 label: "Peek",
                 icon: ScanEye,
-                onSelect: () => {
-                  recordRecent("browsed", item);
-                  setPeekItemId(item.id);
-                },
+                onSelect: () => peek(item),
               },
             ]),
         ...(isVideo
@@ -797,14 +660,14 @@ export function MediaGrid({
               {
                 label: "Favourite",
                 icon: Heart,
-                onSelect: () => toggleFavoriteById(item.id, item.title),
+                onSelect: () => toggleFavourite(item),
               },
               ...(isVideo
                 ? [
                     {
                       label: "Toggle watched",
                       icon: item.lastPositionSeconds ? Eye : EyeOff,
-                      onSelect: () => toggleWatchedById(item.id, item.title),
+                      onSelect: () => toggleWatched(item),
                     },
                   ]
                 : []),
@@ -1013,9 +876,7 @@ export function MediaGrid({
           onDone={exitSelectionMode}
           onSelectAll={selectAll}
           totalCount={items.length}
-          collectionId={
-            source.type === "collection" ? source.id : undefined
-          }
+          collectionId={source.type === "collection" ? source.id : undefined}
         />
       )}
 
@@ -1064,11 +925,6 @@ export function MediaGrid({
                       openContextMenu(event, item, index)
                     }
                     onDragStart={(event) => startDrag(event, item)}
-                    onHoverChange={(hovering) =>
-                      setHoveredIndex((current) =>
-                        hovering ? index : current === index ? null : current,
-                      )
-                    }
                     selectable={selectionMode}
                     selected={selectedIds.has(item.id)}
                   />
@@ -1101,21 +957,6 @@ export function MediaGrid({
       )}
 
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
-
-      {peekItemId !== null && (
-        <PeekPanel
-          itemId={peekItemId}
-          onClose={() => setPeekItemId(null)}
-          onOpenDetails={(id) => {
-            setPeekItemId(null);
-            setOpenItemId(id);
-          }}
-          onPlay={(id, { resume }) => {
-            setPeekItemId(null);
-            playItem(id, { resume });
-          }}
-        />
-      )}
 
       {openItemId !== null && (
         <MediaDetailModal

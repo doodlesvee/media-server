@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { NotificationCenter } from "./NotificationCenter";
 import { describeHref, writeLastSession } from "@/lib/lastSession";
+import { CardShortcutProvider } from "@/lib/cardShortcuts";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
@@ -206,7 +207,10 @@ export function AppShell({
         )}
 
         <main key={pathname} className="min-w-0 flex-1 animate-fade-in">
-          {children}
+          {/* Inside the shell so every page gets the card shortcuts, and
+              outside any one page so there is a single listener rather than
+              one per grid or row. */}
+          <CardShortcutProvider>{children}</CardShortcutProvider>
         </main>
 
         <div className="cinema-hide focus-hide">

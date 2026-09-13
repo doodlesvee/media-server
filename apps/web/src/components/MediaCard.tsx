@@ -14,6 +14,7 @@ import { worthExpanding } from "@/lib/hoverCard";
 import { cn, formatDuration } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { isPinned, togglePin } from "@/lib/pinned";
+import { useCardShortcuts } from "@/lib/cardShortcuts";
 
 export type MediaCardItem = {
   id: number;
@@ -44,7 +45,6 @@ export function MediaCard({
   onPlay,
   onContextMenu,
   onDragStart,
-  onHoverChange,
   selectable = false,
   selected = false,
   className,
@@ -60,17 +60,6 @@ export function MediaCard({
   onPlay?: (event: React.MouseEvent | React.KeyboardEvent) => void;
   /** Right-click. The grid owns the menu; the card only reports the event. */
   onContextMenu?: (event: React.MouseEvent) => void;
-  /**
-   * Whether the pointer is engaged with this card, so the grid can aim its
-   * single-key shortcuts at it (§24).
-   *
-   * "Engaged" is wider than `:hover` on the tile: once the expanded preview
-   * card is open the pointer is over *that*, which is portalled to the body
-   * and is not a descendant of the tile at all. Reporting false there would
-   * take the shortcuts away at exactly the moment you are looking at the
-   * thing you want to act on.
-   */
-  onHoverChange?: (hovering: boolean) => void;
   /**
    * What this card contributes to a drag (§13). The grid decides, because a
    * drag of a selected card carries the whole selection rather than just the
@@ -108,6 +97,30 @@ export function MediaCard({
   const chrome = cardChrome(viewMode, density, tileInfoSetting);
   const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
+  /**
+   * Reported to the shortcut layer so the keys act on this card (§24).
+   *
+   * "Engaged" is wider than `:hover` on the tile: once the expanded preview
+   * card opens, the pointer is over *that*, which is portalled to the body
+   * and is not a descendant of the tile at all. Giving up the target there
+   * would take the shortcuts away at exactly the moment you are looking at
+   * the thing you want to act on — so the tile's own mouseleave only
+   * releases it when no preview card is standing.
+   */
+  const { setEngagement } = useCardShortcuts();
+  const engage = (via: "focus" | "hover", on: boolean) =>
+    setEngagement(
+      {
+        id: item.id,
+        title: item.title,
+        itemType: item.itemType,
+        thumbnailFile: item.thumbnailFile,
+        durationSeconds: item.durationSeconds,
+      },
+      via,
+      on,
+    );
+
   const [pinned, setPinned] = useState(
     () => item.itemType === "folder" && isPinned(`folder:${item.id}`),
   );
@@ -158,7 +171,7 @@ export function MediaCard({
   }
 
   function handleMouseEnter() {
-    onHoverChange?.(true);
+    engage("hover", true);
     // The same dwell delay either way: sweeping the pointer along a row
     // shouldn't start a dozen clip downloads any more than it should throw up
     // a dozen cards.
@@ -174,6 +187,7 @@ export function MediaCard({
   // a mouse sweeping across a row, and waiting after a deliberate Tab would
   // just feel broken.
   function handleFocus() {
+    engage("focus", true);
     if (canExpand) expand();
   }
 
@@ -196,7 +210,7 @@ export function MediaCard({
    */
   function handleMouseLeave() {
     cancelHover();
-    if (!anchorRect) onHoverChange?.(false);
+    if (!anchorRect) engage("hover", false);
   }
 
   /**
@@ -247,7 +261,7 @@ export function MediaCard({
         onBlur={() => {
           cancelHover();
           setAnchorRect(null);
-          onHoverChange?.(false);
+          engage("focus", false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") setAnchorRect(null);
@@ -449,7 +463,7 @@ export function MediaCard({
           onPlay={(event) => openItem(onPlay ?? onClick, event)}
           onDismiss={() => {
             setAnchorRect(null);
-            onHoverChange?.(false);
+            engage("hover", false);
           }}
         />
       )}

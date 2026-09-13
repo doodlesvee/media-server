@@ -6,6 +6,7 @@ import { MediaGrid } from "./MediaGrid";
 import { AppearanceProvider } from "@/lib/appearance";
 import { QueueProvider } from "@/lib/queue";
 import { ToastProvider } from "@/lib/toast";
+import { CardShortcutProvider } from "@/lib/cardShortcuts";
 
 const items = [
   {
@@ -63,6 +64,7 @@ function renderGrid() {
       <ToastProvider>
         <AppearanceProvider>
           <QueueProvider>
+            <CardShortcutProvider>
             <MediaGrid
               source={{
                 type: "library",
@@ -75,6 +77,7 @@ function renderGrid() {
               }}
               onOpenFolder={() => {}}
             />
+            </CardShortcutProvider>
           </QueueProvider>
         </AppearanceProvider>
       </ToastProvider>
