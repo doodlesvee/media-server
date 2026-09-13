@@ -12,5 +12,3 @@ backups/
 
 # Test coverage output
 coverage/
-
-package-lock.json
