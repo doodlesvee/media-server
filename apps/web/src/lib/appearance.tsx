@@ -56,10 +56,21 @@ const DEFAULT_HOME_ROWS: HomeRowSetting[] = HOME_ROWS.map((row) => ({
  * Reconciles a stored order against the rows this build actually has.
  *
  * Keeps the saved order and visibility, drops keys that no longer exist, and
- * appends any new section at the end — so shipping a new row doesn't make it
- * invisible to anyone who has ever opened this panel.
+ * slots any new section in at the position this build gives it — relative to
+ * the rows the stored order already has.
+ *
+ * New rows used to be appended to the end, which was meant to stop a shipped
+ * row being invisible and achieved the opposite. `collections` and `tags`
+ * each render one row *per* collection and per tag, so the end of the list is
+ * below twenty rows of content on a real library — far enough down that
+ * Pinned, a row of navigation shortcuts, was reported as simply not there.
+ *
+ * Inserting by position keeps the two things that matter about a stored
+ * order: the rows you arranged stay in the order you arranged them, and the
+ * ones you hid stay hidden. Only the rows you have never seen move, and they
+ * move to where they were designed to sit.
  */
-function readHomeRows(value: unknown): HomeRowSetting[] {
+export function readHomeRows(value: unknown): HomeRowSetting[] {
   if (!Array.isArray(value)) return DEFAULT_HOME_ROWS;
 
   const known = new Set<string>(HOME_ROWS.map((row) => row.key));
@@ -76,9 +87,28 @@ function readHomeRows(value: unknown): HomeRowSetting[] {
     });
   }
 
+  const order = HOME_ROWS.map((row) => row.key as string);
   for (const row of HOME_ROWS) {
-    if (!seen.has(row.key)) out.push({ key: row.key, visible: true });
+    if (seen.has(row.key)) continue;
+
+    // Land after the last row that this build puts ahead of it. Searching
+    // from the end rather than the start matters when the stored order has
+    // been rearranged: what decides the spot is the nearest preceding
+    // neighbour as it actually sits now, not as this build lists it.
+    //
+    // Rows inserted earlier in this loop count as neighbours too, which is
+    // what keeps several new rows in their own relative order.
+    const precedes = new Set(order.slice(0, order.indexOf(row.key)));
+    let at = 0;
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      if (precedes.has(out[i].key)) {
+        at = i + 1;
+        break;
+      }
+    }
+    out.splice(at, 0, { key: row.key, visible: true });
   }
+
   return out;
 }
 
