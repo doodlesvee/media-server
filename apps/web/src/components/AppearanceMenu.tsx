@@ -18,6 +18,7 @@ import {
   TILE_MAX,
   TILE_MIN,
   useAppearance,
+  useAppearanceScope,
 } from "@/lib/appearance";
 import { Slider, Toggle } from "./AppearanceControls";
 import { PrivacyUnlockForm } from "./PrivacyUnlockForm";
@@ -72,6 +73,35 @@ export function AppearanceMenu() {
   } = appearance;
   const preset = activePreset({ viewMode, density, tileInfo, tileSizePercent });
   const [unlocking, setUnlocking] = useState(false);
+
+  const { scope, isOverridden, setForScope, clearScope } = useAppearanceScope();
+
+  /**
+   * Where a layout change lands: this page, or everywhere (§1).
+   *
+   * Derived from whether the page already has overrides rather than held in
+   * state, so the switch cannot claim "this page" for a page that is in fact
+   * following the globals — which is exactly what a stored flag does the
+   * first time the two disagree.
+   */
+  const scoped = isOverridden;
+
+  function setLayout(patch: Parameters<typeof setForScope>[0]) {
+    if (scoped) setForScope(patch);
+    else set(patch);
+  }
+
+  function setScoped(next: boolean) {
+    if (next) {
+      // Seeded with what is on screen, so flipping the switch changes nothing
+      // visually and the page's first real choice is the next click. Pinning
+      // an empty override would leave the page following the globals while
+      // the switch says otherwise.
+      setForScope({ viewMode, density, tileInfo, tileSizePercent });
+    } else {
+      clearScope();
+    }
+  }
 
   const { guarded } = usePrivacyGuard();
 
@@ -272,6 +302,48 @@ export function AppearanceMenu() {
             <div className="space-y-4">
               <Section label="Layout" />
 
+              {/* Which page a layout change applies to (§1). Only offered
+                  inside a PageScope — on a page that hasn't declared one
+                  there is no "this page" to pin anything to. */}
+              {scope && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium">Applies to</span>
+                  <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setScoped(false)}
+                      aria-pressed={!scoped}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                        !scoped
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Everywhere
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScoped(true)}
+                      aria-pressed={scoped}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs capitalize transition-colors",
+                        scoped
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      This page
+                    </button>
+                  </div>
+                  <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                    {scoped
+                      ? `The ${scope} page keeps its own layout. The settings below no longer follow the rest of the app.`
+                      : "One layout for every grid in the app."}
+                  </span>
+                </div>
+              )}
+
               {/* Presets first: most people want a look, not three axes. The
                   individual controls stay underneath for anyone who does. */}
               <div className="space-y-1.5">
@@ -288,7 +360,7 @@ export function AppearanceMenu() {
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => set(option.settings)}
+                      onClick={() => setLayout(option.settings)}
                       aria-pressed={preset === option.value}
                       title={option.hint}
                       className={cn(
@@ -316,7 +388,7 @@ export function AppearanceMenu() {
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => set({ viewMode: option.value })}
+                      onClick={() => setLayout({ viewMode: option.value })}
                       aria-pressed={viewMode === option.value}
                       title={option.hint}
                       className={cn(
@@ -342,7 +414,7 @@ export function AppearanceMenu() {
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => set({ density: option.value })}
+                      onClick={() => setLayout({ density: option.value })}
                       aria-pressed={density === option.value}
                       className={cn(
                         "flex-1 rounded px-2 py-1 text-[11px] transition-colors",
@@ -368,7 +440,7 @@ export function AppearanceMenu() {
                 step={5}
                 suffix="%"
                 hint="Applies to every row and grid in the app. A preset sets this too, so moving it yourself makes the preset Custom."
-                onChange={(next) => set({ tileSizePercent: next })}
+                onChange={(next) => setLayout({ tileSizePercent: next })}
               />
 
               <div className="space-y-1.5">
@@ -378,7 +450,7 @@ export function AppearanceMenu() {
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => set({ tileInfo: option.value })}
+                      onClick={() => setLayout({ tileInfo: option.value })}
                       aria-pressed={tileInfo === option.value}
                       className={cn(
                         "flex-1 rounded px-2 py-1 text-xs transition-colors",

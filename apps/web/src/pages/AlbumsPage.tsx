@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Images } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { PageScope } from "@/lib/appearance";
 import { coverFramingStyle, fetchAlbums, type AlbumSummary } from "@/lib/albumApi";
 import { thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn } from "@/lib/utils";
@@ -64,26 +65,28 @@ export function AlbumsPage() {
   const albums = data?.albums ?? [];
 
   return (
-    <AppShell title="Albums" subtitle="Photo sets that came with your videos.">
-      <div className="px-6 py-6">
-        {isLoading ? (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton aspect-[3/2] rounded-lg" />
-            ))}
-          </div>
-        ) : albums.length === 0 ? (
-          <p className="text-muted-foreground">
-            No albums yet — a folder of images next to a video becomes one automatically.
-          </p>
-        ) : (
-          <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
-            {albums.map((album) => (
-              <AlbumCard key={album.id} album={album} />
-            ))}
-          </div>
-        )}
-      </div>
-    </AppShell>
+    <PageScope name="albums">
+      <AppShell title="Albums" subtitle="Photo sets that came with your videos.">
+        <div className="px-6 py-6">
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skeleton aspect-[3/2] rounded-lg" />
+              ))}
+            </div>
+          ) : albums.length === 0 ? (
+            <p className="text-muted-foreground">
+              No albums yet — a folder of images next to a video becomes one automatically.
+            </p>
+          ) : (
+            <div className="stagger grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-3">
+              {albums.map((album) => (
+                <AlbumCard key={album.id} album={album} />
+              ))}
+            </div>
+          )}
+        </div>
+      </AppShell>
+    </PageScope>
   );
 }

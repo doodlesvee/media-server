@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { MediaGrid, type GridSource } from "@/components/MediaGrid";
 import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
+import { PageScope } from "@/lib/appearance";
 
 const routeApi = getRouteApi("/browse");
 
@@ -159,6 +160,27 @@ export function BrowsePage() {
     void navigate({ to: "/browse", search: {} });
   }
 
+  /**
+   * Which layout context this page counts as (§1).
+   *
+   * BrowsePage renders several of the contexts the spec names — the library,
+   * a collection, a performer's or studio's items — so the scope comes from
+   * the search params rather than the route. Keeping collections on one
+   * shared "collection" scope rather than one per id is deliberate: a
+   * per-collection layout is a setting nobody asked for and hundreds of
+   * stored entries nobody will ever clear.
+   */
+  const scope =
+    collectionId != null
+      ? "collection"
+      : performer
+        ? "performer"
+        : studio
+          ? "studio"
+          : q
+            ? "search"
+            : "library";
+
   const activeFilter = tag
     ? `Tag: ${tag}`
     : studio
@@ -172,8 +194,12 @@ export function BrowsePage() {
             : null;
 
   return (
-    <AppShell>
-      <div className="space-y-5 px-6 py-6">
+    // Outside AppShell, not inside it: the appearance menu lives in the
+    // shell's header, and it has to read the same scope the grid below it
+    // writes to or the panel would be editing a page it isn't on.
+    <PageScope name={scope}>
+      <AppShell>
+        <div className="space-y-5 px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             <div className="flex min-w-0 items-center gap-1 text-muted-foreground">
@@ -271,7 +297,8 @@ export function BrowsePage() {
             void navigate({ to: "/browse", search: { parentId: id } })
           }
         />
-      </div>
-    </AppShell>
+        </div>
+      </AppShell>
+    </PageScope>
   );
 }

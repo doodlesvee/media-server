@@ -137,6 +137,7 @@ export function MediaGrid({
   // of them means.
   const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
   const tileWidth = layout.widthPx;
+  const isRow = layout.isRow;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [peekItemId, setPeekItemId] = useState<number | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -230,7 +231,9 @@ export function MediaGrid({
     // still decides the column count.
     const measure = () => {
       const width = node.clientWidth;
-      const next = columnsForWidth(width, tileWidth, COLUMN_GAP_PX);
+      // A list row spans the container by definition, so there is nothing to
+      // fit and the measured count would only ever be wrong.
+      const next = isRow ? 1 : columnsForWidth(width, tileWidth, COLUMN_GAP_PX);
       rememberColumns(tileWidth, next);
       setColumns(next);
       setColumnWidth(columnWidthFor(width, next, COLUMN_GAP_PX));
@@ -247,7 +250,7 @@ export function MediaGrid({
     return () => observer.disconnect();
     // gridNode is a dependency, not a ref read, precisely because the grid is
     // not mounted on the first pass — the skeleton is.
-  }, [gridNode, tileWidth, COLUMN_GAP_PX]);
+  }, [gridNode, tileWidth, COLUMN_GAP_PX, isRow]);
 
   const rows = chunkIntoRows(items, columns);
 
@@ -258,7 +261,13 @@ export function MediaGrid({
     // Taken from the layout rather than hardcoded here, so the card's shape
     // and this scrollbar cannot drift apart.
     estimateSize: () =>
-      Math.round(columnWidth * layout.heightRatio) + 72 + ROW_SPACING_PX,
+      // A list row's thumbnail is a fixed 12rem wide (see MediaCard), so its
+      // height does not scale with the column the way a tile's does.
+      // measureElement corrects both on first paint; this only has to be
+      // close enough that the scrollbar isn't wild before then.
+      (isRow
+        ? Math.round(192 * layout.heightRatio)
+        : Math.round(columnWidth * layout.heightRatio) + 72) + ROW_SPACING_PX,
     overscan: 3,
     scrollMargin,
   });
@@ -727,7 +736,9 @@ export function MediaGrid({
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
+          gridTemplateColumns: isRow
+            ? "1fr"
+            : `repeat(auto-fill, minmax(min(100%, ${tileWidth}px), 1fr))`,
           columnGap: COLUMN_GAP_PX,
           rowGap: ROW_SPACING_PX,
         }}

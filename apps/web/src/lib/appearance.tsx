@@ -75,6 +75,47 @@ function readHomeRows(value: unknown): HomeRowSetting[] {
   return out;
 }
 
+/**
+ * Validates a stored override map.
+ *
+ * Same discipline as every other key: a hand-edited entry, or one written by
+ * a build that had a view mode this one doesn't, must not be able to render
+ * a page with `viewMode: undefined`. Unknown values are dropped rather than
+ * corrected, so the page falls back to the global setting.
+ */
+function readPageOverrides(value: unknown): Record<string, PageOverride> {
+  if (typeof value !== "object" || value === null) return {};
+  const out: Record<string, PageOverride> = {};
+
+  for (const [scope, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const entry = raw as PageOverride;
+    const next: PageOverride = {};
+
+    if (VIEW_MODES.some((option) => option.value === entry.viewMode))
+      next.viewMode = entry.viewMode;
+    if (DENSITIES.some((option) => option.value === entry.density))
+      next.density = entry.density;
+    if (TILE_INFO_OPTIONS.some((option) => option.value === entry.tileInfo))
+      next.tileInfo = entry.tileInfo;
+    if (
+      typeof entry.tileSizePercent === "number" &&
+      Number.isFinite(entry.tileSizePercent)
+    ) {
+      next.tileSizePercent = Math.min(
+        TILE_MAX,
+        Math.max(TILE_MIN, Math.round(entry.tileSizePercent)),
+      );
+    }
+
+    // An override that survived validation with nothing in it is the same as
+    // no override, and keeping it would show the page as "customised".
+    if (Object.keys(next).length > 0) out[scope] = next;
+  }
+
+  return out;
+}
+
 /** How much text a tile carries under its artwork. */
 export type { TileInfo };
 
@@ -168,7 +209,29 @@ export type Appearance = {
   bannerHeight: number;
   /** Which homepage sections show, and in what order. */
   homeRows: HomeRowSetting[];
+  /**
+   * Per-context layout overrides, keyed by scope name (§1).
+   *
+   * Only the four layout settings, not the whole of Appearance. Discreet
+   * Mode in particular must never be per-page — a privacy control that holds
+   * on the library and not on Favourites is worse than not having it.
+   *
+   * Sparse: a scope appears here only once it has been given a setting of
+   * its own, so "follows the global setting" stays the default and stays
+   * free. Clearing a scope deletes its key rather than writing the globals
+   * into it, which is what lets a later change to the global setting reach
+   * pages that never opted out.
+   */
+  pageOverrides: Record<string, PageOverride>;
 };
+
+/** The settings a single page may pin for itself. */
+export type PageOverride = Partial<{
+  viewMode: ViewMode;
+  density: Density;
+  tileInfo: TileInfo;
+  tileSizePercent: number;
+}>;
 
 // The slider's range, in percent of TILE_MAX_PX. Starting at 40% rather than
 // 0 because everything below about 200px is too small to read a title in, so
@@ -215,6 +278,7 @@ export const DEFAULTS: Appearance = {
   heroHeight: 70,
   bannerHeight: 70,
   homeRows: DEFAULT_HOME_ROWS,
+  pageOverrides: {},
 };
 
 const STORAGE_KEY = "appearance";
@@ -315,6 +379,7 @@ function read(): Appearance {
       ),
       bannerHeight: clampPercent(parsed.bannerHeight, DEFAULTS.bannerHeight),
       homeRows: readHomeRows(parsed.homeRows),
+      pageOverrides: readPageOverrides(parsed.pageOverrides),
     };
   } catch {
     return DEFAULTS;
@@ -337,6 +402,38 @@ type Store = Appearance & {
 };
 
 const AppearanceContext = createContext<Store | null>(null);
+
+/**
+ * The page currently asking for settings, or null for "the global ones".
+ *
+ * A context rather than a route lookup, because the scope is not always the
+ * route: Favourites and Collections are both rendered by BrowsePage with
+ * different search params, and §1 names them as separate contexts. The page
+ * says what it is; the router doesn't have to know.
+ */
+const PageScopeContext = createContext<string | null>(null);
+
+/**
+ * Declares which context the subtree's layout settings belong to (§1).
+ *
+ * Wrapping rather than a hook call so the scope covers everything rendered
+ * inside it — the grid, its cards and the appearance menu all have to agree
+ * on which page they are on, and a hook in one of them would not reach the
+ * other two.
+ */
+export function PageScope({
+  name,
+  children,
+}: {
+  name: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <PageScopeContext.Provider value={name}>
+      {children}
+    </PageScopeContext.Provider>
+  );
+}
 
 /**
  * Display preferences that change how every tile in the app is drawn.
@@ -477,9 +574,77 @@ export function AppearanceProvider({
   );
 }
 
+/**
+ * Display settings as the current page should see them.
+ *
+ * Merges the page's own overrides over the globals, so every existing caller
+ * — grids, cards, rows — gets per-page layout for free without knowing that
+ * per-page layout exists. `set` stays global on purpose: a component that
+ * reaches for it is changing a preference, not a page's exception to one,
+ * and the panel uses `useAppearanceScope` below for the scoped half.
+ */
 export function useAppearance(): Store {
   const store = useContext(AppearanceContext);
+  const scope = useContext(PageScopeContext);
   // Falls back to the defaults rather than throwing, so a component rendered
   // outside the provider (a test, a future embed) still draws correctly.
-  return store ?? { ...DEFAULTS, set: () => {}, reset: () => {} };
+  const base = store ?? { ...DEFAULTS, set: () => {}, reset: () => {} };
+
+  const override = scope ? base.pageOverrides[scope] : undefined;
+  return useMemo(
+    () => (override ? { ...base, ...override } : base),
+    // `base` is rebuilt by the provider's own memo, so comparing it by
+    // identity is correct and avoids re-merging on every render.
+    [base, override],
+  );
+}
+
+export type AppearanceScope = {
+  /** The current page's name, or null outside any PageScope. */
+  scope: string | null;
+  /** What this page has pinned for itself. Empty when it follows the globals. */
+  override: PageOverride;
+  /** True when this page has any setting of its own. */
+  isOverridden: boolean;
+  /** Pins settings to this page. A no-op outside a PageScope. */
+  setForScope: (patch: PageOverride) => void;
+  /** Drops this page's overrides, returning it to the global settings. */
+  clearScope: () => void;
+};
+
+export function useAppearanceScope(): AppearanceScope {
+  const store = useContext(AppearanceContext);
+  const scope = useContext(PageScopeContext);
+  const override = (scope && store?.pageOverrides[scope]) || {};
+
+  const setForScope = useCallback(
+    (patch: PageOverride) => {
+      if (!scope || !store) return;
+      store.set({
+        pageOverrides: {
+          ...store.pageOverrides,
+          [scope]: { ...store.pageOverrides[scope], ...patch },
+        },
+      });
+    },
+    [scope, store],
+  );
+
+  const clearScope = useCallback(() => {
+    if (!scope || !store) return;
+    // Deleted rather than emptied: an empty object would still count as an
+    // override and keep the page pinned to whatever the globals were when it
+    // was cleared.
+    const next = { ...store.pageOverrides };
+    delete next[scope];
+    store.set({ pageOverrides: next });
+  }, [scope, store]);
+
+  return {
+    scope,
+    override,
+    isOverridden: Object.keys(override).length > 0,
+    setForScope,
+    clearScope,
+  };
 }

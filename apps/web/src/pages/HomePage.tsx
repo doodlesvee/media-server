@@ -9,7 +9,7 @@ import { KindTiles } from "@/components/KindTiles";
 import { ROW_TILE_LIMIT } from "@/lib/rowLimits";
 import { MediaRow } from "@/components/MediaRow";
 import { PerformerRow } from "@/components/PerformerRow";
-import { useAppearance } from "@/lib/appearance";
+import { useAppearance, PageScope } from "@/lib/appearance";
 import { StudioRow } from "@/components/StudioRow";
 
 type Tag = { id: number; name: string };
@@ -126,93 +126,95 @@ export function HomePage() {
   }
 
   return (
-    <AppShell>
-      {heroItems.length > 0 && (
-        <HeroBanner
-          items={heroItems}
-          onPlay={(id) => openItem(id, true)}
-          onMoreInfo={(id) => openItem(id, false)}
-        />
-      )}
+    <PageScope name="home">
+      <AppShell>
+        {heroItems.length > 0 && (
+          <HeroBanner
+            items={heroItems}
+            onPlay={(id) => openItem(id, true)}
+            onMoreInfo={(id) => openItem(id, false)}
+          />
+        )}
 
-      <div className="stagger space-y-9 px-6 py-8">
-        {/* Rendered from the saved order rather than written out in sequence,
-            so hiding or moving a section is a data change rather than an edit
-            here. Each case returns null when it has nothing, exactly as it did
-            before — an empty row was never shown. */}
-        {homeRows
-          .filter((row) => row.visible)
-          .map(({ key }) => {
-            switch (key) {
-              case "categories":
-                return <KindTiles key={key} />;
-              case "continue":
-                return (
-                  <MediaRow
-                    key={key}
-                    title="Continue Watching"
-                    action={<ClearContinueWatching />}
-                    items={(continueWatching?.items ?? []).slice(0, ROW_TILE_LIMIT)}
-                    loading={continueLoading}
-                    onSelectItem={(id) => openItem(id, false)}
-                    onPlayItem={(id) => openItem(id, true)}
-                    onOpenFolder={noopOpenFolder}
-                  />
-                );
-              case "favourites":
-                return (
-                  <MediaRow
-                    key={key}
-                    title="Favourites"
-                    items={withoutFolders(favorites?.items ?? []).slice(0, ROW_TILE_LIMIT)}
-                    loading={favoritesLoading}
-                    onSelectItem={(id) => openItem(id, false)}
-                    onPlayItem={(id) => openItem(id, true)}
-                    onOpenFolder={noopOpenFolder}
-                  />
-                );
-              case "performers":
-                return <PerformerRow key={key} />;
-              case "studios":
-                return <StudioRow key={key} />;
-              case "recent":
-                return (
-                  <MediaRow
-                    key={key}
-                    title="Recently Added"
-                    seeMore={{ to: "/browse" }}
-                    items={recentItems.slice(0, ROW_TILE_LIMIT)}
-                    loading={recentLoading}
-                    onSelectItem={(id) => openItem(id, false)}
-                    onPlayItem={(id) => openItem(id, true)}
-                    onOpenFolder={noopOpenFolder}
-                  />
-                );
-              case "collections":
-                return collectionsData?.collections.map((collection) => (
-                  <CollectionRow
-                    key={`collection-${collection.id}`}
-                    collection={collection}
-                    onSelectItem={(id) => openItem(id, false)}
-                    onPlayItem={(id) => openItem(id, true)}
-                  />
-                ));
-              case "tags":
-                return tagsData?.tags.map((tag) => (
-                  <TagRow
-                    key={`tag-${tag.id}`}
-                    tag={tag}
-                    onSelectItem={(id) => openItem(id, false)}
-                    onPlayItem={(id) => openItem(id, true)}
-                  />
-                ));
-            }
-          })}
-      </div>
+        <div className="stagger space-y-9 px-6 py-8">
+          {/* Rendered from the saved order rather than written out in sequence,
+              so hiding or moving a section is a data change rather than an edit
+              here. Each case returns null when it has nothing, exactly as it did
+              before — an empty row was never shown. */}
+          {homeRows
+            .filter((row) => row.visible)
+            .map(({ key }) => {
+              switch (key) {
+                case "categories":
+                  return <KindTiles key={key} />;
+                case "continue":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Continue Watching"
+                      action={<ClearContinueWatching />}
+                      items={(continueWatching?.items ?? []).slice(0, ROW_TILE_LIMIT)}
+                      loading={continueLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "favourites":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Favourites"
+                      items={withoutFolders(favorites?.items ?? []).slice(0, ROW_TILE_LIMIT)}
+                      loading={favoritesLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "performers":
+                  return <PerformerRow key={key} />;
+                case "studios":
+                  return <StudioRow key={key} />;
+                case "recent":
+                  return (
+                    <MediaRow
+                      key={key}
+                      title="Recently Added"
+                      seeMore={{ to: "/browse" }}
+                      items={recentItems.slice(0, ROW_TILE_LIMIT)}
+                      loading={recentLoading}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                      onOpenFolder={noopOpenFolder}
+                    />
+                  );
+                case "collections":
+                  return collectionsData?.collections.map((collection) => (
+                    <CollectionRow
+                      key={`collection-${collection.id}`}
+                      collection={collection}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                    />
+                  ));
+                case "tags":
+                  return tagsData?.tags.map((tag) => (
+                    <TagRow
+                      key={`tag-${tag.id}`}
+                      tag={tag}
+                      onSelectItem={(id) => openItem(id, false)}
+                      onPlayItem={(id) => openItem(id, true)}
+                    />
+                  ));
+              }
+            })}
+        </div>
 
-      {open && (
-        <MediaDetailModal itemId={open.id} autoPlay={open.autoPlay} onClose={() => setOpen(null)} />
-      )}
-    </AppShell>
+        {open && (
+          <MediaDetailModal itemId={open.id} autoPlay={open.autoPlay} onClose={() => setOpen(null)} />
+        )}
+      </AppShell>
+    </PageScope>
   );
 }

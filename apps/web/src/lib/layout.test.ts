@@ -33,13 +33,34 @@ describe("cardLayout", () => {
     }
   });
 
-  // Cover art is 16:10 and stays that way. A wide 21:9 mode used to exist and
-  // cropped the sides off the artwork, which is the one thing a library of
-  // artwork should not do to itself.
-  it("keeps every mode on the same frame, so nothing crops the artwork", () => {
+  // Cover art is 16:10 everywhere except Cinematic, which is wide on purpose.
+  // A 21:9 mode used to exist and cropped the sides off the artwork; 2:1 is
+  // the widest frame that still reads as letterboxing rather than damage.
+  it("keeps every mode but Cinematic on the poster frame", () => {
     for (const { value } of VIEW_MODES) {
+      if (value === "cinematic") continue;
       expect(cardLayout(400, value, "comfortable", "full").aspectRatio).toBe("16 / 10");
     }
+    expect(cardLayout(400, "cinematic", "comfortable", "full").aspectRatio).toBe("2 / 1");
+  });
+
+  it("marks only List as a row, so every other mode still tiles", () => {
+    for (const { value } of VIEW_MODES) {
+      expect(cardLayout(400, value, "comfortable", "full").isRow).toBe(
+        value === "list",
+      );
+    }
+  });
+
+  // Cinematic's whole argument is the artwork, so full metadata printed over
+  // it is the thing the mode exists to remove. It steps down to the title
+  // rather than to nothing — a wall of similar artwork needs a label.
+  it("steps Cinematic down from full metadata to the title alone", () => {
+    expect(cardLayout(400, "cinematic", "comfortable", "full").tileInfo).toBe("title");
+    // An explicit "none" is a choice, not a default to override.
+    expect(cardLayout(400, "cinematic", "comfortable", "none").tileInfo).toBe("none");
+    // No other mode touches the setting.
+    expect(cardLayout(400, "grid", "comfortable", "full").tileInfo).toBe("full");
   });
 
   it("reports the shape as a ratio the grid can estimate row heights with", () => {

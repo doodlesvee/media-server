@@ -11,7 +11,7 @@ import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
 import { cardChrome } from "@/lib/layout";
 import { worthExpanding } from "@/lib/hoverCard";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { isPinned, togglePin } from "@/lib/pinned";
 
@@ -81,10 +81,12 @@ export function MediaCard({
     discreet,
     tileInfo: tileInfoSetting,
     density,
+    viewMode,
   } = useAppearance();
-  // Density decides how tightly the text sits in the frame. The card's width
-  // is the grid's business, so nothing here depends on the view mode.
-  const chrome = cardChrome(density, tileInfoSetting);
+  // Density decides how tightly the text sits in the frame; the mode decides
+  // the artwork's shape and whether this is a tile or a row. How *wide* the
+  // card gets is still the grid's business, not the card's.
+  const chrome = cardChrome(viewMode, density, tileInfoSetting);
   const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
   const [pinned, setPinned] = useState(
@@ -212,6 +214,9 @@ export function MediaCard({
         className={cn(
           "motion-card group relative w-full shrink-0 rounded-md text-left",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          // A row puts the artwork and the metadata side by side instead of
+          // stacking the text over the picture.
+          chrome.isRow && "flex items-center gap-4",
           className,
         )}
       >
@@ -223,7 +228,10 @@ export function MediaCard({
             // 16:10 rather than 16:9. The frames themselves are widescreen, so this
             // crops a sliver off each side — the tile reads as slightly taller
             // without the artwork losing anything that matters.
-            "relative w-full overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
+            "relative overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
+            // In a row the frame is a thumbnail beside the text; everywhere
+            // else it is the card.
+            chrome.isRow ? "w-48 shrink-0" : "w-full",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
             item.missingSince && "opacity-50",
@@ -327,7 +335,7 @@ export function MediaCard({
               it. The progress bar and the watched tick stay in every mode —
               they're state, not a label, and losing track of what you'd
               already started would be a real cost rather than less clutter. */}
-          {tileInfo !== "none" && (
+          {tileInfo !== "none" && !chrome.isRow && (
             <span
               className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8"
               style={{
@@ -360,6 +368,36 @@ export function MediaCard({
             </span>
           )}
         </div>
+
+        {/* A list row has the space to set metadata as text rather than
+            burning it into the artwork, so it says more than any tile can:
+            the description and the duration have nowhere to go on a tile.
+            `tileInfo` still applies — "None" means no text in every mode. */}
+        {chrome.isRow && tileInfo !== "none" && (
+          <div className="min-w-0 flex-1 space-y-1 py-1">
+            <span className="sensitive block truncate text-sm font-medium">
+              {item.title}
+            </span>
+            {tileInfo === "full" && (
+              <>
+                <span className="sensitive block truncate text-xs text-muted-foreground">
+                  {[
+                    item.performers?.map((p) => p.name).join(", "),
+                    item.studio,
+                    formatDuration(item.durationSeconds ?? null),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {item.description && (
+                  <span className="sensitive line-clamp-2 block text-xs text-muted-foreground/80">
+                    {item.description}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </button>
 
       {anchorRect && (
