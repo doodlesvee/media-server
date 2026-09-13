@@ -26,7 +26,11 @@ beforeEach(async () => {
 
 const get = (url: string) =>
   app.inject({ method: "GET", url, headers: { cookie } });
-const post = (url: string, payload?: unknown) =>
+// Typed rather than `unknown`: fastify's inject signature narrows on the
+// payload, and an `unknown` there collapses the return type to something
+// with no `.json()` on it — which typechecks nowhere and runs fine, so the
+// suite passed while `tsc` did not.
+const post = (url: string, payload?: Record<string, unknown>) =>
   app.inject({ method: "POST", url, headers: { cookie }, payload });
 
 describe("GET /api/library/cache", () => {

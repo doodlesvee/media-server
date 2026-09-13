@@ -73,3 +73,126 @@ describe("appearance settings", () => {
     expect(await load()).not.toHaveProperty("heroHeight");
   });
 });
+
+/**
+ * Every setting the client can send must survive a round-trip.
+ *
+ * This allowlist is silent when it is wrong: the setting works, persists to
+ * localStorage, and then reverts the next time the server's copy is read,
+ * with nothing logged anywhere. It has gone stale twice — once for a view
+ * mode, and once for an entire release's worth of settings, which is what
+ * these cover.
+ */
+describe("appearance settings — every client setting round-trips", () => {
+  it("keeps autoplayNext", async () => {
+    await save({ autoplayNext: false });
+    expect(await load()).toMatchObject({ autoplayNext: false });
+  });
+
+  it("keeps the motion level", async () => {
+    await save({ motion: "reduced" });
+    expect(await load()).toMatchObject({ motion: "reduced" });
+  });
+
+  it("rejects a motion level that is not one of the three", async () => {
+    await save({ motion: "sideways" });
+    expect(await load()).not.toHaveProperty("motion");
+  });
+
+  // Not rounded, unlike the percentages. Rounding would snap 0.625rem to 1rem
+  // and a 1.15 scale to 1 — the setting would appear to work and then jump on
+  // the next round-trip.
+  it("keeps fractional numbers fractional", async () => {
+    await save({ cardRadiusRem: 0.625, typeScale: 1.15 });
+    expect(await load()).toMatchObject({
+      cardRadiusRem: 0.625,
+      typeScale: 1.15,
+    });
+  });
+
+  it("clamps those numbers into range rather than storing nonsense", async () => {
+    await save({ cardRadiusRem: 99, typeScale: -4 });
+    expect(await load()).toMatchObject({ cardRadiusRem: 1.5, typeScale: 0.85 });
+  });
+
+  it("keeps every home row this build has", async () => {
+    const rows = [
+      "categories",
+      "continue",
+      "favourites",
+      "performers",
+      "studios",
+      "recent",
+      "recentlyWatched",
+      "mostPlayed",
+      "unwatched",
+      "recentlyBrowsed",
+      "recentlyInteracted",
+      "randomPicks",
+      "pinned",
+      "collections",
+      "tags",
+    ].map((key) => ({ key, visible: true }));
+
+    await save({ homeRows: rows });
+    const stored = (await load()).homeRows as { key: string }[];
+    expect(stored.map((row) => row.key)).toEqual(rows.map((row) => row.key));
+  });
+
+  it("keeps a hidden row hidden", async () => {
+    await save({
+      homeRows: [
+        { key: "pinned", visible: false },
+        { key: "recent", visible: true },
+      ],
+    });
+    expect(await load()).toMatchObject({
+      homeRows: [
+        { key: "pinned", visible: false },
+        { key: "recent", visible: true },
+      ],
+    });
+  });
+
+  it("keeps per-page layout overrides", async () => {
+    await save({
+      pageOverrides: {
+        library: { viewMode: "compact", density: "dense" },
+        collection: { tileInfo: "none", tileSizePercent: 90 },
+      },
+    });
+    expect(await load()).toMatchObject({
+      pageOverrides: {
+        library: { viewMode: "compact", density: "dense" },
+        collection: { tileInfo: "none", tileSizePercent: 90 },
+      },
+    });
+  });
+
+  // The scope names are the client's and are not enumerated server-side, but
+  // the values are — a hand-built request must not store a view mode that
+  // does not exist.
+  it("drops an invalid value inside an override", async () => {
+    await save({
+      pageOverrides: {
+        library: { viewMode: "cinematic", density: "dense" },
+      },
+    });
+    expect(await load()).toMatchObject({
+      pageOverrides: { library: { density: "dense" } },
+    });
+  });
+
+  // An override with nothing left in it is the same as no override, and
+  // storing one would show the page as customised while changing nothing.
+  it("drops an override left empty by validation", async () => {
+    await save({ pageOverrides: { library: { viewMode: "nonsense" } } });
+    expect((await load()).pageOverrides).toEqual({});
+  });
+
+  it("lets a page's overrides be cleared", async () => {
+    await save({ pageOverrides: { library: { viewMode: "compact" } } });
+    await save({ pageOverrides: {} });
+    expect((await load()).pageOverrides).toEqual({});
+  });
+});

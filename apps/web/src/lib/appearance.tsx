@@ -164,16 +164,19 @@ export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
 
 export type MotionLevel = "full" | "reduced" | "none";
 
-export const MOTION_LEVELS: { value: MotionLevel; label: string; hint: string }[] =
-  [
-    { value: "full", label: "Full", hint: "Entrances, hover lifts, the lot." },
-    {
-      value: "reduced",
-      label: "Reduced",
-      hint: "State still changes visibly, but nothing travels.",
-    },
-    { value: "none", label: "None", hint: "Nothing moves or fades." },
-  ];
+export const MOTION_LEVELS: {
+  value: MotionLevel;
+  label: string;
+  hint: string;
+}[] = [
+  { value: "full", label: "Full", hint: "Entrances, hover lifts, the lot." },
+  {
+    value: "reduced",
+    label: "Reduced",
+    hint: "State still changes visibly, but nothing travels.",
+  },
+  { value: "none", label: "None", hint: "Nothing moves or fades." },
+];
 
 /** The rounding range, in rem. Square to noticeably soft. */
 export const RADIUS_MIN = 0;
@@ -593,6 +596,9 @@ export function AppearanceProvider({
         // default instead of becoming undefined.
         setValue((current) => {
           const merged = { ...current, ...stored };
+          if (stored.homeRows) {
+            merged.homeRows = readHomeRows(stored.homeRows);
+          }
           // The same migration `read` does, for the server's copy: a install
           // that set a banner height before the hero got its own slider has
           // only the old key, and a browser with no localStorage yet would

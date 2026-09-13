@@ -33,7 +33,20 @@ const BOOLEAN_KEYS = [
   "modalPreview",
   "discreet",
   "discreetText",
+  "autoplayNext",
 ] as const;
+
+/**
+ * Settings that are a plain number rather than a percentage.
+ *
+ * Kept apart from PERCENT_KEYS because those round to a whole number, which
+ * would snap a 0.625rem radius to 1rem and a 1.15 text scale to 1 — the
+ * setting would appear to work and then jump on the next round-trip.
+ */
+const NUMBER_KEYS = {
+  cardRadiusRem: [0, 1.5],
+  typeScale: [0.85, 1.3],
+} as const;
 
 /**
  * Settings whose value must be one of a fixed set.
@@ -46,8 +59,22 @@ const ENUM_KEYS: Record<string, string[]> = {
   tileInfo: ["full", "title", "none"],
   viewMode: ["grid", "compact", "large"],
   density: ["spacious", "comfortable", "compact", "dense"],
+  motion: ["full", "reduced", "none"],
 };
 
+/** The four layout settings a single page may pin for itself. */
+const PAGE_OVERRIDE_ENUMS = ["viewMode", "density", "tileInfo"] as const;
+
+/**
+ * Must track the client's HOME_ROWS. There is no shared package between the
+ * two, so this is a second copy of that list, and a row missing from here is
+ * a row the server silently strips on save — which is how every section
+ * added in one release failed to survive a round-trip.
+ *
+ * The client re-reconciles whatever it receives against its own list, so a
+ * stale copy here costs the *order* rather than the row itself. That is the
+ * safety net, not the fix.
+ */
 const HOME_ROW_KEYS = [
   "categories",
   "continue",
@@ -55,6 +82,13 @@ const HOME_ROW_KEYS = [
   "performers",
   "studios",
   "recent",
+  "recentlyWatched",
+  "mostPlayed",
+  "unwatched",
+  "recentlyBrowsed",
+  "recentlyInteracted",
+  "randomPicks",
+  "pinned",
   "collections",
   "tags",
 ];
@@ -75,6 +109,13 @@ function clean(input: unknown): Record<string, unknown> {
     if (typeof body[key] === "boolean") out[key] = body[key];
   }
 
+  for (const [key, [min, max]] of Object.entries(NUMBER_KEYS)) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[key] = Math.min(max, Math.max(min, value));
+    }
+  }
+
   for (const [key, allowed] of Object.entries(ENUM_KEYS)) {
     const value = body[key];
     if (typeof value === "string" && allowed.includes(value)) out[key] = value;
@@ -90,6 +131,42 @@ function clean(input: unknown): Record<string, unknown> {
       rows.push({ key, visible: (entry as { visible?: unknown }).visible !== false });
     }
     if (rows.length > 0) out.homeRows = rows;
+  }
+
+  // Per-page layout overrides: a map of scope name to a partial layout.
+  //
+  // The scope names are the client's and deliberately not enumerated here —
+  // they come from what a page calls itself, and a server-side list would be
+  // a third copy to keep in step. The *values* are validated, which is what
+  // stops a hand-built request storing a view mode that does not exist.
+  if (body.pageOverrides && typeof body.pageOverrides === "object") {
+    const overrides: Record<string, Record<string, unknown>> = {};
+
+    for (const [scope, raw] of Object.entries(
+      body.pageOverrides as Record<string, unknown>
+    )) {
+      if (!raw || typeof raw !== "object") continue;
+      const entry = raw as Record<string, unknown>;
+      const next: Record<string, unknown> = {};
+
+      for (const key of PAGE_OVERRIDE_ENUMS) {
+        const value = entry[key];
+        if (typeof value === "string" && ENUM_KEYS[key].includes(value)) {
+          next[key] = value;
+        }
+      }
+      const size = entry.tileSizePercent;
+      if (typeof size === "number" && Number.isFinite(size)) {
+        const [min, max] = PERCENT_KEYS.tileSizePercent;
+        next.tileSizePercent = Math.min(max, Math.max(min, Math.round(size)));
+      }
+
+      // An override with nothing left in it is the same as no override, and
+      // storing one would show the page as customised while changing nothing.
+      if (Object.keys(next).length > 0) overrides[scope] = next;
+    }
+
+    out.pageOverrides = overrides;
   }
 
   return out;
