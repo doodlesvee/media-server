@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { Timeline } from "./Timeline";
+import { FilterMenu } from "./FilterBar";
 import { recordRecent } from "@/lib/recent";
 import { setMediaDragData } from "@/lib/dragMedia";
 import { isTypingTarget, playItem } from "@/lib/appEvents";
@@ -122,6 +123,7 @@ export function MediaGrid({
   sort: initialSort = "newest",
   year: initialYear = "",
   month: initialMonth,
+  onFiltersChange,
   onViewStateChange,
 }: {
   source: GridSource;
@@ -130,6 +132,12 @@ export function MediaGrid({
   year?: string;
   /** 1-12, set by the timeline. Only meaningful alongside a year. */
   month?: number;
+  /**
+   * Lets the toolbar offer the filter menu. Omitted by the surfaces that do
+   * not own a filter set — a performer's videos, a studio's — where the
+   * button would open a panel whose choices had nowhere to be written.
+   */
+  onFiltersChange?: (next: Filters) => void;
   onViewStateChange?: (state: {
     sort: SortValue;
     year: string;
@@ -826,6 +834,13 @@ export function MediaGrid({
           </button>
           {source.type === "library" && (
             <>
+              {onFiltersChange && (
+                <FilterMenu
+                  filters={source.filters ?? EMPTY_FILTERS}
+                  onChange={onFiltersChange}
+                />
+              )}
+
               {/* The period control, and the only one. A plain Year select
                   used to sit here as well as the timeline on the browse page
                   — two controls for one filter, in two places, disagreeing

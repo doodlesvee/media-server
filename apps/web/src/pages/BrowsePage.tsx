@@ -8,7 +8,7 @@ import { MediaGrid, type GridSource } from "@/components/MediaGrid";
 import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
-import { FilterBar } from "@/components/FilterBar";
+import { FilterChips } from "@/components/FilterBar";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import {
   filtersFromSearch,
@@ -308,9 +308,14 @@ export function BrowsePage() {
             !q && <NewFolderButton parentId={currentParentId} />}
         </div>
 
+        {/* The chips get a row of their own, left-aligned and full width.
+            The control that adds filters lives in the grid's toolbar with the
+            other controls; this is the state it produces, and five chips
+            squeezed in beside Sort made both unreadable. Renders nothing at
+            all when nothing is filtered. */}
         {source.type === "library" && (
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <FilterBar
+          <div className="flex flex-wrap items-start justify-between gap-3 empty:hidden">
+            <FilterChips
               filters={filters}
               onChange={applyFilters}
               onClear={clearFilters}
@@ -352,6 +357,7 @@ export function BrowsePage() {
               }),
             })
           }
+          onFiltersChange={applyFilters}
           onOpenFolder={(id) =>
             void navigate({ to: "/browse", search: { parentId: id } })
           }

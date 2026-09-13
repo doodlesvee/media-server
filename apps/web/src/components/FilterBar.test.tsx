@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { FilterBar } from "./FilterBar";
+import { FilterChips, FilterMenu } from "./FilterBar";
 import { EMPTY_FILTERS, type Filters } from "@/lib/filters";
 
 function renderBar(filters: Filters = EMPTY_FILTERS) {
@@ -13,13 +13,17 @@ function renderBar(filters: Filters = EMPTY_FILTERS) {
   });
   const { rerender } = render(
     <QueryClientProvider client={client}>
-      <FilterBar filters={filters} onChange={onChange} onClear={onClear} />
+      {/* Rendered together because they are one feature split across two
+          places on the page: the menu sits in the grid's toolbar, the chips
+          on a row of their own. */}
+      <FilterMenu filters={filters} onChange={onChange} />
+      <FilterChips filters={filters} onChange={onChange} onClear={onClear} />
     </QueryClientProvider>,
   );
   return { onChange, onClear, rerender, client };
 }
 
-describe("FilterBar", () => {
+describe("FilterMenu and FilterChips", () => {
   it("shows a chip for every applied filter", () => {
     renderBar({ ...EMPTY_FILTERS, tags: ["indoor"], watched: false });
     expect(
@@ -62,7 +66,11 @@ describe("FilterBar", () => {
 
     rerender(
       <QueryClientProvider client={client}>
-        <FilterBar
+        <FilterMenu
+          filters={{ ...EMPTY_FILTERS, tags: ["a", "b"] }}
+          onChange={() => {}}
+        />
+        <FilterChips
           filters={{ ...EMPTY_FILTERS, tags: ["a", "b"] }}
           onChange={() => {}}
           onClear={() => {}}
@@ -117,5 +125,19 @@ describe("FilterBar", () => {
 
     expect(screen.queryByRole("group", { name: "Filters" })).not.toBeInTheDocument();
     expect(button).toHaveFocus();
+  });
+});
+
+describe("FilterChips on its own", () => {
+  // An unfiltered page should carry no empty bar where the chips would be.
+  it("renders nothing when nothing is filtered", () => {
+    const { container } = render(
+      <FilterChips
+        filters={EMPTY_FILTERS}
+        onChange={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });
