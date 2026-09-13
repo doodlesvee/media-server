@@ -53,6 +53,7 @@ import {
 } from "@/lib/playerPrefs";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { cn, formatDuration } from "@/lib/utils";
+import { useUndoable } from "@/lib/undo";
 import { QueuePanel } from "./QueuePanel";
 import { useQueue } from "@/lib/queue";
 import { SeriesAssignment } from "./SeriesAssignment";
@@ -134,6 +135,7 @@ export function MediaDetailModal({
   });
 
   const { discreet, modalPreview, autoplayNext } = useAppearance();
+  const runUndoable = useUndoable();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
   // Opened, but holding the still with nothing running. Only ever true before
   // real playback starts: once you press Play the mode changes and neither
@@ -202,13 +204,31 @@ export function MediaDetailModal({
     },
   });
 
-  const toggleFavorite = useMutation({
-    mutationFn: (next: boolean) => updateItem(viewingId, { isFavorite: next }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
-      queryClient.invalidateQueries({ queryKey: ["media-items"] });
-    },
-  });
+  /**
+   * Favourite, with an undo rather than a confirmation (§19).
+   *
+   * A mis-click on a heart is trivially reversible and a dialog in front of
+   * it would be absurd, so this is exactly the case the undo toast exists
+   * for. The previous value is captured before the write and handed to the
+   * inverse, so undoing restores what was actually there rather than
+   * toggling again — which would be the opposite of what the toast says on a
+   * double press.
+   */
+  function toggleFavorite(next: boolean) {
+    void runUndoable({
+      message: next ? "Added to Favourites" : "Removed from Favourites",
+      description: item?.title,
+      apply: async () => {
+        await updateItem(viewingId, { isFavorite: next });
+        return !next;
+      },
+      revert: (previous) => updateItem(viewingId, { isFavorite: previous }),
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ["media-item", viewingId] });
+        queryClient.invalidateQueries({ queryKey: ["media-items"] });
+      },
+    });
+  }
   const saveFraming = useMutation({
     mutationFn: (next: FramingValue) =>
       updateItem(viewingId, {
@@ -918,8 +938,7 @@ export function MediaDetailModal({
                       )}
                       <button
                         type="button"
-                        onClick={() => toggleFavorite.mutate(!item.isFavorite)}
-                        disabled={toggleFavorite.isPending}
+                        onClick={() => toggleFavorite(!item.isFavorite)}
                         aria-pressed={item.isFavorite}
                         aria-label={
                           item.isFavorite

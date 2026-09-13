@@ -132,6 +132,33 @@ export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
   { value: "none", label: "None" },
 ];
 
+export type MotionLevel = "full" | "reduced" | "none";
+
+export const MOTION_LEVELS: { value: MotionLevel; label: string; hint: string }[] =
+  [
+    { value: "full", label: "Full", hint: "Entrances, hover lifts, the lot." },
+    {
+      value: "reduced",
+      label: "Reduced",
+      hint: "State still changes visibly, but nothing travels.",
+    },
+    { value: "none", label: "None", hint: "Nothing moves or fades." },
+  ];
+
+/** The rounding range, in rem. Square to noticeably soft. */
+export const RADIUS_MIN = 0;
+export const RADIUS_MAX = 1.5;
+
+/**
+ * The type-scale range.
+ *
+ * Narrow on purpose: this is a legibility adjustment, not a zoom. The browser
+ * already has a zoom and it scales images and layout along with the text,
+ * which is what you actually want when everything is too small.
+ */
+export const TYPE_SCALE_MIN = 0.85;
+export const TYPE_SCALE_MAX = 1.3;
+
 export type Appearance = {
   /**
    * Tile size as a percentage of the widest a tile goes — one number drives
@@ -222,6 +249,19 @@ export type Appearance = {
    * the fact that something happened to be next in the list.
    */
   autoplayNext: boolean;
+  /**
+   * How much the interface moves (§24).
+   *
+   * "full" is the designed behaviour. The OS `prefers-reduced-motion` setting
+   * still wins over this where the two disagree — someone who has asked their
+   * whole system for less motion has not opted into more of it by leaving an
+   * app on its default.
+   */
+  motion: MotionLevel;
+  /** Corner rounding, in rem. Drives every radius in the app at once. */
+  cardRadiusRem: number;
+  /** Multiplies every font size. 1 is the designed scale. */
+  typeScale: number;
   /** Which homepage sections show, and in what order. */
   homeRows: HomeRowSetting[];
   /**
@@ -293,6 +333,9 @@ export const DEFAULTS: Appearance = {
   heroHeight: 70,
   bannerHeight: 70,
   autoplayNext: true,
+  motion: "full",
+  cardRadiusRem: 0.625,
+  typeScale: 1,
   homeRows: DEFAULT_HOME_ROWS,
   pageOverrides: {},
 };
@@ -322,6 +365,23 @@ export const SEARCH_SHORTCUT = "Ctrl/⌘ + K";
 // localStorage throws outright in some privacy configurations, and an
 // unguarded read here would white-screen the whole app — the same discipline
 // the sidebar's collapsed state already uses.
+/**
+ * Clamps a stored fractional value into range.
+ *
+ * Distinct from clampPercent below, which rounds to a whole number — these
+ * two are rem and a multiplier, where rounding to an integer would snap
+ * 0.625rem to 1rem and a 1.15 scale to 1.
+ */
+function clampRange(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
 function clampPercent(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(BANNER_MAX, Math.max(BANNER_MIN, Math.round(value)));
@@ -398,6 +458,21 @@ function read(): Appearance {
         typeof parsed.autoplayNext === "boolean"
           ? parsed.autoplayNext
           : DEFAULTS.autoplayNext,
+      motion: MOTION_LEVELS.some((option) => option.value === parsed.motion)
+        ? (parsed.motion as MotionLevel)
+        : DEFAULTS.motion,
+      cardRadiusRem: clampRange(
+        parsed.cardRadiusRem,
+        RADIUS_MIN,
+        RADIUS_MAX,
+        DEFAULTS.cardRadiusRem,
+      ),
+      typeScale: clampRange(
+        parsed.typeScale,
+        TYPE_SCALE_MIN,
+        TYPE_SCALE_MAX,
+        DEFAULTS.typeScale,
+      ),
       homeRows: readHomeRows(parsed.homeRows),
       pageOverrides: readPageOverrides(parsed.pageOverrides),
     };
@@ -553,6 +628,29 @@ export function AppearanceProvider({
       // Not being able to remember the choice is survivable; crashing isn't.
     }
   }, [value]);
+
+  /**
+   * Motion, rounding and type scale, applied at the document root.
+   *
+   * The same argument as discreet mode below: these have to reach every
+   * component including the ones rendered into portals, and a prop threaded
+   * through the tree would miss the modals and the toast stack, which are
+   * siblings of the app rather than descendants of it.
+   *
+   * "full" removes the attribute rather than setting it, so the default
+   * costs no selector matching at all.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (value.motion === "full") root.removeAttribute("data-motion");
+    else root.setAttribute("data-motion", value.motion);
+  }, [value.motion]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--radius", `${value.cardRadiusRem}rem`);
+    root.style.setProperty("--type-scale", String(value.typeScale));
+  }, [value.cardRadiusRem, value.typeScale]);
 
   // Discreet mode is a single attribute on <html> rather than a prop threaded
   // through every component that renders an image. There are dozens of those —

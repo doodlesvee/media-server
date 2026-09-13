@@ -13,6 +13,11 @@ import {
   BLUR_MAX,
   BLUR_MIN,
   DISCREET_SHORTCUT,
+  MOTION_LEVELS,
+  RADIUS_MIN,
+  RADIUS_MAX,
+  TYPE_SCALE_MIN,
+  TYPE_SCALE_MAX,
   TILE_INFO_OPTIONS,
   isDefaultAppearance,
   TILE_MAX,
@@ -64,6 +69,9 @@ export function AppearanceMenu() {
     hoverPreview,
     modalPreview,
     autoplayNext,
+    motion,
+    cardRadiusRem,
+    typeScale,
     discreet,
     discreetBlurPercent,
     discreetText,
@@ -278,6 +286,58 @@ export function AppearanceMenu() {
                 hint="When a video ends, start the next queued one. With this off the queue still advances — the Up next card is there to take it."
                 checked={autoplayNext}
                 onChange={(next) => set({ autoplayNext: next })}
+              />
+
+              <Section label="Interface" />
+
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium">Animation</span>
+                <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                  {MOTION_LEVELS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set({ motion: option.value })}
+                      aria-pressed={motion === option.value}
+                      title={option.hint}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                        motion === option.value
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  {MOTION_LEVELS.find((option) => option.value === motion)?.hint}{" "}
+                  Your system&rsquo;s own reduced-motion setting still wins over
+                  this.
+                </span>
+              </div>
+
+              <Slider
+                label="Corner rounding"
+                value={cardRadiusRem}
+                min={RADIUS_MIN}
+                max={RADIUS_MAX}
+                step={0.125}
+                suffix="rem"
+                hint="Every card, panel and button at once."
+                onChange={(next) => set({ cardRadiusRem: next })}
+              />
+
+              <Slider
+                label="Text size"
+                value={typeScale}
+                min={TYPE_SCALE_MIN}
+                max={TYPE_SCALE_MAX}
+                step={0.05}
+                suffix="×"
+                hint="Scales the interface text. For making everything bigger, including the artwork, use your browser's zoom."
+                onChange={(next) => set({ typeScale: next })}
               />
 
               <Section label="Banner" />

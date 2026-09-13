@@ -13,7 +13,15 @@
      come back light against a black page. */
   color-scheme: dark;
 
+  /* Overridden from the Appearance panel (§25). A variable rather than a
+     class per size because every radius in the app is already derived from
+     this one in @theme below, so one number moves all of them together. */
   --radius: 0.625rem;
+
+  /* Multiplies every font size. 1 is the designed scale; the panel offers a
+     narrow range either side, because this is a legibility adjustment and not
+     a zoom — the browser already has one of those and it does a better job. */
+  --type-scale: 1;
 
   /* Monochrome: near-pure black with neutral gray surfaces and white
      primary actions — no colored accent at all, so the only colour on
@@ -83,6 +91,15 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* The scale is applied once, at the root, so every rem-based size in the
+       app follows it. Setting it on body instead would leave anything
+       rendered in a portal — every modal and the toast stack — at the
+       original scale, since those are siblings of body's children rather
+       than descendants of body's font size. */
+    font-size: calc(100% * var(--type-scale));
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
@@ -275,6 +292,21 @@
   }
 }
 
+/* Motion, in three levels (§24).
+   
+   The OS preference and the in-app setting are both honoured, and the OS one
+   wins where they disagree — someone who has asked their whole system for
+   less motion has not opted into more of it by leaving an app on its default.
+   The setting exists because the OS switch is all-or-nothing and lives four
+   screens deep, and "Reduced" is a genuinely different answer from "None":
+   one keeps the page legible as it changes, the other stops it moving at all.
+   
+   `data-motion` is stamped on <html> from the Appearance panel. "full" sets
+   no attribute, so the default costs nothing.
+   
+   Selectors are duplicated rather than combined with :is() because the media
+   query and the attribute cannot share a selector list — a media query wraps
+   rules, an attribute qualifies them. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -295,6 +327,48 @@
     filter: none;
     box-shadow: none;
   }
+}
+
+/* Reduced: entrances and hover lifts go, but state changes still cross-fade
+   quickly, so a panel opening still reads as having opened. */
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 80ms !important;
+}
+
+[data-motion="reduced"] .performer-banner-fixed {
+  background-attachment: scroll !important;
+}
+
+[data-motion="reduced"] .motion-card:hover,
+[data-motion="reduced"] .motion-card:focus-within {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+/* None: nothing moves or fades at all. */
+[data-motion="none"] *,
+[data-motion="none"] *::before,
+[data-motion="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+[data-motion="none"] .performer-banner-fixed {
+  background-attachment: scroll !important;
+}
+
+[data-motion="none"] .motion-card:hover,
+[data-motion="none"] .motion-card:focus-within {
+  transform: none;
+  filter: none;
+  box-shadow: none;
 }
 
 /* Discreet mode.
