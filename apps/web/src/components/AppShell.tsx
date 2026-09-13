@@ -13,6 +13,7 @@ import { MediaDetailModal } from "./MediaDetailModal";
 import { NotificationCenter } from "./NotificationCenter";
 import { describeHref, writeLastSession } from "@/lib/lastSession";
 import { CardShortcutProvider } from "@/lib/cardShortcuts";
+import type { PlayItemDetail } from "@/lib/appEvents";
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
@@ -82,12 +83,16 @@ export function AppShell({
   useEffect(() => {
     function resumeItem(event: Event) {
       const detail = (
-        event as CustomEvent<number | { id: number; resume?: boolean }>
+        event as CustomEvent<number | PlayItemDetail>
       ).detail;
       const id = typeof detail === "number" ? detail : detail?.id;
       if (typeof id !== "number") return;
+      const wantsDetails = typeof detail !== "number" && detail.details === true;
       setPlayingId(id);
-      setMiniPlayer(true);
+      // The mini player is the answer to "play this", not to "show me this".
+      // Opening one in response to a request for details puts the thing you
+      // asked to read about into a thumbnail in the corner.
+      setMiniPlayer(!wantsDetails);
       setResumePlayer(typeof detail !== "number" && detail.resume === true);
     }
     window.addEventListener("media-server:play-item", resumeItem);

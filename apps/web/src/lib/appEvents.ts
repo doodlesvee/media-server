@@ -16,7 +16,18 @@ export const OPEN_SEARCH_EVENT = "media-server:open-search";
 export const PLAY_ITEM_EVENT = "media-server:play-item";
 export const TOGGLE_FOCUS_EVENT = "media-server:toggle-focus";
 
-export type PlayItemDetail = { id: number; resume?: boolean };
+export type PlayItemDetail = {
+  id: number;
+  resume?: boolean;
+  /**
+   * Open the full detail view rather than the corner mini player.
+   *
+   * The shell's handler opens the mini player for everything, which is right
+   * for "play this" and wrong for "show me this" — a request for an item's
+   * details should not answer with a thumbnail-sized video in the corner.
+   */
+  details?: boolean;
+};
 
 export function openSearch(): void {
   window.dispatchEvent(new Event(OPEN_SEARCH_EVENT));
@@ -26,6 +37,15 @@ export function playItem(id: number, options: { resume?: boolean } = {}): void {
   window.dispatchEvent(
     new CustomEvent<PlayItemDetail>(PLAY_ITEM_EVENT, {
       detail: { id, resume: options.resume ?? false },
+    }),
+  );
+}
+
+/** Opens an item's full detail view. */
+export function openDetails(id: number): void {
+  window.dispatchEvent(
+    new CustomEvent<PlayItemDetail>(PLAY_ITEM_EVENT, {
+      detail: { id, details: true },
     }),
   );
 }

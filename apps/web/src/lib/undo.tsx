@@ -23,8 +23,15 @@ import { useToast } from "./toast";
  */
 
 export type UndoableOptions<T> = {
-  /** Past tense, the way it reads on the toast: "Removed from Favourites". */
-  message: string;
+  /**
+   * Past tense, the way it reads on the toast: "Removed from Favourites".
+   *
+   * May be a function of what `apply` returned, for the common case where
+   * which way a toggle went is only known once it has been read. "Favourite
+   * updated" is true and useless — the whole question a shortcut with no
+   * on-screen control raises is which way it just went.
+   */
+  message: string | ((applied: T) => string);
   description?: string;
   /** The change itself. Its result is handed to `revert`. */
   apply: () => Promise<T> | T;
@@ -72,12 +79,14 @@ export function useUndoable(): RunUndoable {
       }
       onSettled?.();
 
+      const text = typeof message === "function" ? message(applied) : message;
+
       // `undone` guards the button rather than the toast being gone: the
       // toast dismisses itself the moment the action fires, but a double
       // click can land twice before React has removed the row.
       let undone = false;
       toast({
-        title: message,
+        title: text,
         description,
         variant: "success",
         action: {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Circle,
+  Eye,
+  Heart,
   Film,
   Folder,
   Image as ImageIcon,
@@ -29,6 +31,16 @@ export type MediaCardItem = {
   thumbnailPositionY?: number;
   thumbnailScale?: number;
   description?: string | null;
+  /**
+   * State the tile shows, and which the list endpoint has always returned —
+   * it simply was not declared here, so nothing drew it (§2).
+   *
+   * Without these a keyboard favourite or watch toggle leaves no trace on the
+   * grid at all: the action works, the toast confirms it, and then the tile
+   * looks exactly as it did. The shortcut reads as broken.
+   */
+  isFavorite?: boolean;
+  watched?: boolean;
   tags?: { id: number; name: string }[];
   performers?: { id: number; name: string }[];
   studio?: string | null;
@@ -343,6 +355,28 @@ export function MediaCard({
           {item.missingSince && (
             <span className="absolute left-1 top-1 rounded bg-destructive/90 px-1.5 py-0.5 text-[10px] text-white">
               missing
+            </span>
+          )}
+
+          {/* Favourite and watched, shown in every mode including "None".
+              They are state rather than a label — the same reasoning the
+              progress bar below already follows — and losing track of what
+              you have marked would be a real cost rather than less clutter.
+
+              Hidden while selecting, where the top-right corner belongs to
+              the selection tick and two indicators in one place would read
+              as one confusing control. */}
+          {!selectable && (item.isFavorite || item.watched) && (
+            <span className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-1 ring-1 ring-white/15">
+              {item.isFavorite && (
+                <Heart
+                  aria-label="Favourite"
+                  className="size-3 fill-red-500 text-red-500"
+                />
+              )}
+              {item.watched && (
+                <Eye aria-label="Watched" className="size-3 text-white/90" />
+              )}
             </span>
           )}
 

@@ -9,10 +9,16 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PeekPanel } from "@/components/PeekPanel";
-import { isTypingTarget, openSearch, playItem } from "./appEvents";
+import {
+  isTypingTarget,
+  openDetails,
+  openSearch,
+  playItem,
+} from "./appEvents";
 import { setWatched, updateItem, type MediaItemDetail } from "./mediaItemApi";
 import { useQueue } from "./queue";
 import { recordRecent } from "./recent";
+import { useToast } from "./toast";
 import { useUndoable } from "./undo";
 
 /**
@@ -86,6 +92,7 @@ export function CardShortcutProvider({
   const queryClient = useQueryClient();
   const { add } = useQueue();
   const runUndoable = useUndoable();
+  const { toast } = useToast();
 
   // Mirrors the state for the listener, so the effect below can bind once
   // rather than re-binding on every hover.
@@ -133,7 +140,8 @@ export function CardShortcutProvider({
     (card: EngagedCard) => {
       recordRecent("favourited", card);
       void runUndoable({
-        message: "Favourite updated",
+        message: (wasFavourite) =>
+          wasFavourite ? "Removed from Favourites" : "Added to Favourites",
         description: card.title,
         apply: async () => {
           const res = await fetch(`/api/media-items/${card.id}`);
@@ -154,7 +162,8 @@ export function CardShortcutProvider({
   const toggleWatched = useCallback(
     (card: EngagedCard) => {
       void runUndoable({
-        message: "Watch state updated",
+        message: (wasWatched) =>
+          wasWatched ? "Marked unwatched" : "Marked watched",
         description: card.title,
         apply: async () => {
           const res = await fetch(`/api/media-items/${card.id}`);
@@ -220,7 +229,7 @@ export function CardShortcutProvider({
         case "e":
           if (isFolder) return;
           event.preventDefault();
-          playItem(card.id);
+          openDetails(card.id);
           break;
         case "q":
           if (!isVideo) return;
@@ -230,6 +239,14 @@ export function CardShortcutProvider({
             title: card.title,
             thumbnailFile: card.thumbnailFile,
             durationSeconds: card.durationSeconds,
+          });
+          // The queue lives inside the player, so adding to it from a grid
+          // otherwise changes nothing you can see — the one shortcut here
+          // with no visible result at all.
+          toast({
+            title: "Added to queue",
+            description: card.title,
+            variant: "success",
           });
           break;
         case "/":
@@ -243,7 +260,7 @@ export function CardShortcutProvider({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [add, peek, toggleFavourite, toggleWatched]);
+  }, [add, peek, toast, toggleFavourite, toggleWatched]);
 
   const store = useMemo<CardShortcutStore>(
     () => ({
