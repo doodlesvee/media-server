@@ -68,6 +68,20 @@ describe("appearance settings", () => {
     expect(await load()).not.toHaveProperty("viewMode");
   });
 
+  // The failure this guards against is the one the module's own comment
+  // describes: a setting added to the client and not to ENUM_KEYS saves
+  // locally, looks like it worked, and reverts on the next round-trip with
+  // nothing logged anywhere.
+  it("stores the tile shape", async () => {
+    await save({ tileShape: "portrait" });
+    expect(await load()).toMatchObject({ tileShape: "portrait" });
+  });
+
+  it("drops a tile shape that is not one of the two", async () => {
+    await save({ tileShape: "diagonal" });
+    expect(await load()).not.toHaveProperty("tileShape");
+  });
+
   it("ignores a height that is not a number", async () => {
     await save({ heroHeight: "tall" });
     expect(await load()).not.toHaveProperty("heroHeight");
@@ -167,6 +181,25 @@ describe("appearance settings — every client setting round-trips", () => {
         collection: { tileInfo: "none", tileSizePercent: 90 },
       },
     });
+  });
+
+  // A page pinning its own shape goes through the override validator rather
+  // than the top-level one, so passing there does not mean passing here.
+  it("keeps a tile shape pinned to one page", async () => {
+    await save({
+      tileShape: "landscape",
+      pageOverrides: { library: { tileShape: "portrait" } },
+    });
+    expect(await load()).toMatchObject({
+      tileShape: "landscape",
+      pageOverrides: { library: { tileShape: "portrait" } },
+    });
+  });
+
+  it("drops an invalid tile shape inside an override", async () => {
+    await save({ pageOverrides: { library: { tileShape: "diagonal", density: "dense" } } });
+    const stored = (await load()) as { pageOverrides: Record<string, unknown> };
+    expect(stored.pageOverrides.library).toEqual({ density: "dense" });
   });
 
   // The scope names are the client's and are not enumerated server-side, but

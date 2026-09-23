@@ -63,7 +63,14 @@ export const ADDED_WITHIN_OPTIONS = [
 export const SORT_OPTIONS = [
   { value: "newest", label: "Recently added" },
   { value: "oldest", label: "Oldest first" },
+  // Release date, as parsed from the filename — the scene's own chronology,
+  // as opposed to when the file arrived here. Listed next to the added-date
+  // pair because the two are easy to confuse and sit better compared than
+  // apart; items with no date parsed sort last either way.
+  { value: "released", label: "Newest release" },
+  { value: "releasedOldest", label: "Oldest release" },
   { value: "title", label: "Title A–Z" },
+  { value: "titleDesc", label: "Title Z–A" },
   { value: "longest", label: "Longest" },
   { value: "shortest", label: "Shortest" },
   { value: "watched", label: "Recently watched" },

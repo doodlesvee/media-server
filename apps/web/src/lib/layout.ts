@@ -1,11 +1,12 @@
 /**
  * How a view mode and a density turn into actual lengths.
  *
- * Three axes on purpose, kept orthogonal so no two controls fight over the
+ * Four axes on purpose, kept orthogonal so no two controls fight over the
  * same pixel: tile size is the base width you choose, the view mode decides
- * the card's shape and how much of that width it wants, and density decides
- * how much air sits between cards. Bundling them into one "size" control was
- * the alternative, and it makes every preset a compromise.
+ * how much of that width a card wants, the tile shape decides how the artwork
+ * is cropped, and density decides how much air sits between cards. Bundling
+ * them into one "size" control was the alternative, and it makes every preset
+ * a compromise.
  */
 
 /**
@@ -23,6 +24,36 @@ export const VIEW_MODES: { value: ViewMode; label: string; hint: string }[] = [
   { value: "grid", label: "Grid", hint: "The standard tile." },
   { value: "compact", label: "Compact", hint: "Smaller tiles, more per row." },
   { value: "large", label: "Large", hint: "Bigger tiles, same detail." },
+];
+
+/**
+ * The shape of a media tile's artwork frame.
+ *
+ * A fourth axis, and orthogonal to the other three for the same reason they
+ * are orthogonal to each other: size is how big a card is, the view mode is
+ * how much width it asks for, density is the air around it, and this is the
+ * crop. Folding shape into the view mode was the alternative — a "Portrait"
+ * entry beside Grid and Compact — and it would have made every mode a
+ * decision about two things at once, so choosing portrait would have meant
+ * giving up the size you had chosen.
+ *
+ * Only two entries on purpose. The picker above this one is a size control
+ * with three stops; this one is a choice between the two shapes artwork
+ * actually comes in, and a third would make it a decision rather than a flip.
+ */
+export type TileShape = "landscape" | "portrait";
+
+export const TILE_SHAPES: { value: TileShape; label: string; hint: string }[] = [
+  {
+    value: "landscape",
+    label: "Landscape",
+    hint: "Wide frames, the shape a video still already is.",
+  },
+  {
+    value: "portrait",
+    label: "Portrait",
+    hint: "Tall frames, the shape cover art already is.",
+  },
 ];
 
 export type Density = "spacious" | "comfortable" | "compact" | "dense";
@@ -69,18 +100,58 @@ const DENSITY_WIDTH_SCALE: Record<Density, number> = {
 };
 
 /**
- * The shape of every card's frame.
+ * The shape of a card's frame, per tile shape.
  *
- * One value rather than a table per mode: the modes differ by how much room a
- * card takes, not by how the artwork is cropped. A wide 21:9 mode used to
- * live here and was dropped — it cut the sides off cover art, which is the
- * one thing a library of artwork should not do to itself.
+ * Still a table keyed by shape rather than by mode: the modes differ by how
+ * much room a card takes, not by how the artwork is cropped. A wide 21:9
+ * mode used to live here and was dropped — it cut the sides off cover art,
+ * which is the one thing a library of artwork should not do to itself.
+ *
+ * 5:7 for portrait, arrived at from both directions. It began at 2:3, which
+ * was too tall — against a 16:10 neighbour a 2:3 tile is two and a half times
+ * its height, so one portrait tile set the height of its whole row. 3:4 fixed
+ * that and read as slightly squat. 5:7 sits between them: about 5% taller than
+ * 3:4, still well short of 2:3, and a standard photographic ratio rather than
+ * a number picked to split the difference.
+ *
+ * Only the height moves. The width of a tile is the grid column's, which this
+ * ratio does not touch, so a taller portrait tile is taller and not wider.
+ *
+ * The performer cards stay 2:3 and are not affected: they are a fixed shape
+ * on their own pages, not a tile sitting next to a landscape one.
+ *
+ * Landscape keeps 16:10 exactly, so an install that never touches this setting
+ * is drawn the same as it was before the setting existed.
  *
  * Kept as width and height rather than a CSS string so the virtualized grid
  * can estimate a row's height from it, instead of parsing the string back out
  * and producing NaN the first time the format changes.
  */
-const CARD_ASPECT = { w: 16, h: 10 };
+export const SHAPE_ASPECT: Record<TileShape, { w: number; h: number }> = {
+  landscape: { w: 16, h: 10 },
+  portrait: { w: 5, h: 7.5 },
+};
+
+/**
+ * The shape's own contribution to width, like the mode's and the density's.
+ *
+ * Without this, portrait is not a shape change but a size change: the column
+ * width is the same number, so a 416px tile that was 260px tall becomes 624px
+ * tall, three of them fill a laptop screen, and the size slider you set for
+ * landscape means something entirely different in portrait.
+ *
+ * 0.67 is the factor that keeps the *area* of a card about the same across
+ * the two shapes — √(0.625 / 1.4) to two places. Matching the height instead
+ * would mean 0.45, which is arithmetically tidy and produces tiles too narrow
+ * to read a title in. Area is what the eye actually judges "same size" by.
+ *
+ * Derived from the ratio above rather than picked, so changing the portrait
+ * shape and forgetting this cannot leave the two disagreeing.
+ */
+const SHAPE_WIDTH_SCALE: Record<TileShape, number> = {
+  landscape: 1,
+  portrait: 0.67,
+};
 
 /**
  * Gaps in pixels, per density: [between columns, under a row].
@@ -123,19 +194,73 @@ export type CardChrome = {
 /**
  * The parts of a card's look that do not depend on how wide the grid made it.
  *
- * No view mode here, and that is the point of having only three: they differ
- * by how much width a card asks for, which is the grid's business, not the
- * card's. The two modes that needed this to know about them — one cropping
- * to a wider frame, one laying out as a row — have been removed.
+ * Still no view mode here, and that is the point of having only three: they
+ * differ by how much width a card asks for, which is the grid's business, not
+ * the card's. The two modes that needed this to know about them — one
+ * cropping to a wider frame, one laying out as a row — have been removed.
+ *
+ * The shape does belong here, because the crop is the card's own business and
+ * is the same in a row, a grid and a picker.
+ *
+ * `shape` defaults rather than being required: this is read from half a dozen
+ * call sites, and a default means one that is missed keeps drawing the shape
+ * the app has always drawn instead of `undefined / undefined`.
  */
-export function cardChrome(density: Density, tileInfo: TileInfo): CardChrome {
+export function cardChrome(
+  density: Density,
+  tileInfo: TileInfo,
+  shape: TileShape = "landscape",
+): CardChrome {
+  // `??` rather than trusting the key: this arrives from stored settings, and
+  // a hand-edited value would otherwise reach CSS as "undefined / undefined"
+  // and collapse every frame in the app to nothing.
+  const aspect = SHAPE_ASPECT[shape] ?? SHAPE_ASPECT.landscape;
   return {
-    aspectRatio: `${CARD_ASPECT.w} / ${CARD_ASPECT.h}`,
-    heightRatio: CARD_ASPECT.h / CARD_ASPECT.w,
+    aspectRatio: `${aspect.w} / ${aspect.h}`,
+    heightRatio: aspect.h / aspect.w,
     paddingPx: DENSITY_PADDING[density] ?? DENSITY_PADDING.comfortable,
     // No mode overrides the label setting, so it passes straight through.
     tileInfo,
   };
+}
+
+/**
+ * How much taller a portrait tile may stand than the landscape tiles beside it.
+ *
+ * A tile's width is its grid column's, and the column is sized for whatever
+ * the Appearance setting says. So a portrait tile dropped into a landscape
+ * grid keeps the full column width and gets its *height* from the ratio —
+ * 1.5 against 0.625, which is two and a half times the height of everything
+ * around it. It read as a different page element rather than as a tile.
+ *
+ * Expressed as a height multiple rather than a width percentage because that
+ * is the thing being judged: "a bit taller than its neighbours" survives a
+ * change to either ratio, where a hardcoded 52% quietly stops meaning that
+ * the moment the portrait shape is tuned.
+ */
+export const PORTRAIT_HEIGHT_FACTOR = 2;
+
+/**
+ * The fraction of its column a tile should occupy, given the shape the column
+ * was sized for.
+ *
+ * 1 whenever the two agree — the column already is that shape, and narrowing
+ * it would leave a gap for no reason. Below 1 only for the odd tile out, and
+ * only downward: a tile never overflows its column.
+ */
+export function tileWidthFraction(shape: TileShape, columnShape: TileShape): number {
+  if (shape === columnShape) return 1;
+
+  const own = SHAPE_ASPECT[shape] ?? SHAPE_ASPECT.landscape;
+  const column = SHAPE_ASPECT[columnShape] ?? SHAPE_ASPECT.landscape;
+  const ownRatio = own.h / own.w;
+  const columnRatio = column.h / column.w;
+
+  // Only a taller-than-the-column tile needs reining in. A shorter one
+  // already takes less room than its neighbours.
+  if (ownRatio <= columnRatio) return 1;
+
+  return Math.min(1, (columnRatio * PORTRAIT_HEIGHT_FACTOR) / ownRatio);
 }
 
 export type CardLayout = CardChrome & {
@@ -150,10 +275,11 @@ export function cardLayout(
   mode: ViewMode,
   density: Density,
   tileInfo: TileInfo,
+  shape: TileShape = "landscape",
 ): CardLayout {
   const gaps = DENSITY_GAPS[density] ?? DENSITY_GAPS.comfortable;
   return {
-    ...cardChrome(density, tileInfo),
+    ...cardChrome(density, tileInfo, shape),
     // Rounded because it becomes a CSS pixel length and a grid column count;
     // a fractional minimum makes the column maths drift by a column at some
     // widths and not others.
@@ -162,7 +288,8 @@ export function cardLayout(
       Math.round(
         tileWidthPx *
           (MODE_WIDTH_SCALE[mode] ?? 1) *
-          (DENSITY_WIDTH_SCALE[density] ?? 1),
+          (DENSITY_WIDTH_SCALE[density] ?? 1) *
+          (SHAPE_WIDTH_SCALE[shape] ?? 1),
       ),
     ),
     columnGapPx: gaps.column,

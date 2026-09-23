@@ -92,6 +92,17 @@ export const mediaItems = pgTable("media_items", {
   thumbnailPositionX: integer("thumbnail_position_x").notNull().default(50),
   thumbnailPositionY: integer("thumbnail_position_y").notNull().default(50),
   thumbnailScale: integer("thumbnail_scale").notNull().default(100),
+  // This item's own tile shape: 'landscape', 'portrait', or null.
+  //
+  // Nullable on purpose, and null is not a synonym for 'landscape': it means
+  // "follow the Appearance setting". Storing the effective shape instead
+  // would freeze every item at whatever the global setting happened to be
+  // when it was written, so changing that setting later would move nothing —
+  // the same mistake `*_source` exists to avoid elsewhere in this table.
+  //
+  // Display only, like the thumbnail framing above it: no file is touched and
+  // no poster is regenerated, so flipping it back costs nothing.
+  tileShape: text("tile_shape"),
   // False when the item's file sits in a folder you've removed from the scan
   // list. Distinct from missingSince, which means the file vanished from a
   // folder still being watched — different causes, different fixes. Rows are

@@ -40,12 +40,24 @@ export function HoverPreviewCard({
   onOpen,
   onPlay,
   onDismiss,
+  onContextMenu,
 }: {
   item: MediaCardItem;
   anchorRect: DOMRect;
   onOpen: (event: React.MouseEvent | React.KeyboardEvent) => void;
   onPlay: (event: React.MouseEvent | React.KeyboardEvent) => void;
   onDismiss: () => void;
+  /**
+   * Right-click, forwarded to the tile this card grew out of.
+   *
+   * Without it the card is a hole in the menu: it is portalled to the body,
+   * so it is not a descendant of the tile and never sees the tile's handler —
+   * and since it covers the tile whenever the pointer is near enough to
+   * right-click, the app's menu became unreachable in practice. On a video
+   * the browser's own `<video>` menu opened instead, which is how this was
+   * found.
+   */
+  onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   const { hoverPreview, discreet } = useAppearance();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -139,6 +151,18 @@ export function HoverPreviewCard({
       )}
       onMouseLeave={dismiss}
       onClick={onOpen}
+      onContextMenu={
+        // Only where the surface actually has a menu to put there. Swallowing
+        // the event unconditionally was worse than the problem it fixed: the
+        // rows, Missing and Surprise Me pass no handler, so right-click went
+        // from showing the browser's menu to doing nothing at all.
+        onContextMenu
+          ? (event) => {
+              event.preventDefault();
+              onContextMenu(event);
+            }
+          : undefined
+      }
     >
       {item.itemType === "video" && hoverPreview && !discreet ? (
         // The thumbnail sits underneath rather than using the video's own

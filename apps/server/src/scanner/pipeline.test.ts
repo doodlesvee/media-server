@@ -4,7 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../db/client.js";
-import { libraries, libraryRoots, mediaFiles, mediaItems, performers, studios } from "../db/schema.js";
+import { albums, libraries, libraryRoots, mediaFiles, mediaItems, performers, studios } from "../db/schema.js";
 import { resetDatabase, testApp } from "../test/harness.js";
 import { seed } from "../db/seed.js";
 import { startScan, isScanRunning } from "./pipeline.js";
@@ -25,7 +25,36 @@ async function scan(): Promise<void> {
   await settle();
 }
 
-async function put(relative: string, contents = "video-bytes"): Promise<string> {
+/**
+ * A real 1x1 JPEG.
+ *
+ * The photo tests below cannot write placeholder text into a `.jpg`: unlike
+ * the video path, which never decodes the file, the scanner hands an image to
+ * sharp to probe and to build a thumbnail from. Given bytes that are not an
+ * image that work fails slowly and, worse, outlives the test — which turned a
+ * 12-second run of this file plus the routes suite into a 16-minute one and
+ * left the next suite failing in `beforeEach`.
+ *
+ * Inline base64 rather than a fixture on disk or a call to sharp: it is 125
+ * bytes, it needs no I/O to produce, and a test that depends on the image
+ * library to build its own input cannot fail cleanly when that library is
+ * what is broken.
+ */
+const TINY_JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB" +
+    "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAABAAEBAREA/8QAFAABAAAA" +
+    "AAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+  "base64",
+);
+
+async function putImage(relative: string): Promise<string> {
+  return put(relative, TINY_JPEG);
+}
+
+async function put(
+  relative: string,
+  contents: string | Buffer = "video-bytes",
+): Promise<string> {
   const full = path.join(root, relative);
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, contents);
@@ -166,6 +195,68 @@ describe("scanning", () => {
     await scan();
     // They import, but must not become performers named after the folder.
     expect(await db.select().from(performers)).toEqual([]);
+  });
+
+  // Albums are grouped strictly by directory, which misses the very common
+  // layout of a scene folder holding the video with its stills in a
+  // subfolder: the album was built from the photos and the video was left
+  // with no albumId at all, so "this album's video" found nothing and the
+  // gallery strip under the player stayed empty.
+  it("links a scene's video to the album of its stills subfolder", async () => {
+    await put("Alice/Arrest Me/scene.mp4");
+    await putImage("Alice/Arrest Me/Images/1.jpg");
+    await scan();
+
+    const [album] = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.path, path.join(root, "Alice/Arrest Me/Images")));
+    expect(album).toBeDefined();
+
+    const [video] = await db
+      .select({ albumId: mediaItems.albumId })
+      .from(mediaItems)
+      .innerJoin(mediaFiles, eq(mediaFiles.mediaItemId, mediaItems.id))
+      .where(eq(mediaFiles.path, path.join(root, "Alice/Arrest Me/scene.mp4")));
+
+    expect(video.albumId).toBe(album.id);
+  });
+
+  // Only the immediate parent. Reaching further would attach one folder of
+  // artwork to every video filed anywhere beneath it.
+  it("does not link a video two folders above the stills", async () => {
+    await put("Alice/top.mp4");
+    await putImage("Alice/Scene/Images/1.jpg");
+    await scan();
+
+    const [video] = await db
+      .select({ albumId: mediaItems.albumId })
+      .from(mediaItems)
+      .innerJoin(mediaFiles, eq(mediaFiles.mediaItemId, mediaItems.id))
+      .where(eq(mediaFiles.path, path.join(root, "Alice/top.mp4")));
+
+    expect(video.albumId).toBeNull();
+  });
+
+  // The original behaviour has to survive: where the photos sit beside the
+  // video, the video is already in the album's own directory group.
+  it("still links a video sitting in the same folder as the photos", async () => {
+    await put("Alice/Scene/scene.mp4");
+    await putImage("Alice/Scene/1.jpg");
+    await scan();
+
+    const [album] = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.path, path.join(root, "Alice/Scene")));
+
+    const [video] = await db
+      .select({ albumId: mediaItems.albumId })
+      .from(mediaItems)
+      .innerJoin(mediaFiles, eq(mediaFiles.mediaItemId, mediaItems.id))
+      .where(eq(mediaFiles.path, path.join(root, "Alice/Scene/scene.mp4")));
+
+    expect(video.albumId).toBe(album.id);
   });
 
   it("refuses to start a second scan while one is running", async () => {

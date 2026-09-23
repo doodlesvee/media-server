@@ -28,6 +28,14 @@ export type MediaItemDetail = {
   thumbnailPositionX: number;
   thumbnailPositionY: number;
   thumbnailScale: number;
+  /**
+   * This item's own tile shape, or null to follow the Appearance setting.
+   *
+   * Null rather than a copy of the current global value, so changing the
+   * Appearance setting later still moves every tile that was never set by
+   * hand.
+   */
+  tileShape: "landscape" | "portrait" | null;
   studio: string | null;
   studioSource: "scanner" | "user";
   performersSource: "scanner" | "user";
@@ -145,6 +153,7 @@ export async function updateItem(
     thumbnailPositionX?: number;
     thumbnailPositionY?: number;
     thumbnailScale?: number;
+    tileShape?: "landscape" | "portrait" | null;
     seriesId?: number | null;
     seasonNumber?: number | null;
     episodeNumber?: number | null;

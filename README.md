@@ -323,10 +323,23 @@ data, or anyone with real access to your unlocked machine.
 ## Appearance
 
 `Ctrl/Cmd + Shift + ,` opens a panel over whatever page you're on — tile size,
-what a tile writes on itself, banner height, whether hovering expands a tile
-and whether it plays a preview clip. It's deliberately not a settings page:
-these are choices you can only judge by looking at them, and the page behind
-the panel resizes as you drag.
+tile shape, what a tile writes on itself, banner height, whether hovering
+expands a tile and whether it plays a preview clip. It's deliberately not a
+settings page: these are choices you can only judge by looking at them, and the
+page behind the panel resizes as you drag.
+
+**Tile shape** switches media tiles between landscape (16:10, the default) and
+portrait (2:3), and is its own control rather than an entry in the view-mode
+picker — the mode is three sizes of one card, so folding shape into it would
+mean choosing between the shape you wanted and the size you wanted. Portrait
+narrows the column to match, so a card keeps about the same area and the size
+slider goes on meaning one thing in both shapes.
+
+A video still is wide, so a portrait frame crops its sides. Reframe picks which
+band it keeps, from a tile's details — the framing preview is drawn at whichever
+shape is currently set, so what you choose there is what the tile shows.
+Performer cards are unaffected: they have always been 2:3, and they are
+portraits of people rather than artwork whose shape is a preference.
 
 Settings are stored server-side, so one look follows you between browsers. The
 browser keeps a copy too, read synchronously, so a reload paints correctly

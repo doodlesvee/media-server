@@ -8,6 +8,7 @@ import { MediaGrid, type GridSource } from "@/components/MediaGrid";
 import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
+import { readSortPreference, writeSortPreference } from "@/lib/sortPreference";
 import { FilterChips } from "@/components/FilterBar";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import {
@@ -339,10 +340,18 @@ export function BrowsePage() {
         )}
         <MediaGrid
           source={source}
-          sort={sort as Parameters<typeof MediaGrid>[0]["sort"]}
+          // The URL wins when it names a sort — a shared or bookmarked link
+          // has to open the order it describes. The remembered preference is
+          // only the starting point when it does not.
+          sort={
+            (sort ?? readSortPreference("library", "newest")) as Parameters<
+              typeof MediaGrid
+            >[0]["sort"]
+          }
           year={year != null ? String(year) : ""}
           month={month}
-          onViewStateChange={(state) =>
+          onViewStateChange={(state) => {
+            writeSortPreference("library", state.sort);
             void navigate({
               to: "/browse",
               search: (current) => ({
@@ -355,8 +364,8 @@ export function BrowsePage() {
                 // of the new year instead of all of it.
                 month: state.month,
               }),
-            })
-          }
+            });
+          }}
           onFiltersChange={applyFilters}
           onOpenFolder={(id) =>
             void navigate({ to: "/browse", search: { parentId: id } })

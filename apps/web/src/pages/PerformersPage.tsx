@@ -53,10 +53,18 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 export function PerformersPage() {
   const navigate = useNavigate();
-  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
-  // The same three axes the media grid uses, so choosing List once applies
-  // here too rather than only to videos.
-  const layout = cardLayout(tileWidthPx(tileSizePercent), viewMode, density, tileInfo);
+  const { tileSizePercent, tileInfo, viewMode, tileShape, density } = useAppearance();
+  // The same axes the media grid uses, so a layout choice made once applies
+  // here too rather than only to videos. The shape is passed for the gaps and
+  // column width to stay in step; the performer cards themselves keep their
+  // own 2:3 frame, which is not a preference.
+  const layout = cardLayout(
+    tileWidthPx(tileSizePercent),
+    viewMode,
+    density,
+    tileInfo,
+    tileShape,
+  );
 
   const openPerformer = (performer: PerformerSummary) =>
     void navigate({

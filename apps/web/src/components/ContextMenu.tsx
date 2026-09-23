@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Portal } from "./Portal";
@@ -11,6 +12,15 @@ export type ContextMenuEntry =
       disabled?: boolean;
       /** Renders in the destructive colour. Nothing here deletes originals. */
       danger?: boolean;
+      /**
+       * Marks the entry as the one currently in effect.
+       *
+       * `role="menuitemradio"` rather than a tick drawn into the label: a
+       * screen reader then announces which of a group is selected, which a
+       * character in the text does not. Entries that leave this undefined
+       * stay plain `menuitem`s and are unaffected.
+       */
+      checked?: boolean;
     }
   | { separator: true };
 
@@ -165,11 +175,13 @@ export function ContextMenu({
             );
 
           const Icon = entry.icon;
+          const checkable = entry.checked !== undefined;
           return (
             <button
               key={entry.label}
               type="button"
-              role="menuitem"
+              role={checkable ? "menuitemradio" : "menuitem"}
+              aria-checked={checkable ? entry.checked : undefined}
               disabled={entry.disabled}
               onMouseEnter={() => setActive(index)}
               onClick={() => choose(entry)}
@@ -181,6 +193,9 @@ export function ContextMenu({
             >
               {Icon && <Icon className="size-4 shrink-0" />}
               <span className="truncate">{entry.label}</span>
+              {entry.checked && (
+                <Check className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+              )}
             </button>
           );
         })}

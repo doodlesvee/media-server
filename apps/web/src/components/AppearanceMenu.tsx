@@ -5,6 +5,7 @@ import {
   activePreset,
   DENSITIES,
   PRESETS,
+  TILE_SHAPES,
   VIEW_MODES,
 } from "@/lib/layout";
 import {
@@ -64,6 +65,7 @@ export function AppearanceMenu() {
     tileSizePercent,
     tileInfo,
     viewMode,
+    tileShape,
     density,
     hoverZoom,
     hoverPreview,
@@ -106,7 +108,7 @@ export function AppearanceMenu() {
       // visually and the page's first real choice is the next click. Pinning
       // an empty override would leave the page following the globals while
       // the switch says otherwise.
-      setForScope({ viewMode, density, tileInfo, tileSizePercent });
+      setForScope({ viewMode, tileShape, density, tileInfo, tileSizePercent });
     } else {
       clearScope();
     }
@@ -472,6 +474,39 @@ export function AppearanceMenu() {
                 </div>
                 <span className="block text-[11px] leading-snug text-muted-foreground/70">
                   {VIEW_MODES.find((option) => option.value === viewMode)?.hint}
+                </span>
+              </div>
+
+              {/* Under View because the two are about the card itself, and
+                  above Density because the shape is the one people go looking
+                  for. Not part of a preset: a preset is a size and a level of
+                  detail, and either reads fine in either shape. */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium">Tile shape</span>
+                <div className="flex gap-1 rounded-md bg-secondary/60 p-0.5">
+                  {TILE_SHAPES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setLayout({ tileShape: option.value })}
+                      aria-pressed={tileShape === option.value}
+                      title={option.hint}
+                      className={cn(
+                        "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                        tileShape === option.value
+                          ? "bg-background font-medium text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="block text-[11px] leading-snug text-muted-foreground/70">
+                  {tileShape === "portrait"
+                    ? "Video stills are wide, so a tall frame crops their sides. Set a poster in a tile's menu to choose what it keeps."
+                    : TILE_SHAPES.find((option) => option.value === tileShape)
+                        ?.hint}
                 </span>
               </div>
 

@@ -63,6 +63,9 @@ export const SORTS = [
   "newest",
   "oldest",
   "title",
+  "titleDesc",
+  "released",
+  "releasedOldest",
   "longest",
   "shortest",
   "watched",
@@ -139,6 +142,20 @@ function orderFor(sort: string | undefined, randomSeed: number): SQL[] {
       return [asc(mediaItems.createdAt), asc(mediaItems.id)];
     case "title":
       return [sql`lower(${mediaItems.title}) asc`, asc(mediaItems.id)];
+    case "titleDesc":
+      return [sql`lower(${mediaItems.title}) desc`, desc(mediaItems.id)];
+    // Release date is when the scene came out, parsed from the filename —
+    // a different question from createdAt, which is when the file reached
+    // this library. A re-scan of an old collection makes every item "new"
+    // by createdAt while their release dates span twenty years.
+    //
+    // NULLS LAST in both directions, unlike the asc/desc pairs above: an
+    // undated item is not "earliest", it is unknown, and floating those to
+    // the top of "Oldest release" would bury the actual answer.
+    case "released":
+      return [sql`${mediaItems.releaseDate} desc nulls last`, desc(mediaItems.id)];
+    case "releasedOldest":
+      return [sql`${mediaItems.releaseDate} asc nulls last`, asc(mediaItems.id)];
     // Folders have no duration at all, and Postgres sorts NULLs first on
     // DESC — without NULLS LAST they'd head up the "longest" list.
     case "longest":
@@ -229,6 +246,7 @@ const itemColumns = {
   thumbnailPositionX: mediaItems.thumbnailPositionX,
   thumbnailPositionY: mediaItems.thumbnailPositionY,
   thumbnailScale: mediaItems.thumbnailScale,
+  tileShape: mediaItems.tileShape,
   durationSeconds: mediaItems.durationSeconds,
   takenAt: mediaItems.takenAt,
   releaseDate: mediaItems.releaseDate,
@@ -886,6 +904,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         thumbnailPositionX: mediaItems.thumbnailPositionX,
         thumbnailPositionY: mediaItems.thumbnailPositionY,
         thumbnailScale: mediaItems.thumbnailScale,
+        tileShape: mediaItems.tileShape,
         releaseDate: mediaItems.releaseDate,
       })
       .from(mediaItems)
@@ -1122,11 +1141,27 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       eq(mediaItemTypes.name, "photo"),
       visibleItems(),
       ne(mediaItems.id, id),
-      // Everything up to the last slash, compared exactly. A LIKE prefix
-      // would treat `_` and `%` in a folder name as wildcards, and both
-      // are legal characters — "Little Caprice/100%_Real" would match
-      // folders it has nothing to do with.
-      sql`substring(${mediaFiles.path} from '^(.*)/[^/]*$') = ${directory}`
+      // Beside the video, or one folder below it.
+      //
+      // The first pattern takes everything up to the last slash — the photo's
+      // own directory. The second takes everything up to the second-to-last
+      // slash — its parent — which is what matches the common layout where a
+      // scene folder holds the video and an `Images/` subfolder holds the
+      // stills. Without it those photos belong to no video at all, and the
+      // strip under the player was empty for a whole library.
+      //
+      // Only one level down, not any depth: a prefix match would pull every
+      // photo under a folder into the strip of a video that happens to sit at
+      // its top, which for a library organised by performer is thousands.
+      //
+      // Both compared exactly rather than with LIKE, because `_` and `%` are
+      // legal in folder names and a LIKE prefix would treat them as
+      // wildcards — "Little Caprice/100%_Real" would match folders it has
+      // nothing to do with.
+      sql`(
+        substring(${mediaFiles.path} from '^(.*)/[^/]*$') = ${directory}
+        or substring(${mediaFiles.path} from '^(.*)/[^/]*/[^/]*$') = ${directory}
+      )`
     );
 
     const rows = await db
@@ -1149,10 +1184,25 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
 
     // The album id lets the modal link through to the full gallery instead
     // of the strip being the only way to see 121 photos.
+    //
+    // The video's own albumId first, then the album its photos belong to.
+    // The fallback matters for the subfolder layout: the album row is created
+    // for the `Images/` directory and only its photos are linked to it, so the
+    // video has no albumId of its own until a rescan — and until then "See all"
+    // would be missing from a strip that is plainly showing an album.
     const [owner] = await db
       .select({ albumId: mediaItems.albumId })
       .from(mediaItems)
       .where(eq(mediaItems.id, id));
+
+    let albumId = owner?.albumId ?? null;
+    if (albumId === null && rows.length > 0) {
+      const [fromPhotos] = await db
+        .select({ albumId: mediaItems.albumId })
+        .from(mediaItems)
+        .where(and(eq(mediaItems.id, rows[0].id), isNotNull(mediaItems.albumId)));
+      albumId = fromPhotos?.albumId ?? null;
+    }
 
     // One extra row was fetched purely to answer "are there more?" without a
     // COUNT(*); only when there are does the real total get looked up.
@@ -1174,7 +1224,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return {
-      albumId: owner?.albumId ?? null,
+      albumId,
       total,
       images: images.map((row) => ({
         id: row.id,
@@ -1303,6 +1353,8 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailPositionX?: number;
       thumbnailPositionY?: number;
       thumbnailScale?: number;
+      /** 'landscape' | 'portrait', or null to follow the Appearance setting. */
+      tileShape?: string | null;
       seriesId?: number | null;
       seasonNumber?: number | null;
       episodeNumber?: number | null;
@@ -1320,6 +1372,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailPositionX,
       thumbnailPositionY,
       thumbnailScale,
+      tileShape,
       seriesId,
       seasonNumber,
       episodeNumber,
@@ -1368,6 +1421,21 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
     // bars. Ceiling keeps a poster from being magnified into mush.
     if (thumbnailScale !== undefined) {
       patch.thumbnailScale = clampPercent(thumbnailScale, 100, 300);
+    }
+    // Rejected rather than clamped, unlike the framing above: those arrive
+    // from a drag and a slider where a value just outside the range is a
+    // rounding artefact, but this comes from a menu with two entries. A third
+    // value is a bug or a hand-built request, and silently coercing it to
+    // 'landscape' would hide which.
+    //
+    // null is a real value here — "follow the Appearance setting" — so it has
+    // to pass through rather than being treated as "not supplied".
+    if (tileShape !== undefined) {
+      if (tileShape !== null && tileShape !== "landscape" && tileShape !== "portrait") {
+        reply.code(400);
+        return { error: "tileShape must be 'landscape', 'portrait', or null" };
+      }
+      patch.tileShape = tileShape;
     }
     if (studio !== undefined) {
       const name = studio?.trim();

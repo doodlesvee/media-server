@@ -22,6 +22,7 @@ export function FramingEditor({
   src,
   value,
   aspectClass,
+  aspectRatio,
   saving,
   onSave,
   onCancel,
@@ -30,6 +31,16 @@ export function FramingEditor({
   src: string;
   value: FramingValue;
   aspectClass: string;
+  /**
+   * A CSS `aspect-ratio`, taking precedence over `aspectClass`.
+   *
+   * For frames whose shape is a setting rather than a constant: a Tailwind
+   * class has to be written out literally to be emitted, so a tile shape that
+   * can be tuned cannot be expressed as one, and the class and the tile
+   * silently drift the first time the shape changes. Passing the computed
+   * ratio makes that impossible.
+   */
+  aspectRatio?: string;
   saving?: boolean;
   onSave: (next: FramingValue) => void;
   onCancel: () => void;
@@ -131,8 +142,9 @@ export function FramingEditor({
         ref={containerRef}
         className={cn(
           "relative w-full max-w-sm overflow-hidden rounded-md ring-1 ring-border",
-          aspectClass
+          !aspectRatio && aspectClass
         )}
+        style={aspectRatio ? { aspectRatio } : undefined}
       >
         <img
           ref={imageRef}

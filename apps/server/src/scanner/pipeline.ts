@@ -697,7 +697,25 @@ async function assignAlbums(roots: { path: string }[]): Promise<void> {
       .onConflictDoUpdate({ target: albums.path, set: { title } })
       .returning();
 
-    const needsLinking = items
+    // The scene's video, when the photos live in a subfolder.
+    //
+    // A very common layout is a scene folder holding the video with an
+    // `Images/` (or `Stills/`, or whatever it is called) subfolder beside it.
+    // Grouping strictly by directory puts the two in different buckets, so
+    // the album was built from the photos alone and the video was left with
+    // no albumId — which is what made the gallery strip under the player
+    // empty for every scene organised that way.
+    //
+    // Only the immediate parent, and only when this directory has no video of
+    // its own: the parent is the scene, and reaching any further up would
+    // attach a studio-wide folder of artwork to every video beneath it.
+    const parent = directory.slice(0, directory.lastIndexOf("/"));
+    const parentVideos =
+      !items.some((i) => i.typeName === "video") && parent
+        ? (byDirectory.get(parent) ?? []).filter((i) => i.typeName === "video")
+        : [];
+
+    const needsLinking = [...items, ...parentVideos]
       .filter((i) => i.albumId !== album.id)
       .map((i) => i.itemId);
     if (needsLinking.length > 0) {

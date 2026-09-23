@@ -58,12 +58,13 @@ const NUMBER_KEYS = {
 const ENUM_KEYS: Record<string, string[]> = {
   tileInfo: ["full", "title", "none"],
   viewMode: ["grid", "compact", "large"],
+  tileShape: ["landscape", "portrait"],
   density: ["spacious", "comfortable", "compact", "dense"],
   motion: ["full", "reduced", "none"],
 };
 
-/** The four layout settings a single page may pin for itself. */
-const PAGE_OVERRIDE_ENUMS = ["viewMode", "density", "tileInfo"] as const;
+/** The layout settings a single page may pin for itself. */
+const PAGE_OVERRIDE_ENUMS = ["viewMode", "tileShape", "density", "tileInfo"] as const;
 
 /**
  * Must track the client's HOME_ROWS. There is no shared package between the

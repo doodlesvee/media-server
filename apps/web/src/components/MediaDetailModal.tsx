@@ -52,6 +52,7 @@ import {
   writeVolume,
 } from "@/lib/playerPrefs";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
+import { cardChrome } from "@/lib/layout";
 import { cn, formatDuration } from "@/lib/utils";
 import { useUndoable } from "@/lib/undo";
 import { QueuePanel } from "./QueuePanel";
@@ -134,7 +135,7 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
-  const { discreet, modalPreview, autoplayNext } = useAppearance();
+  const { discreet, modalPreview, autoplayNext, tileShape, density } = useAppearance();
   const runUndoable = useUndoable();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
   // Opened, but holding the still with nothing running. Only ever true before
@@ -1303,15 +1304,32 @@ export function MediaDetailModal({
                           y: item.thumbnailPositionY,
                           scale: item.thumbnailScale,
                         }}
-                        // Previewed at the tile's shape, which is also the hover
-                        // card's and the modal backdrop's. The hero crops the
-                        // same image far wider, so the note below warns that the
-                        // choice shows up there too.
+                        // Previewed at the shape this tile is actually drawn
+                        // at: frame against 16:9 while the tile crops tall and
+                        // you would choose a band that gets cut on every tile
+                        // in the library.
+                        //
+                        // Taken from cardChrome rather than written out as a
+                        // class, so tuning the portrait ratio moves this
+                        // preview with it. It used to be a literal
+                        // `aspect-[5/7]`, which was correct only until the
+                        // first time that number changed.
                         aspectClass="aspect-video"
+                        aspectRatio={
+                          cardChrome(
+                            density,
+                            "none",
+                            item.tileShape ?? tileShape,
+                          ).aspectRatio
+                        }
                         saving={saveFraming.isPending}
                         onSave={(next) => saveFraming.mutate(next)}
                         onCancel={() => setReframing(false)}
-                        note="Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
+                        note={
+                          tileShape === "portrait"
+                            ? "Used everywhere this image appears. The hover card and the hero banner crop it much wider than this."
+                            : "Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
+                        }
                       />
                     ) : (
                       <button

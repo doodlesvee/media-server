@@ -43,12 +43,13 @@ export function MissingSection({ onLocked }: { onLocked?: () => void }) {
   });
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
+  const { tileSizePercent, tileInfo, viewMode, tileShape, density } = useAppearance();
   const layout = cardLayout(
     tileWidthPx(tileSizePercent),
     viewMode,
     density,
     tileInfo,
+    tileShape,
   );
   const tileWidth = layout.widthPx;
   const [selected, setSelected] = useState<Set<number>>(new Set());

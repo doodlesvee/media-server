@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { activePreset, cardLayout, PRESETS, VIEW_MODES } from "./layout";
+import {
+  activePreset,
+  cardChrome,
+  cardLayout,
+  PRESETS,
+  PORTRAIT_HEIGHT_FACTOR,
+  SHAPE_ASPECT,
+  TILE_SHAPES,
+  tileWidthFraction,
+  VIEW_MODES,
+} from "./layout";
 import { columnsForWidth } from "./gridLayout";
 import { tileWidthPx } from "./appearance";
 
@@ -157,5 +167,143 @@ describe("activePreset", () => {
   it("gives every preset a distinct combination", () => {
     const seen = new Set(PRESETS.map((p) => JSON.stringify(p.settings)));
     expect(seen.size).toBe(PRESETS.length);
+  });
+});
+
+describe("tile shape", () => {
+  // Every assertion below reads the ratio from SHAPE_ASPECT rather than
+  // restating it. The exact portrait ratio is a taste setting that gets tuned
+  // against the real page, and a test that hardcodes it turns each tweak into
+  // a failing build — which is exactly what happened, twice, and taught
+  // nothing either time. What must hold is the *behaviour*: portrait is
+  // taller than it is wide, landscape is unchanged, and neither can come back
+  // undefined.
+  const ratio = (shape: "landscape" | "portrait") =>
+    SHAPE_ASPECT[shape].h / SHAPE_ASPECT[shape].w;
+
+  const css = (shape: "landscape" | "portrait") =>
+    `${SHAPE_ASPECT[shape].w} / ${SHAPE_ASPECT[shape].h}`;
+
+  it("crops to the shape asked for", () => {
+    for (const { value } of TILE_SHAPES) {
+      expect(cardLayout(400, "grid", "comfortable", "full", value).aspectRatio).toBe(css(value));
+    }
+  });
+
+  // The one number that is not a taste setting: changing it would redraw every
+  // existing library, so it is pinned deliberately.
+  it("leaves landscape at the ratio the app has always drawn", () => {
+    expect(cardLayout(400, "grid", "comfortable", "full", "landscape").aspectRatio).toBe("16 / 10");
+  });
+
+  it("makes portrait taller than wide, and taller than landscape", () => {
+    expect(ratio("portrait")).toBeGreaterThan(1);
+    expect(ratio("landscape")).toBeLessThan(1);
+    expect(ratio("portrait")).toBeGreaterThan(ratio("landscape"));
+  });
+
+  // Landscape is the default argument, so every call site that predates the
+  // setting — and any that is missed later — draws what it always drew.
+  it("defaults to landscape when no shape is passed", () => {
+    expect(cardLayout(400, "grid", "comfortable", "full").aspectRatio).toBe("16 / 10");
+    expect(cardChrome("comfortable", "full").aspectRatio).toBe("16 / 10");
+  });
+
+  // Same invariant the view modes have: the shape is the crop, the mode is
+  // the width, and neither may quietly become the other.
+  it("holds the shape across every mode and density", () => {
+    for (const { value } of VIEW_MODES) {
+      expect(cardLayout(400, value, "dense", "full", "portrait").aspectRatio).toBe(css("portrait"));
+      expect(cardLayout(400, value, "spacious", "full", "portrait").aspectRatio).toBe(
+        css("portrait")
+      );
+    }
+  });
+
+  // A NaN here would collapse the virtualized grid's scrollbar, which is why
+  // the ratio is carried as numbers rather than parsed back out of the string.
+  it("reports a usable height ratio for both shapes", () => {
+    for (const { value } of TILE_SHAPES) {
+      const { heightRatio } = cardLayout(400, "grid", "comfortable", "full", value);
+      expect(heightRatio).toBeCloseTo(ratio(value));
+      expect(Number.isFinite(heightRatio)).toBe(true);
+      expect(heightRatio).toBeGreaterThan(0);
+    }
+  });
+
+  // Without the width scale, choosing portrait globally is a size change
+  // wearing a shape's clothes: the same column width at a tall ratio is a much
+  // bigger card, and the size slider stops meaning one thing.
+  //
+  // A loose bound on purpose. The scale is a rounded constant and the ratio is
+  // tunable, so pinning this tightly would break on the next tweak — but a
+  // portrait column that stopped being narrower, or grew to twice the area,
+  // would be a real regression.
+  it("narrows the column for portrait, so a card stays comparable in size", () => {
+    const landscape = cardLayout(400, "grid", "comfortable", "full", "landscape");
+    const portrait = cardLayout(400, "grid", "comfortable", "full", "portrait");
+
+    expect(portrait.widthPx).toBeLessThan(landscape.widthPx);
+
+    const area = (l: { widthPx: number; heightRatio: number }) =>
+      l.widthPx * l.widthPx * l.heightRatio;
+    const factor = area(portrait) / area(landscape);
+    expect(factor).toBeGreaterThan(0.6);
+    expect(factor).toBeLessThan(1.6);
+  });
+
+  // Stored settings are hand-editable and arrive from a server that may be a
+  // version ahead. "undefined / undefined" reaches CSS as an invalid value
+  // and collapses every frame in the app.
+  it("falls back to landscape rather than returning undefined for an unknown shape", () => {
+    const layout = cardLayout(400, "grid", "comfortable", "full", "tall" as never);
+    expect(layout.aspectRatio).toBe("16 / 10");
+    expect(Number.isFinite(layout.heightRatio)).toBe(true);
+    expect(layout.widthPx).toBe(400);
+  });
+
+  // A tile's width is its column's, and the column is sized for the global
+  // shape. Left alone, a portrait tile in a landscape grid keeps the full
+  // width and stands two and a half times the height of its neighbours.
+  describe("a tile whose shape differs from its column", () => {
+    it("takes the whole column when the shapes agree", () => {
+      expect(tileWidthFraction("landscape", "landscape")).toBe(1);
+      expect(tileWidthFraction("portrait", "portrait")).toBe(1);
+    });
+
+    it("narrows a portrait tile in a landscape column", () => {
+      expect(tileWidthFraction("portrait", "landscape")).toBeLessThan(1);
+      expect(tileWidthFraction("portrait", "landscape")).toBeGreaterThan(0);
+    });
+
+    // The point of the whole exercise, stated in the terms the eye judges it
+    // by, so it survives either ratio being tuned.
+    it("leaves a portrait tile only a little taller than a landscape one", () => {
+      const fraction = tileWidthFraction("portrait", "landscape");
+      const portraitHeight = fraction * (SHAPE_ASPECT.portrait.h / SHAPE_ASPECT.portrait.w);
+      const landscapeHeight = SHAPE_ASPECT.landscape.h / SHAPE_ASPECT.landscape.w;
+
+      expect(portraitHeight / landscapeHeight).toBeCloseTo(PORTRAIT_HEIGHT_FACTOR, 2);
+    });
+
+    // A shorter tile already takes less room than its neighbours; widening it
+    // past its column would push into the next one.
+    it("never widens a tile beyond its column", () => {
+      expect(tileWidthFraction("landscape", "portrait")).toBe(1);
+    });
+
+    // Stored shapes are hand-editable, and a NaN width would collapse the tile.
+    it("returns a usable fraction for an unknown shape", () => {
+      const fraction = tileWidthFraction("tall" as never, "landscape");
+      expect(Number.isFinite(fraction)).toBe(true);
+      expect(fraction).toBeGreaterThan(0);
+      expect(fraction).toBeLessThanOrEqual(1);
+    });
+  });
+
+  // Two, not three. The size control above it already has three stops; this
+  // is a flip between the two shapes artwork actually comes in.
+  it("offers exactly the two shapes", () => {
+    expect(TILE_SHAPES.map((shape) => shape.value)).toEqual(["landscape", "portrait"]);
   });
 });

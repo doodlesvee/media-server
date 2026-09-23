@@ -28,6 +28,7 @@ import { setMediaDragData } from "@/lib/dragMedia";
 import { isTypingTarget, playItem } from "@/lib/appEvents";
 import { useCardShortcuts } from "@/lib/cardShortcuts";
 import { readPins } from "@/lib/pinned";
+import { tileShapeEntries, useTileShape } from "@/lib/tileMenu";
 import {
   chunkIntoRows,
   columnsForWidth,
@@ -144,7 +145,8 @@ export function MediaGrid({
     month?: number;
   }) => void;
 }) {
-  const { tileSizePercent, tileInfo, viewMode, density } = useAppearance();
+  const { tileSizePercent, tileInfo, viewMode, tileShape, density } = useAppearance();
+  const setTileShape = useTileShape();
   const { add, addNext, clear } = useQueue();
   // Every length the grid needs comes from here, so the mode and density can
   // change the shape of the page without this component knowing what either
@@ -154,6 +156,7 @@ export function MediaGrid({
     viewMode,
     density,
     tileInfo,
+    tileShape,
   );
   const tileWidth = layout.widthPx;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
@@ -657,6 +660,10 @@ export function MediaGrid({
               },
             ]
           : []),
+        { separator: true as const },
+        // Shared with every other surface that draws tiles, so the same tile
+        // offers the same shape entries wherever it is right-clicked.
+        ...tileShapeEntries(item, tileShape, setTileShape),
         ...(isFolder
           ? []
           : [

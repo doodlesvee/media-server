@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
 import { useAppearance } from "@/lib/appearance";
-import { cardChrome } from "@/lib/layout";
+import { cardChrome, tileWidthFraction } from "@/lib/layout";
 import { worthExpanding } from "@/lib/hoverCard";
 import { cn } from "@/lib/utils";
 import { HoverPreviewCard } from "./HoverPreviewCard";
@@ -30,6 +30,15 @@ export type MediaCardItem = {
   thumbnailPositionX?: number;
   thumbnailPositionY?: number;
   thumbnailScale?: number;
+  /**
+   * This tile's own shape, set from its right-click menu.
+   *
+   * Optional *and* nullable, and the two mean different things: undefined is
+   * "this caller does not send the field", null is "the server says follow
+   * the Appearance setting". Both fall back to the global shape, so a surface
+   * that never selects the column keeps working.
+   */
+  tileShape?: "landscape" | "portrait" | null;
   description?: string | null;
   /**
    * State the tile shows, and which the list endpoint has always returned —
@@ -60,6 +69,7 @@ export function MediaCard({
   selectable = false,
   selected = false,
   className,
+  shapeSizedByContainer = false,
   tabIndex,
   gridIndex,
 }: {
@@ -82,6 +92,17 @@ export function MediaCard({
   selected?: boolean;
   className?: string;
   /**
+   * Set by a container that has already narrowed this tile's slot to suit its
+   * shape — a row, where each tile is its own flex item and can simply be
+   * given a smaller width.
+   *
+   * Without it the card narrows itself inside a slot that is already the
+   * right size, shrinking twice. Left unset in a uniform grid, where every
+   * column is the same width and the odd-shaped tile has to be centred in
+   * one, gaps and all.
+   */
+  shapeSizedByContainer?: boolean;
+  /**
    * Set by a virtualized grid running a roving tab stop, so Tab enters the
    * grid once and the arrow keys move within it. Left undefined elsewhere,
    * where every card being a tab stop is the right behaviour.
@@ -100,11 +121,26 @@ export function MediaCard({
     hoverPreview,
     discreet,
     tileInfo: tileInfoSetting,
+    tileShape,
     density,
   } = useAppearance();
-  // Density decides how tightly the text sits in the frame. The card's width
-  // is the grid's business, so nothing here depends on the view mode.
-  const chrome = cardChrome(density, tileInfoSetting);
+  // Density decides how tightly the text sits in the frame, and the shape
+  // decides how the artwork is cropped. The card's width is the grid's
+  // business, so nothing here depends on the view mode.
+  //
+  // The item's own shape wins over the Appearance setting, which is what
+  // makes a single tile portrait in a landscape library. Only the *crop*
+  // changes: the column width is the grid's, identical for every tile, so a
+  // portrait one is the same width as its neighbours and simply taller.
+  const shape = item.tileShape ?? tileShape;
+  const chrome = cardChrome(density, tileInfoSetting, shape);
+  // How much of its column this tile takes. Below 1 only when its own shape
+  // is taller than the one the column was sized for — otherwise a portrait
+  // tile among landscape ones keeps the full width and stands two and a half
+  // times their height.
+  const widthFraction = shapeSizedByContainer
+    ? 1
+    : tileWidthFraction(shape, tileShape);
   const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
   /**
@@ -291,12 +327,22 @@ export function MediaCard({
             // crops a sliver off each side — the tile reads as slightly taller
             // without the artwork losing anything that matters.
             "relative overflow-hidden rounded-md bg-secondary ring-1 ring-border transition-all duration-200",
-            "w-full",
+            // Centred rather than left-aligned when it is narrower than its
+            // column, so a row of mixed shapes reads as a row rather than as
+            // tiles that failed to line up.
+            "mx-auto w-full",
             !selectable && "group-hover:ring-white/40",
             selected && "ring-2 ring-primary",
             item.missingSince && "opacity-50",
           )}
-          style={{ aspectRatio: chrome.aspectRatio }}
+          style={{
+            aspectRatio: chrome.aspectRatio,
+            // Only written when it actually narrows the tile, so the ordinary
+            // case sets no inline width at all.
+            ...(widthFraction < 1
+              ? { maxWidth: `${(widthFraction * 100).toFixed(2)}%` }
+              : {}),
+          }}
         >
           {showImage ? (
             <>
@@ -462,6 +508,14 @@ export function MediaCard({
           onDismiss={() => {
             setAnchorRect(null);
             engage("hover", false);
+          }}
+          onContextMenu={(event) => {
+            // Same teardown as the tile's own handler: the menu opens over
+            // this card, so the pointer never leaves it and it would other-
+            // wise stay open underneath the menu.
+            cancelHover();
+            setAnchorRect(null);
+            onContextMenu?.(event);
           }}
         />
       )}

@@ -4,6 +4,7 @@ import { Check, Pencil, X } from "lucide-react";
 import { saveBannerPosition } from "@/lib/performerApi";
 import { useAppearance } from "@/lib/appearance";
 import { framingAfterDrag } from "@/lib/reposition";
+import { cn } from "@/lib/utils";
 
 /**
  * Banner image with drag-to-reposition.
@@ -107,33 +108,49 @@ export function PerformerBanner({
       className="group relative w-full overflow-hidden"
     >
       {src ? (
-        editing ? (
-          <img
-            ref={imageRef}
-            src={src}
-            draggable={false}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              drag.current = { startY: event.clientY, startPosition: draft };
-            }}
-            style={{ objectPosition: `50% ${draft}%` }}
-            className="h-full w-full select-none object-cover cursor-grab active:cursor-grabbing"
-          />
-        ) : (
-          <div
-            aria-hidden="true"
-            // `discreet-background` because this paints its picture through
-            // background-image; the blur rule cannot see it as an image
-            // otherwise. The editing branch above is a real <img> and is
-            // already covered.
-            className="performer-banner-fixed discreet-background absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{
-              backgroundAttachment: "fixed",
-              backgroundImage: `url("${src}")`,
-              backgroundPosition: `50% ${draft}%`,
-            }}
-          />
-        )
+        /**
+         * One <img> for both states, deliberately.
+         *
+         * Viewing used to paint the banner as a background-image with
+         * `background-attachment: fixed`, for a parallax drift on scroll.
+         * That is measured against the *viewport*, not this element: with
+         * `cover`, the image was scaled to fill the full window height while
+         * the editor scaled it to fill a banner of `bannerHeight` vh, and the
+         * percentage position resolved against the viewport too. So the frame
+         * you dragged into place was never the frame you got — saving
+         * appeared to zoom in and crop, by exactly the ratio between the
+         * banner's height and the window's.
+         *
+         * The parallax is not worth a control that lies about its own result.
+         * Rendering the same element in both states makes the preview correct
+         * by construction rather than by two code paths agreeing, which is
+         * what they had already stopped doing.
+         *
+         * A real <img> also means the discreet-mode blur applies without the
+         * `discreet-background` helper the old background-image needed.
+         */
+        <img
+          ref={imageRef}
+          src={src}
+          alt=""
+          draggable={false}
+          onPointerDown={
+            editing
+              ? (event) => {
+                  event.preventDefault();
+                  drag.current = {
+                    startY: event.clientY,
+                    startPosition: draft,
+                  };
+                }
+              : undefined
+          }
+          style={{ objectPosition: `50% ${draft}%` }}
+          className={cn(
+            "h-full w-full select-none object-cover",
+            editing && "cursor-grab active:cursor-grabbing",
+          )}
+        />
       ) : (
         <div className="h-full w-full bg-gradient-to-br from-secondary to-background" />
       )}

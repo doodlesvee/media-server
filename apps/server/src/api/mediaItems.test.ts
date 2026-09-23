@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase, signIn, testApp } from "../test/harness.js";
+import { SORTS } from "./mediaItems.js";
 import {
   attachFile,
   linkPerformer,
@@ -207,6 +208,60 @@ describe("GET /api/media-items", () => {
       const body = (await get("/api/media-items?sort=longest")).json();
       expect(body.items[0].title).toBe("Long");
     });
+
+    it("sorts by title descending", async () => {
+      await makeItem(libraryId, { title: "Apple" });
+      await makeItem(libraryId, { title: "Zebra" });
+      const body = (await get("/api/media-items?sort=titleDesc")).json();
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Zebra", "Apple"]);
+    });
+
+    // Release date is the scene's own chronology, parsed from the filename.
+    // Distinct from createdAt: re-scanning an old collection makes every item
+    // newly *added* while their release dates span years, so sorting by one
+    // and expecting the other is a real mistake to guard against.
+    it("sorts by release date, newest first", async () => {
+      await makeItem(libraryId, { title: "Older", releaseDate: "2011-09-19" });
+      await makeItem(libraryId, { title: "Newer", releaseDate: "2020-02-13" });
+      const body = (await get("/api/media-items?sort=released")).json();
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Newer", "Older"]);
+    });
+
+    it("sorts by release date, oldest first", async () => {
+      await makeItem(libraryId, { title: "Newer", releaseDate: "2020-02-13" });
+      await makeItem(libraryId, { title: "Older", releaseDate: "2011-09-19" });
+      const body = (await get("/api/media-items?sort=releasedOldest")).json();
+      expect(body.items.map((i: { title: string }) => i.title)).toEqual(["Older", "Newer"]);
+    });
+
+    // An undated item is unknown, not earliest. Sorted naively ascending,
+    // Postgres puts NULLs last on ASC but *first* on DESC — and treating
+    // "no date" as the oldest would bury the actual answer to "what is the
+    // oldest release" under every unparsed filename in the library.
+    it("puts undated items last in both release orders", async () => {
+      await makeItem(libraryId, { title: "Undated" });
+      await makeItem(libraryId, { title: "Dated", releaseDate: "2015-01-01" });
+
+      for (const sort of ["released", "releasedOldest"]) {
+        const body = (await get(`/api/media-items?sort=${sort}`)).json();
+        const titles = body.items.map((i: { title: string }) => i.title);
+        expect(titles[0]).toBe("Dated");
+        expect(titles[titles.length - 1]).toBe("Undated");
+      }
+    });
+
+    // Every sort has to be reachable: a value the client offers but the
+    // server has not been taught falls through to the default, which looks
+    // like the control silently doing nothing.
+    it("honours every sort the client can send", async () => {
+      await makeItem(libraryId, { title: "Anything", releaseDate: "2018-06-01" });
+
+      for (const sort of SORTS) {
+        const res = await get(`/api/media-items?sort=${sort}`);
+        expect(res.statusCode, `sort=${sort}`).toBe(200);
+        expect(res.json().items.length, `sort=${sort}`).toBeGreaterThan(0);
+      }
+    });
   });
 });
 
@@ -278,6 +333,52 @@ describe("PATCH /api/media-items/:id", () => {
     const item = (await get(`/api/media-items/${id}`)).json();
     expect(item.thumbnailPositionX).toBe(100);
     expect(item.thumbnailScale).toBe(300);
+  });
+
+  it("pins one item's tile shape", async () => {
+    const id = await makeItem(libraryId);
+    expect((await patch(id, { tileShape: "portrait" })).statusCode).toBe(200);
+    expect((await get(`/api/media-items/${id}`)).json().tileShape).toBe("portrait");
+  });
+
+  // The whole point of the feature: shape is per item, so setting one must
+  // not reach the next tile in the grid.
+  it("leaves every other item's shape alone", async () => {
+    const mine = await makeItem(libraryId);
+    const theirs = await makeItem(libraryId);
+    await patch(mine, { tileShape: "portrait" });
+
+    expect((await get(`/api/media-items/${theirs}`)).json().tileShape).toBeNull();
+  });
+
+  // Rejected rather than clamped, unlike the framing above: this comes from a
+  // menu with two entries, so a third value is a bug and should say so.
+  it("rejects a shape that is neither landscape nor portrait", async () => {
+    const id = await makeItem(libraryId);
+    expect((await patch(id, { tileShape: "diagonal" })).statusCode).toBe(400);
+    expect((await get(`/api/media-items/${id}`)).json().tileShape).toBeNull();
+  });
+
+  // null is a value, not an omission: it means "follow the Appearance
+  // setting". Treating it as "not supplied" would make the reset entry in the
+  // menu do nothing at all.
+  it("clears a pinned shape back to following the global setting", async () => {
+    const id = await makeItem(libraryId);
+    await patch(id, { tileShape: "portrait" });
+    expect((await patch(id, { tileShape: null })).statusCode).toBe(200);
+    expect((await get(`/api/media-items/${id}`)).json().tileShape).toBeNull();
+  });
+
+  // A tile is drawn from the list response, not from the detail endpoint, so
+  // the column being on the item is not enough — it has to reach the grid.
+  it("returns the shape in the list response the grid renders from", async () => {
+    const id = await makeItem(libraryId);
+    await patch(id, { tileShape: "portrait" });
+
+    const listed = (await get("/api/media-items")).json().items.find(
+      (i: { id: number }) => i.id === id
+    );
+    expect(listed.tileShape).toBe("portrait");
   });
 });
 
@@ -402,6 +503,73 @@ describe("GET /api/media-items/:id/gallery", () => {
     await attachFile(video, rootId, "/media/Alice/A_B/scene.mp4");
     const decoy = await makePhoto(libraryId, "decoy");
     await attachFile(decoy, rootId, "/media/Alice/AXB/1.jpg");
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images).toEqual([]);
+  });
+
+  // The layout this was blind to: the scene folder holds the video and an
+  // Images/ subfolder holds the stills. Matching only the video's own
+  // directory found nothing, so the strip under the player was empty for an
+  // entire library organised that way.
+  it("finds photos in a subfolder of the video's own folder", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Arrest Me/scene.mp4");
+    const photo = await makePhoto(libraryId, "still-1");
+    await attachFile(photo, rootId, "/media/Alice/Arrest Me/Images/1.jpg");
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images.map((i: { title: string }) => i.title)).toEqual(["still-1"]);
+  });
+
+  it("counts a subfolder's photos in the total", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Scene/scene.mp4");
+    for (let i = 0; i < 12; i++) {
+      const photo = await makePhoto(libraryId, `still-${i}`);
+      await attachFile(photo, rootId, `/media/Alice/Scene/Images/${i}.jpg`);
+    }
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images).toHaveLength(8);
+    expect(body.total).toBe(12);
+  });
+
+  it("takes photos beside the video and in a subfolder together", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Scene/scene.mp4");
+    const beside = await makePhoto(libraryId, "beside");
+    await attachFile(beside, rootId, "/media/Alice/Scene/cover.jpg");
+    const below = await makePhoto(libraryId, "below");
+    await attachFile(below, rootId, "/media/Alice/Scene/Images/1.jpg");
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images.map((i: { title: string }) => i.title).sort()).toEqual([
+      "below",
+      "beside",
+    ]);
+  });
+
+  // One level, not any depth. On a library filed by performer, a prefix match
+  // would pull every photo under the performer into the strip of a video
+  // sitting at the top of that folder — thousands of images in a modal.
+  it("does not reach more than one folder deep", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/scene.mp4");
+    const tooDeep = await makePhoto(libraryId, "too-deep");
+    await attachFile(tooDeep, rootId, "/media/Alice/Studio/Scene/Images/1.jpg");
+
+    const body = (await get(`/api/media-items/${video}/gallery`)).json();
+    expect(body.images).toEqual([]);
+  });
+
+  // A sibling folder is not a subfolder. Both are one level from the parent,
+  // so a sloppier pattern would treat the two as the same thing.
+  it("does not pull in a sibling folder's photos", async () => {
+    const video = await makeItem(libraryId, { title: "Scene" });
+    await attachFile(video, rootId, "/media/Alice/Scene One/scene.mp4");
+    const sibling = await makePhoto(libraryId, "sibling");
+    await attachFile(sibling, rootId, "/media/Alice/Scene Two/1.jpg");
 
     const body = (await get(`/api/media-items/${video}/gallery`)).json();
     expect(body.images).toEqual([]);

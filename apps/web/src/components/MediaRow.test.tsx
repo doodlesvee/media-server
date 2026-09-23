@@ -104,3 +104,51 @@ describe("MediaRow single-key shortcuts", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The third instance of the same regression, and the reason tile shape could
+ * not be set from the home page.
+ *
+ * The right-click menu lived inside MediaGrid, so it existed on the browse
+ * page and nowhere else. Right-clicking a tile in a row fell through to the
+ * browser's own menu — on a video that is Chrome's "Save Video As / Loop"
+ * menu, which is what a user actually saw when told to right-click a tile.
+ */
+describe("MediaRow right-click menu", () => {
+  it("opens the app's own menu on a row tile, not the browser's", async () => {
+    const user = renderRow();
+    const card = await screen.findByRole("button", { name: /Row video/ });
+
+    await user.pointer({ keys: "[MouseRight]", target: card });
+
+    expect(await screen.findByRole("menu", { name: /Actions/ })).toBeInTheDocument();
+  });
+
+  it("offers the tile shape entries there", async () => {
+    const user = renderRow();
+    const card = await screen.findByRole("button", { name: /Row video/ });
+
+    await user.pointer({ keys: "[MouseRight]", target: card });
+
+    expect(await screen.findByRole("menuitemradio", { name: "Portrait tile" })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitemradio", { name: "Landscape tile" })).toBeInTheDocument();
+  });
+
+  // The tick has to follow the shape the tile is drawn at, which for an item
+  // with none of its own is the Appearance default.
+  it("ticks the shape the tile is currently drawn at", async () => {
+    const user = renderRow();
+    const card = await screen.findByRole("button", { name: /Row video/ });
+
+    await user.pointer({ keys: "[MouseRight]", target: card });
+
+    expect(await screen.findByRole("menuitemradio", { name: "Landscape tile" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(await screen.findByRole("menuitemradio", { name: "Portrait tile" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+});

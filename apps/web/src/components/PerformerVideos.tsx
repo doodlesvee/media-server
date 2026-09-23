@@ -4,6 +4,8 @@ import { MediaGrid } from "./MediaGrid";
 import { MediaRow } from "./MediaRow";
 import type { MediaCardItem } from "./MediaCard";
 import type { PerformerDetail } from "@/lib/performerApi";
+import { SORT_OPTIONS, type SortValue } from "@/lib/filters";
+import { readSortPreference, writeSortPreference } from "@/lib/sortPreference";
 import { cn } from "@/lib/utils";
 
 type Grouping = "studio" | "year" | "none";
@@ -29,16 +31,20 @@ function VideoSection({
   title,
   performer,
   params,
+  sort,
   onSelect,
 }: {
   title: string;
   performer: string;
   params: Record<string, string>;
+  sort: SortValue;
   onSelect: (id: number, autoPlay: boolean) => void;
 }) {
-  const query = new URLSearchParams({ performer, ...params });
+  const query = new URLSearchParams({ performer, sort, ...params });
+  // `sort` is part of the key, or switching it would show the previous
+  // order from cache until the request came back.
   const { data, isLoading } = useQuery({
-    queryKey: ["performer-videos", performer, params],
+    queryKey: ["performer-videos", performer, params, sort],
     queryFn: () => fetchItems(query),
   });
 
@@ -76,6 +82,20 @@ export function PerformerVideos({
   onSelect: (id: number, autoPlay: boolean) => void;
 }) {
   const [grouping, setGrouping] = useState<Grouping>("studio");
+  // Seeded from the last order chosen on a performer page, falling back to
+  // newest-first — the grid's own default, so switching between grouped and
+  // All does not reorder the page under you.
+  //
+  // A lazy initialiser, so storage is read once on mount rather than on every
+  // render.
+  const [sort, setSort] = useState<SortValue>(() =>
+    readSortPreference("performer", "newest"),
+  );
+
+  function chooseSort(next: SortValue) {
+    setSort(next);
+    writeSortPreference("performer", next);
+  }
 
   // A performer with nothing to group by would get a single meaningless
   // section, so offer grouping only where it says something.
@@ -106,6 +126,24 @@ export function PerformerVideos({
             {option.label}
           </button>
         ))}
+
+        {/* A select rather than the button row above it: twelve sorts would
+            wrap onto three lines, where four groupings fit on one. The plain
+            grid uses the same list, so the two views offer the same orders. */}
+        <label className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Sort</span>
+          <select
+            value={sort}
+            onChange={(event) => chooseSort(event.target.value as SortValue)}
+            className="rounded-md bg-secondary px-2 py-1 text-xs text-foreground outline-none ring-border focus:ring-1"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {effective === "studio" &&
@@ -117,6 +155,7 @@ export function PerformerVideos({
             // The null bucket needs its own filter, or those videos would be
             // missing from the page entirely.
             params={group.name ? { studio: group.name } : { noStudio: "true" }}
+            sort={sort}
             onSelect={onSelect}
           />
         ))}
@@ -128,6 +167,7 @@ export function PerformerVideos({
             title={group.year ? String(group.year) : "No date"}
             performer={performer.name}
             params={group.year ? { year: String(group.year) } : { noYear: "true" }}
+            sort={sort}
             onSelect={onSelect}
           />
         ))}
@@ -143,6 +183,10 @@ export function PerformerVideos({
             q: null,
             parentId: null,
           }}
+          // Seeded from the control above, so the order carries across when
+          // you switch grouping off. The grid's own toolbar can still change
+          // it from there.
+          sort={sort}
           onOpenFolder={() => {}}
         />
       )}

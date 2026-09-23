@@ -10,9 +10,11 @@ import {
 import { fetchAppearance, saveAppearance } from "./appearanceApi";
 import {
   DENSITIES,
+  TILE_SHAPES,
   VIEW_MODES,
   type Density,
   type TileInfo,
+  type TileShape,
   type ViewMode,
 } from "./layout";
 
@@ -131,6 +133,8 @@ function readPageOverrides(value: unknown): Record<string, PageOverride> {
 
     if (VIEW_MODES.some((option) => option.value === entry.viewMode))
       next.viewMode = entry.viewMode;
+    if (TILE_SHAPES.some((option) => option.value === entry.tileShape))
+      next.tileShape = entry.tileShape;
     if (DENSITIES.some((option) => option.value === entry.density))
       next.density = entry.density;
     if (TILE_INFO_OPTIONS.some((option) => option.value === entry.tileInfo))
@@ -155,6 +159,9 @@ function readPageOverrides(value: unknown): Record<string, PageOverride> {
 
 /** How much text a tile carries under its artwork. */
 export type { TileInfo };
+
+/** Whether tiles are cropped wide or tall. */
+export type { TileShape };
 
 export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
   { value: "full", label: "Full" },
@@ -219,6 +226,19 @@ export type Appearance = {
    * them.
    */
   viewMode: ViewMode;
+  /**
+   * Whether artwork is cropped to a wide frame or a tall one.
+   *
+   * Separate from `viewMode` for the same reason the size slider is: the mode
+   * is three sizes of one card, and adding a portrait entry to it would mean
+   * you could have the shape you wanted or the size you wanted but not both.
+   *
+   * Affects media tiles only. Performer cards have always been 2:3 and stay
+   * that way — they are portraits of people, not artwork whose shape is a
+   * preference, and letting this setting turn them landscape would crop every
+   * face in the library to a letterbox.
+   */
+  tileShape: TileShape;
   /** How much air sits between and inside cards. */
   density: Density;
   /** Whether hovering a tile expands it into a preview card. */
@@ -316,6 +336,7 @@ export type Appearance = {
 /** The settings a single page may pin for itself. */
 export type PageOverride = Partial<{
   viewMode: ViewMode;
+  tileShape: TileShape;
   density: Density;
   tileInfo: TileInfo;
   tileSizePercent: number;
@@ -355,6 +376,9 @@ export const DEFAULTS: Appearance = {
   tileSizePercent: 80,
   tileInfo: "full",
   viewMode: "grid",
+  // Landscape, so an install that never opens this picker is drawn exactly as
+  // it was before the setting existed.
+  tileShape: "landscape",
   density: "comfortable",
   hoverZoom: true,
   hoverPreview: true,
@@ -445,6 +469,11 @@ function read(): Appearance {
       viewMode: VIEW_MODES.some((option) => option.value === parsed.viewMode)
         ? (parsed.viewMode as ViewMode)
         : DEFAULTS.viewMode,
+      tileShape: TILE_SHAPES.some(
+        (option) => option.value === parsed.tileShape,
+      )
+        ? (parsed.tileShape as TileShape)
+        : DEFAULTS.tileShape,
       density: DENSITIES.some((option) => option.value === parsed.density)
         ? (parsed.density as Density)
         : DEFAULTS.density,
