@@ -16,6 +16,27 @@ export default defineConfig({
     // override (docker/docker-compose.dev.yml), where Vite runs inside a
     // container and needs to accept connections proxied from the host.
     host: true,
+    /**
+     * Poll for file changes when running inside the dev container.
+     *
+     * macOS does not forward inotify events across a Docker bind mount, so
+     * Vite's native watcher never fires and it goes on serving whatever it
+     * compiled at startup — silently, with nothing logged. Every edit on the
+     * host then appears to do nothing, which costs far more than the polling
+     * does.
+     *
+     * Gated on the env var rather than always on, so running Vite directly on
+     * the host keeps the cheap native watcher. The interval is a compromise:
+     * low enough to feel immediate, high enough not to stat the tree
+     * constantly. node_modules is a named volume rather than part of the bind
+     * mount, so the polled set stays small.
+     */
+    watch: process.env.CHOKIDAR_USEPOLLING
+      ? {
+          usePolling: true,
+          interval: Number(process.env.CHOKIDAR_INTERVAL ?? 300),
+        }
+      : undefined,
     proxy: {
       // PROXY_TARGET lets docker-compose.dev.yml point this at the app
       // service by container name (http://app:3000) instead of localhost,

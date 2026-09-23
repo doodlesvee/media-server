@@ -2,6 +2,12 @@
 # inside containers with source bind-mounted, instead of the baked-in
 # production build — edits on the host reflect immediately, no rebuild.
 #
+# "Immediately" needs CHOKIDAR_USEPOLLING below to be true on macOS. Docker
+# Desktop's bind mount does not forward inotify events into the container, so
+# both watchers sit silent and keep serving the code they started with. That
+# failure is invisible: nothing logs, nothing errors, and every edit simply
+# appears to do nothing.
+#
 # node_modules is backed by a named volume rather than the bind mount so the
 # host's node_modules (built for the host OS/arch, e.g. sharp's native
 # binary) never shadows the Linux-native modules installed in the image.
@@ -17,6 +23,11 @@ services:
     build:
       target: deps
     command: npm run dev --workspace apps/server
+    environment:
+      # See the note at the top of this file. tsx bundles chokidar and reads
+      # these directly.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     volumes:
       - ..:/repo
       - node_modules:/repo/node_modules
@@ -30,6 +41,10 @@ services:
     command: npm run dev --workspace apps/web
     environment:
       PROXY_TARGET: http://app:3000
+      # Vite does not read these by itself — apps/web/vite.config.ts turns
+      # them into server.watch.usePolling.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     ports:
       - "5173:5173"
     volumes:
