@@ -173,7 +173,7 @@ export function HomePage() {
           />
         )}
 
-        <div className="stagger space-y-9 px-6 py-8">
+        <div className="stagger space-y-6 px-4 py-6 md:space-y-9 md:px-6 md:py-8">
           {/* Rendered from the saved order rather than written out in sequence,
               so hiding or moving a section is a data change rather than an edit
               here. Each case returns null when it has nothing, exactly as it did

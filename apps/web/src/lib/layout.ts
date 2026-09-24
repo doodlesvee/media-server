@@ -263,6 +263,20 @@ export function tileWidthFraction(shape: TileShape, columnShape: TileShape): num
   return Math.min(1, (columnRatio * PORTRAIT_HEIGHT_FACTOR) / ownRatio);
 }
 
+/**
+ * Widest *minimum* column the media grid may ask for on a phone.
+ *
+ * This is the `minmax()` floor, not the width a tile ends up: the columns
+ * still stretch to fill the row, so 150 buys two columns of about 171px at a
+ * 390px viewport rather than tiles of 150px. Without it a desktop tile size
+ * is wider than the whole screen and the grid falls to one card per row.
+ *
+ * Deliberately not applied to the rows. They size each tile directly instead
+ * of stretching it, so the cap there really did mean 150px tiles — small
+ * enough that the caption covered the artwork it was captioning.
+ */
+export const MOBILE_MAX_TILE_PX = 150;
+
 export type CardLayout = CardChrome & {
   /** Minimum column width the grid should fit against. */
   widthPx: number;

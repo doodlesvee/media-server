@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+// Hidden on phones: the row is a native touch scroller there, and an arrow
+// parked over the first and last card costs more than it gives.
 const arrowClass =
-  "absolute top-1/2 z-20 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
+  "absolute top-1/2 z-20 hidden size-9 md:flex -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
 
 /**
  * A titled, horizontally-scrollable row with edge arrows.
@@ -83,7 +85,10 @@ export function ScrollRow({
       <div className="relative">
         <div
           ref={scroller}
-          className="scrollbar-hide -mx-1 flex gap-4 overflow-x-auto scroll-smooth px-1 pb-3 pt-1"
+          // Runs out to the page gutter on a phone so the row reads as
+          // something you scroll, rather than as cards cut off short of the
+          // edge. The inset stays on wider screens, where the arrows sit.
+          className="scrollbar-hide -mx-4 flex gap-3 overflow-x-auto scroll-smooth px-4 pb-3 pt-1 md:-mx-1 md:gap-4 md:px-1"
         >
           {children}
         </div>

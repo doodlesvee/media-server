@@ -73,7 +73,7 @@ export function PerformerPage() {
   if (isError) {
     return (
       <AppShell title="Performer not found">
-        <p className="px-6 text-sm text-muted-foreground">
+        <p className="px-4 text-sm text-muted-foreground md:px-6">
           That performer doesn’t exist — it may have been deleted.
         </p>
       </AppShell>
@@ -95,7 +95,7 @@ export function PerformerPage() {
     <AppShell>
       <section className="relative">
         {performer && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-4">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-black/60 to-transparent px-4 pb-10 pt-4 md:px-6">
             <Breadcrumbs
               overlay
               items={[
@@ -122,7 +122,7 @@ export function PerformerPage() {
         </PerformerBanner>
 
         {/* Minimal overlap — just enough to tie the portrait to the banner. */}
-        <div className="relative -mt-8 flex flex-col items-start gap-4 px-6 sm:-mt-10 sm:flex-row sm:items-end">
+        <div className="relative -mt-8 flex flex-col items-start gap-4 px-4 sm:-mt-10 sm:flex-row sm:items-end md:px-6">
           <div className="group relative shrink-0">
             <div className="size-28 overflow-hidden rounded-full bg-secondary ring-4 ring-background sm:size-36">
               {avatarSrc ? (
@@ -227,13 +227,13 @@ export function PerformerPage() {
       {/* Full width rather than squeezed into the header column beside the
           avatar — prose needs a readable line length. */}
       {performer && (
-        <div className="px-6 pt-6">
+        <div className="px-4 pt-6 md:px-6">
           <PerformerBio performerId={performer.id} bio={performer.bio} />
         </div>
       )}
 
       {performer && (
-        <div className="space-y-8 px-6 py-8">
+        <div className="space-y-8 px-4 py-6 md:px-6 md:py-8">
           {/* What you most likely came back for, before anything to browse. */}
           <PerformerContinueWatching
             performer={performer}

@@ -67,7 +67,7 @@ export function AlbumsPage() {
   return (
     <PageScope name="albums">
       <AppShell title="Albums" subtitle="Photo sets that came with your videos.">
-        <div className="px-6 py-6">
+        <div className="px-4 py-6 md:px-6">
           {isLoading ? (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (

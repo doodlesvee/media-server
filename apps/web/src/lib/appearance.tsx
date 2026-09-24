@@ -167,6 +167,9 @@ export const TILE_INFO_OPTIONS: { value: TileInfo; label: string }[] = [
   { value: "full", label: "Full" },
   { value: "title", label: "Title" },
   { value: "none", label: "None" },
+  // Under the artwork rather than over it: the catalogue look, where the
+  // picture is left alone and the text is a caption beneath it.
+  { value: "below", label: "Below" },
 ];
 
 export type MotionLevel = "full" | "reduced" | "none";

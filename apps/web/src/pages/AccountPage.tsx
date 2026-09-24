@@ -139,7 +139,7 @@ function PasswordSection() {
 export function AccountPage() {
   return (
     <AppShell title="Account" subtitle="Your sign-in details.">
-      <div className="stagger space-y-5 px-6 py-8">
+      <div className="stagger space-y-5 px-4 py-6 md:px-6 md:py-8">
         <UsernameSection />
         <PasswordSection />
       </div>

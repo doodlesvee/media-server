@@ -20,7 +20,7 @@ export function SeriesPageIndex() {
 
   return (
     <AppShell title="Series" subtitle={all.length ? `${all.length} series` : undefined}>
-      <div className="space-y-6 px-6 py-8">
+      <div className="space-y-6 px-4 py-6 md:px-6 md:py-8">
         <AlphabetIndex value={letter} onChange={setLetter} available={all.map((entry) => entry.name)} />
         {isLoading ? (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">

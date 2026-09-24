@@ -41,7 +41,7 @@ export function GalleryStrip({ itemId }: { itemId: number }) {
   if (images.length === 0) return null;
 
   return (
-    <div className="space-y-2 px-6 pb-6">
+    <div className="space-y-2 px-4 pb-6 md:px-6">
       <div className="flex items-baseline gap-2">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Gallery

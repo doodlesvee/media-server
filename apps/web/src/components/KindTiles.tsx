@@ -24,11 +24,11 @@ export function KindTiles() {
   // Three is what ships by default (video, movie, series).
   if (isLoading) {
     return (
-      <div className="flex flex-wrap justify-center gap-5 sm:flex-nowrap sm:gap-7">
+      <div className="flex flex-wrap justify-center gap-3 sm:flex-nowrap sm:gap-7">
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={index}
-            className="skeleton h-40 w-72 min-w-0 rounded-lg sm:h-44 sm:w-auto sm:max-w-96 sm:flex-1 sm:basis-0"
+            className="skeleton h-28 min-w-0 flex-1 basis-[calc(50%-0.375rem)] rounded-lg sm:h-44 sm:max-w-96 sm:basis-0"
           />
         ))}
       </div>
@@ -44,7 +44,7 @@ export function KindTiles() {
     // a category makes them all a little narrower instead of pushing one onto
     // a second line. max-w keeps two or three from stretching absurdly wide;
     // below `sm` they still wrap, which is right on a phone.
-    <div className="flex flex-wrap justify-center gap-5 sm:flex-nowrap sm:gap-7">
+    <div className="flex flex-wrap justify-center gap-3 sm:flex-nowrap sm:gap-7">
       {categories.map((entry) => {
         const { slug, label, total, coverPositionX, coverPositionY, coverScale } = entry;
         const Icon = ICONS[slug] ?? Layers;
@@ -61,7 +61,7 @@ export function KindTiles() {
             key={slug}
             to="/browse"
             search={{ kind: slug }}
-            className="group relative flex h-40 w-72 min-w-0 items-center justify-center overflow-hidden rounded-lg bg-card/60 ring-1 ring-border transition-all duration-200 hover:ring-white/25 sm:h-44 sm:w-auto sm:max-w-96 sm:flex-1 sm:basis-0"
+            className="group relative flex h-28 min-w-0 flex-1 basis-[calc(50%-0.375rem)] items-center justify-center overflow-hidden rounded-lg bg-card/60 ring-1 ring-border transition-all duration-200 hover:ring-white/25 sm:h-44 sm:max-w-96 sm:basis-0"
           >
             {cover ? (
               // The zoom sits on a wrapper rather than the image so it
@@ -99,13 +99,15 @@ export function KindTiles() {
                 few pixels around the glyphs rather than the whole picture. */}
             <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-background/25 to-background/15" />
 
-            <div className="relative flex flex-col items-center gap-1.5 [text-shadow:0_1px_8px_var(--background)]">
+            <div className="relative flex min-w-0 flex-col items-center gap-1 px-1 [text-shadow:0_1px_8px_var(--background)] sm:gap-1.5">
               <Icon
-                className="size-7 text-foreground/90 drop-shadow-[0_1px_6px_var(--background)] transition-colors duration-200 group-hover:text-foreground sm:size-8"
+                className="size-6 text-foreground/90 drop-shadow-[0_1px_6px_var(--background)] transition-colors duration-200 group-hover:text-foreground sm:size-8"
                 strokeWidth={1.5}
               />
-              <span className="text-sm font-semibold tracking-tight sm:text-base">{label}</span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="max-w-full truncate text-sm font-semibold tracking-tight sm:text-base">
+                {label}
+              </span>
+              <span className="text-[10px] text-muted-foreground sm:text-[11px]">
                 {total === 0 ? "Empty" : `${total} ${total === 1 ? "item" : "items"}`}
               </span>
             </div>

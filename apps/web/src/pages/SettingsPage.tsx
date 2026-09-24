@@ -48,8 +48,13 @@ export function SettingsPage() {
           left edge: the sections are a fixed, readable width, and on a wide
           screen that left everything hugging one side with a screen of empty
           space beside it. */}
-      <div className="mx-auto w-full max-w-2xl px-6 py-6">
-        <nav className="flex justify-center gap-1 border-b border-border">
+      <div className="mx-auto w-full max-w-2xl px-4 py-6 md:px-6">
+        <nav
+          // Scrolls on a phone rather than pushing the whole page sideways:
+          // the tabs are wider than a 390px viewport, and centring them meant
+          // the first and last were both cut off with no way to reach them.
+          className="scrollbar-hide -mx-4 flex gap-1 overflow-x-auto border-b border-border px-4 md:mx-0 md:justify-center md:overflow-visible md:px-0"
+        >
           {TABS.map((entry) => (
             <Link
               key={entry.id}
@@ -58,7 +63,7 @@ export function SettingsPage() {
               className={cn(
                 // The underline sits on the nav's own border, so switching
                 // tabs doesn't shift the content below by a pixel.
-                "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+                "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
                 active === entry.id
                   ? "border-foreground font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",

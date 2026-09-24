@@ -817,11 +817,41 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
 
     const related = await fetchRelated(pageRows.map((r) => r.id));
 
+    /**
+     * How many rows match, for the "N items" line above the grid.
+     *
+     * Only on the first page, and only when there is a second: paging already
+     * knows the answer from `hasMore` plus what it has, so counting again on
+     * every page would be one extra aggregate per scroll for a number that
+     * does not change. The same discipline the gallery endpoint uses.
+     *
+     * A real COUNT rather than an estimate, because the number sits next to
+     * the grid it describes and "about 140" invites you to check.
+     */
+    let total: number | undefined;
+    if (pageNum === 1) {
+      if (!hasMore) {
+        total = pageRows.length;
+      } else {
+        const counter = db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(mediaItems)
+          .innerJoin(mediaItemTypes, eq(mediaItems.itemTypeId, mediaItemTypes.id))
+          .leftJoin(studios, eq(studios.id, mediaItems.studioId))
+          .leftJoin(playbackStates, eq(playbackStates.mediaItemId, mediaItems.id));
+        const [counted] = await (conditions.length > 0
+          ? counter.where(and(...conditions))
+          : counter);
+        total = counted?.total;
+      }
+    }
+
     return {
       items: pageRows.map((r) => withPlayback(r, related)),
       page: pageNum,
       pageSize: PAGE_SIZE,
       hasMore,
+      total,
     };
   });
 

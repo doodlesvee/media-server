@@ -85,7 +85,7 @@ export function StudioPage() {
   if (isError) {
     return (
       <AppShell title="Studio not found">
-        <p className="px-6 text-sm text-muted-foreground">
+        <p className="px-4 text-sm text-muted-foreground md:px-6">
           That studio doesn’t exist — it may have been removed when its last
           video went away.
         </p>
@@ -118,12 +118,12 @@ export function StudioPage() {
         )}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent" />
 
-        <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 px-6 pb-5">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-black/50 ring-1 ring-white/15 backdrop-blur-sm sm:size-20">
-            <Building2 className="size-7 text-white/80 sm:size-9" />
+        <div className="absolute inset-x-0 bottom-0 flex items-end gap-3 px-4 pb-4 md:gap-4 md:px-6 md:pb-5">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-black/50 ring-1 ring-white/15 backdrop-blur-sm sm:size-16 md:size-20">
+            <Building2 className="size-6 text-white/80 sm:size-7 md:size-9" />
           </div>
           <div className="min-w-0 flex-1 space-y-1.5 pb-1">
-            <h1 className="sensitive truncate text-3xl font-bold tracking-tight text-white drop-shadow sm:text-4xl">
+            <h1 className="sensitive truncate text-xl font-bold tracking-tight text-white drop-shadow sm:text-3xl md:text-4xl">
               {studio?.name ?? " "}
             </h1>
             {studio && <StudioStats studio={studio} />}
@@ -146,7 +146,7 @@ export function StudioPage() {
       </section>
 
       {studio && (
-        <div className="px-6 pt-5">
+        <div className="px-4 pt-5 md:px-6">
           <Breadcrumbs
             items={[
               { label: "Studios", to: "/studios" },
@@ -157,7 +157,7 @@ export function StudioPage() {
       )}
 
       {studio && (
-        <div className="space-y-8 px-6 py-8">
+        <div className="space-y-8 px-4 py-6 md:px-6 md:py-8">
           <PerformerCoPerformers
             performers={studio.performers}
             title="Featuring"

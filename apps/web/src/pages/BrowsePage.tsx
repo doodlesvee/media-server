@@ -9,6 +9,7 @@ import { PlaySurface } from "@/components/PlaySurface";
 import { cn } from "@/lib/utils";
 import { PageScope } from "@/lib/appearance";
 import { readSortPreference, writeSortPreference } from "@/lib/sortPreference";
+import { StudioChips } from "@/components/StudioChips";
 import { FilterChips } from "@/components/FilterBar";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import {
@@ -235,7 +236,7 @@ export function BrowsePage() {
     // writes to or the panel would be editing a page it isn't on.
     <PageScope name={scope}>
       <AppShell>
-        <div className="space-y-5 px-6 py-6">
+        <div className="space-y-5 px-4 py-5 md:px-6 md:py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             <div className="flex min-w-0 items-center gap-1 text-muted-foreground">
@@ -308,6 +309,21 @@ export function BrowsePage() {
             !kind &&
             !q && <NewFolderButton parentId={currentParentId} />}
         </div>
+
+        {/* Studios as a row of shortcuts, above the grid. Only on the plain
+            library view: inside a collection or a folder the row would offer
+            to navigate away from the thing you had just opened. */}
+        {source.type === "library" && !collectionId && currentParentId === null && (
+          <StudioChips
+            selected={studio ?? null}
+            onSelect={(next) =>
+              void navigate({
+                to: "/browse",
+                search: (current) => ({ ...current, studio: next ?? undefined }),
+              })
+            }
+          />
+        )}
 
         {/* The chips get a row of their own, left-aligned and full width.
             The control that adds filters lives in the grid's toolbar with the

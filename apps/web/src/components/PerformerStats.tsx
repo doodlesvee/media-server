@@ -81,7 +81,7 @@ export function PerformerStats({ performer }: { performer: PerformerDetail }) {
   }
 
   return (
-    <dl className="flex flex-wrap items-stretch border-y border-border/60 bg-gradient-to-b from-card/40 to-transparent px-6">
+    <dl className="flex flex-wrap items-stretch border-y border-border/60 bg-gradient-to-b from-card/40 to-transparent px-4 md:px-6">
       {stats.map((stat, index) => (
         <div
           key={stat.label}

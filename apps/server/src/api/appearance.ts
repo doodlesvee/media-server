@@ -56,7 +56,7 @@ const NUMBER_KEYS = {
  * nothing logged. That has already happened once here.
  */
 const ENUM_KEYS: Record<string, string[]> = {
-  tileInfo: ["full", "title", "none"],
+  tileInfo: ["full", "title", "none", "below"],
   viewMode: ["grid", "compact", "large"],
   tileShape: ["landscape", "portrait"],
   density: ["spacious", "comfortable", "compact", "dense"],

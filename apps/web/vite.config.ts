@@ -15,7 +15,7 @@ export default defineConfig({
     // Listen on all interfaces — required for the dev-mode Docker Compose
     // override (docker/docker-compose.dev.yml), where Vite runs inside a
     // container and needs to accept connections proxied from the host.
-    host: true,
+    host: '0.0.0.0',
     /**
      * Poll for file changes when running inside the dev container.
      *

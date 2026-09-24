@@ -78,7 +78,7 @@ export function AlbumPage() {
   if (isError) {
     return (
       <AppShell title="Album not found">
-        <p className="px-6 text-sm text-muted-foreground">
+        <p className="px-4 text-sm text-muted-foreground md:px-6">
           That album doesn’t exist — its folder may have been removed.
         </p>
       </AppShell>
@@ -101,7 +101,7 @@ export function AlbumPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 px-6 py-8">
+      <div className="space-y-6 px-4 py-6 md:px-6 md:py-8">
         <Breadcrumbs
           items={[
             { label: "Albums", to: "/albums" },

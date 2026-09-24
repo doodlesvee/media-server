@@ -78,7 +78,7 @@ export function StudioCard({
         aria-label={pinned ? `Unpin ${studio.name}` : `Pin ${studio.name}`}
         title={pinned ? "Unpin" : "Pin"}
         className={cn(
-          "absolute left-2 top-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 md:opacity-0 md:group-hover:opacity-100",
+          "absolute left-2 top-2 z-10 hidden size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 md:flex md:opacity-0 md:group-hover:opacity-100",
           pinned && "md:opacity-100",
         )}
       >

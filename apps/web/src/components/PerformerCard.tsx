@@ -161,7 +161,7 @@ export function PerformerCard({
           }
           title={pinned ? "Unpin" : "Pin"}
           className={cn(
-            "absolute left-2 top-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 md:opacity-0 md:group-hover:opacity-100",
+            "absolute left-2 top-2 z-10 hidden size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 md:flex md:opacity-0 md:group-hover:opacity-100",
             pinned && "md:opacity-100",
           )}
         >
@@ -184,7 +184,7 @@ export function PerformerCard({
               : "Add to favourites"
           }
           className={cn(
-            "absolute right-2 top-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 focus-visible:opacity-100 disabled:opacity-50",
+            "absolute right-2 top-2 z-10 hidden size-8 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-black/85 focus-visible:opacity-100 disabled:opacity-50 md:flex",
             // Hidden until hover on a pointer device, but a favourited card
             // keeps its heart — that mark is why the card is sitting at the top
             // of the page, so hiding it would make the ordering look arbitrary.

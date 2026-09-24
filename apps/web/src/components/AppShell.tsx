@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
-import { ArrowLeft, Search, X } from "lucide-react";
+import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { SEARCH_SHORTCUT } from "@/lib/appearance";
+import { useIsMobile } from "@/lib/useMediaQuery";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { DiscreetUnlockDialog } from "./DiscreetUnlockDialog";
 import { SpotlightSearch, openSpotlight } from "./SpotlightSearch";
@@ -42,6 +43,11 @@ export function AppShell({
   actions?: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const isMobile = useIsMobile();
+  const [drawerRequested, setDrawerRequested] = useState(false);
+  // Derived rather than reset by an effect, so growing past `md` with the
+  // drawer open can never leave a stale overlay over the desktop layout.
+  const drawerOpen = isMobile && drawerRequested;
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [miniPlayer, setMiniPlayer] = useState(false);
   const [resumePlayer, setResumePlayer] = useState(false);
@@ -51,6 +57,20 @@ export function AppShell({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+
+  useEffect(() => {
+    setDrawerRequested(false);
+  }, [pathname]);
+
+  // The drawer sits over the page, so the page behind it must not scroll.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [drawerOpen]);
 
   useEffect(() => {
     try {
@@ -107,20 +127,50 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "flex min-h-screen bg-background text-foreground",
+        "flex min-h-dvh bg-background text-foreground",
         focusMode && "focus-mode",
       )}
     >
       <Sidebar
-        collapsed={collapsed}
+        // The drawer is always full width — an icon-only rail you had to open
+        // first would be the worst of both.
+        collapsed={isMobile ? false : collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        mobile={isMobile}
+        mobileOpen={drawerOpen}
+        onMobileClose={() => setDrawerRequested(false)}
       />
+
+      {isMobile && drawerOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setDrawerRequested(false)}
+          className="animate-fade-in fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px]"
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* The search field used to hold the centre column; with search on
             ⌘K there's nothing to centre, so the header is just its actions. */}
-        <header className="cinema-hide focus-hide sticky top-0 z-30 flex items-center justify-end gap-4 border-b border-border bg-background/85 px-6 py-3 backdrop-blur-md">
-          <div className="flex items-center gap-3">
+        <header className="cinema-hide focus-hide sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background/85 px-4 py-3 backdrop-blur-md md:justify-end md:gap-4 md:px-6">
+          {/* On phones the sidebar is behind a button, so the header carries
+              the only way to reach it — and the page title with it. */}
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setDrawerRequested(true)}
+              aria-label="Open menu"
+              aria-expanded={drawerOpen}
+              className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Menu className="size-5" />
+            </button>
+            <span className="truncate text-sm font-semibold tracking-tight">
+              {title ?? "Private Server"}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 md:gap-3">
             {actions}
             <NotificationCenter />
             <button
@@ -181,9 +231,20 @@ export function AppShell({
         {(title || subtitle) && (
           // Centred only where the page beneath it is centred too — a heading
           // on a different axis to its own content reads as a mistake.
-          <div className={cn("px-6 pt-6", centeredHeader && "text-center")}>
+          <div
+            className={cn(
+              "px-4 pt-5 md:px-6 md:pt-6",
+              // With the h1 hidden on a phone, a page that has only a title
+              // would leave this as bare padding — a gap under the header
+              // with nothing in it.
+              !subtitle && "hidden md:block",
+              centeredHeader && "text-center",
+            )}
+          >
             {title && (
-              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+              <h1 className="hidden text-xl font-bold tracking-tight md:block md:text-2xl">
+                {title}
+              </h1>
             )}
             {subtitle && (
               <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>

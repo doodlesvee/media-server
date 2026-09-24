@@ -1,6 +1,6 @@
 {
-  "name": "Media Server",
-  "short_name": "Media",
+  "name": "Private Server",
+  "short_name": "Private",
   "description": "A private personal media library.",
   "start_url": "/",
   "scope": "/",

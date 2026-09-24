@@ -20,6 +20,7 @@ import {
   Tag,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CreateCollectionModal } from "./CreateCollectionModal";
@@ -68,9 +69,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar({
   collapsed,
   onToggle,
+  mobile = false,
+  mobileOpen = false,
+  onMobileClose,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  /** Phone width: the sidebar is an off-canvas drawer, not a column. */
+  mobile?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [pins, setPins] = useState<PinnedItem[]>(readPins);
@@ -158,15 +166,32 @@ export function Sidebar({
 
   // Collapsed, every row becomes a centred icon with no room for a label.
   const navItemClass = cn(
-    "flex items-center rounded-md py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+    "flex items-center rounded-md text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+    // Roomier rows on touch, where the pointer is a fingertip.
+    mobile ? "py-2.5" : "py-2",
     collapsed ? "justify-center px-0" : "gap-2.5 px-3",
   );
 
   return (
     <aside
+      // A drawer on phones: taken out of the flow entirely so the content
+      // gets the whole viewport, and slid off-screen rather than unmounted so
+      // it animates and keeps its scroll position.
+      aria-hidden={mobile && !mobileOpen}
       className={cn(
-        "cinema-hide focus-hide sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 ease-out",
-        collapsed ? "w-16" : "w-60",
+        "cinema-hide focus-hide flex flex-col border-r border-border",
+        // Translucent works beside the page; over it, the content behind
+        // shows straight through the nav.
+        mobile ? "bg-card" : "bg-card/40",
+        mobile
+          ? cn(
+              "fixed inset-y-0 left-0 z-50 h-dvh w-72 max-w-[85vw] shadow-2xl transition-transform duration-200 ease-out",
+              mobileOpen ? "translate-x-0" : "-translate-x-full",
+            )
+          : cn(
+              "sticky top-0 h-screen shrink-0 transition-[width] duration-200 ease-out",
+              collapsed ? "w-16" : "w-60",
+            ),
       )}
     >
       <div
@@ -184,27 +209,51 @@ export function Sidebar({
           <Clapperboard className="size-5 shrink-0" />
           {!collapsed && (
             <span className="truncate text-base font-bold tracking-tight">
-              Media Server
+              Private Server
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          {collapsed ? (
-            <PanelLeftOpen className="size-4" />
-          ) : (
-            <PanelLeftClose className="size-4" />
-          )}
-        </button>
+        {mobile ? (
+          // Collapsing to an icon rail makes no sense in a drawer you dismiss.
+          <button
+            type="button"
+            onClick={onMobileClose}
+            aria-label="Close menu"
+            title="Close menu"
+            className="-mr-1 flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-4">
+      <nav
+        className="flex-1 overflow-y-auto overscroll-contain px-2 pb-4"
+        // Following a link should dismiss the drawer, including a link back to
+        // the page you are already on, which no route change would catch.
+        onClick={
+          mobile
+            ? (event) => {
+                if ((event.target as HTMLElement).closest("a")) onMobileClose?.();
+              }
+            : undefined
+        }
+      >
         <Link
           to="/"
           className={navItemClass}

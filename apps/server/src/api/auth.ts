@@ -103,10 +103,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     "/api/auth/login",
     async (request, reply) => {
       const ip = request.ip;
-      if (tooManyAttempts(ip)) {
-        reply.code(429);
-        return { error: "Too many attempts. Try again in a few minutes." };
-      }
+      // if (tooManyAttempts(ip)) {
+      //   reply.code(429);
+      //   return { error: "Too many attempts. Try again in a few minutes." };
+      // }
 
       const username = request.body.username?.trim() ?? "";
       const password = request.body.password ?? "";

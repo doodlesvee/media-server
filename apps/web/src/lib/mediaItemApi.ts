@@ -1,4 +1,5 @@
 import type React from "react";
+import { focalStyle } from "./reposition";
 export type Tag = { id: number; name: string; color: string | null };
 export type Performer = { id: number; name: string };
 export type Folder = { id: number; title: string; parentId: number | null };
@@ -114,6 +115,11 @@ export async function resetThumbnail(id: number): Promise<void> {
  * modal backdrop — so one framing decision holds everywhere the image
  * appears, rather than each place cropping it its own way.
  *
+ * That works because the stored pair is a *focal point*, not an offset tuned
+ * for one frame: `object-position: p%` puts the source point at fraction p at
+ * fraction p of the frame whatever its shape, so the subject cannot be cropped
+ * out at any ratio. `focalStyle` carries the proof.
+ *
  * Returns undefined when the framing is untouched, so React doesn't attach a
  * style attribute to hundreds of grid images that don't need one.
  */
@@ -127,13 +133,7 @@ export function framingStyle(item: {
   const scale = item.thumbnailScale ?? 100;
   if (x === 50 && y === 50 && scale === 100) return undefined;
 
-  return {
-    objectPosition: `${x}% ${y}%`,
-    transform: `scale(${scale / 100})`,
-    // Same anchor as the position, so zooming reveals the side the crop is
-    // already showing instead of pulling away from it.
-    transformOrigin: `${x}% ${y}%`,
-  };
+  return focalStyle({ x, y }, scale);
 }
 
 export async function fetchItem(id: number): Promise<MediaItemDetail> {

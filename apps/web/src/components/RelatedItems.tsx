@@ -30,7 +30,7 @@ export function RelatedItems({
   if (!isLoading && items.length === 0) return null;
 
   return (
-    <div className="border-t border-border px-6 py-6">
+    <div className="border-t border-border px-4 py-6 md:px-6">
       <MediaRow
         title="More Like This"
         items={items}

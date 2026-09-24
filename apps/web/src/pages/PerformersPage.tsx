@@ -132,7 +132,7 @@ export function PerformersPage() {
             : undefined
         }
       >
-        <div className="space-y-8 px-6 py-8">
+        <div className="space-y-8 px-4 py-6 md:px-6 md:py-8">
           <AlphabetIndex
             value={letter}
             onChange={setLetter}

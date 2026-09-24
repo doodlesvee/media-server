@@ -93,7 +93,7 @@ function CategoryRow({
 
   return (
     <div className="rounded-md border border-border p-2.5">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
       <input
         ref={inputRef}
         type="file"
@@ -127,7 +127,7 @@ function CategoryRow({
         </button>
       </div>
 
-      <div className="h-10 w-20 shrink-0 overflow-hidden rounded bg-secondary ring-1 ring-border">
+      <div className="h-9 w-14 shrink-0 overflow-hidden rounded bg-secondary ring-1 ring-border sm:h-10 sm:w-20">
         {preview && (
           <img
             src={preview}
@@ -150,9 +150,14 @@ function CategoryRow({
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           className="w-full border-b border-transparent bg-transparent text-sm font-medium outline-none hover:border-border focus:border-border"
         />
-        <p className="text-[11px] text-muted-foreground">
-          {category.total} {category.total === 1 ? "item" : "items"} ·{" "}
-          {category.cover ? "your cover" : "auto cover"}
+        <p className="truncate text-[11px] text-muted-foreground">
+          {category.total} {category.total === 1 ? "item" : "items"}
+          {/* Dropped on a narrow row rather than left to truncate: "auto c…"
+              reads as text that failed, where no text reads as a count. */}
+          <span className="hidden sm:inline">
+            {" · "}
+            {category.cover ? "your cover" : "auto cover"}
+          </span>
         </p>
       </div>
 

@@ -53,6 +53,8 @@ export type MediaCardItem = {
   tags?: { id: number; name: string }[];
   performers?: { id: number; name: string }[];
   studio?: string | null;
+  /** ISO "YYYY-MM-DD" parsed from the filename, or null. Shown as the year. */
+  releaseDate?: string | null;
   extraMetadata?: { width?: number; height?: number; codec?: string } | null;
 };
 
@@ -141,6 +143,9 @@ export function MediaCard({
   const widthFraction = shapeSizedByContainer
     ? 1
     : tileWidthFraction(shape, tileShape);
+  // Just the year: a caption under a tile has room for "X-Art · 2013" and not
+  // for a full date, and the year is the part that places a scene.
+  const releaseYear = item.releaseDate?.slice(0, 4) ?? null;
   const tileInfo = chrome.tileInfo;
   const [previewing, setPreviewing] = useState(false);
   /**
@@ -429,8 +434,11 @@ export function MediaCard({
             </span>
           )}
 
+          {/* Desktop only. On a phone a corner control sits over the artwork
+              permanently — there is no hover to reveal it on — so every folder
+              tile carried a button it could never hide. */}
           {item.itemType === "folder" && (
-            <span className="absolute left-1.5 top-1.5 z-10">
+            <span className="absolute left-1.5 top-1.5 z-10 hidden md:block">
               <button
                 type="button"
                 onClick={(event) => {
@@ -463,7 +471,7 @@ export function MediaCard({
               it. The progress bar and the watched tick stay in every mode —
               they're state, not a label, and losing track of what you'd
               already started would be a real cost rather than less clutter. */}
-          {tileInfo !== "none" && (
+          {tileInfo !== "none" && tileInfo !== "below" && (
             <span
               className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8"
               style={{
@@ -497,6 +505,35 @@ export function MediaCard({
           )}
         </div>
 
+        {/* The caption, under the frame rather than over it.
+            Inside the button so the whole card stays one target, and
+            left-aligned because a centred caption under a left-aligned grid
+            reads as a mistake. Title first: it is what you scan for, and
+            putting the cast above it — as the overlay does, where the picture
+            already tells you who it is — buries it. */}
+        {tileInfo === "below" && (
+          <span
+            className="mx-auto block w-full text-left"
+            style={{
+              maxWidth: widthFraction < 1 ? `${(widthFraction * 100).toFixed(2)}%` : undefined,
+              paddingTop: Math.max(6, chrome.paddingPx - 2),
+            }}
+          >
+            <span className="sensitive line-clamp-2 block text-xs font-medium leading-snug text-foreground">
+              {item.title}
+            </span>
+            {item.performers && item.performers.length > 0 && (
+              <span className="sensitive mt-0.5 block truncate text-[11px] text-muted-foreground">
+                {item.performers.map((p) => p.name).join(", ")}
+              </span>
+            )}
+            {(item.studio || releaseYear) && (
+              <span className="sensitive mt-0.5 block truncate text-[11px] text-muted-foreground/70">
+                {[item.studio, releaseYear].filter(Boolean).join(" \u00b7 ")}
+              </span>
+            )}
+          </span>
+        )}
       </button>
 
       {anchorRect && (

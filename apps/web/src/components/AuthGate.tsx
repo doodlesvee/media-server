@@ -72,11 +72,11 @@ function AuthForm({ mode, onSuccess }: { mode: "setup" | "login"; onSuccess: () 
   const error = localError ?? (submit.error instanceof Error ? submit.error.message : null);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4 md:px-6">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-5">
         <div className="flex items-center gap-2">
           <Clapperboard className="size-6" />
-          <span className="text-xl font-bold tracking-tight">Media Server</span>
+          <span className="text-xl font-bold tracking-tight">Private Server</span>
         </div>
 
         <div className="space-y-1">

@@ -1,3 +1,5 @@
+import type React from "react";
+
 /**
  * Shared maths for drag-to-reframe on an `object-cover` image.
  *
@@ -85,4 +87,73 @@ export function framingAfterDrag(
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, value));
+}
+
+/**
+ * The CSS for a focal point.
+ *
+ * One stored pair of percentages is valid at every frame ratio, which is what
+ * lets a single decision hold across a 16:10 tile, a 5:7.5 tile and a hero
+ * banner. With `object-fit: cover` and `object-position: p%`, the image point
+ * at fraction p lands at fraction p of the frame regardless of the frame's
+ * shape: the offset is `(C - S)p`, so that point sits at `(C - S)p + pS = pC`.
+ * The frame size cancels, so the marked subject can never be cropped out.
+ *
+ * `transformOrigin` matches the position so zooming magnifies around the
+ * subject rather than pulling away from it.
+ */
+export function focalStyle(focal: Framing, zoom: number): React.CSSProperties {
+  return {
+    objectPosition: `${focal.x}% ${focal.y}%`,
+    transform: `scale(${zoom / 100})`,
+    transformOrigin: `${focal.x}% ${focal.y}%`,
+  };
+}
+
+/** The span of the source actually shown, as fractions from 0 to 1. */
+export type Band = { start: number; end: number };
+
+/**
+ * Which part of the source a frame of a given ratio will show.
+ *
+ * Drives the preview outlines in the focal-point editor, and is the thing
+ * worth asserting in tests: whatever the ratio, the focal point stays inside
+ * the returned band, because `start = p(1 - size)` is never above p and
+ * `end = start + size` is never below it.
+ *
+ * Ratios are width/height. A zoom above 100 narrows both bands, since it
+ * magnifies the image inside the same frame.
+ */
+export function visibleBand(
+  focal: Framing,
+  imageRatio: number,
+  frameRatio: number,
+  zoom = 100,
+): { x: Band; y: Band } {
+  // Guard the degenerate cases rather than returning NaN — this runs against
+  // an image whose natural size may not have loaded yet.
+  if (!(imageRatio > 0) || !(frameRatio > 0)) {
+    return { x: { start: 0, end: 1 }, y: { start: 0, end: 1 } };
+  }
+
+  const scale = zoom > 0 ? zoom / 100 : 1;
+  // Exactly one axis overflows under `cover`: the one the image is "longer"
+  // in relative to the frame. The other is shown whole.
+  const widthFraction = imageRatio > frameRatio ? frameRatio / imageRatio : 1;
+  const heightFraction = imageRatio < frameRatio ? imageRatio / frameRatio : 1;
+
+  return {
+    x: bandFor(focal.x / 100, widthFraction / scale),
+    y: bandFor(focal.y / 100, heightFraction / scale),
+  };
+}
+
+function bandFor(point: number, rawSize: number): Band {
+  const size = Math.min(1, Math.max(0, rawSize));
+  // `object-position: p` puts source point p at frame fraction p, so the
+  // window starts at p(1 - size). At p = 0 that pins the left edge, at p = 1
+  // the right, and at 0.5 it centres — the behaviour object-position already
+  // has, written out so the previews can draw it.
+  const start = point * (1 - size);
+  return { start, end: start + size };
 }

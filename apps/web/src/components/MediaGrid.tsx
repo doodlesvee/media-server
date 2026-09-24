@@ -4,7 +4,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { BulkActionBar } from "./BulkActionBar";
 import { MediaCard, type MediaCardItem } from "./MediaCard";
 import { tileWidthPx, useAppearance } from "@/lib/appearance";
-import { cardLayout } from "@/lib/layout";
+import { useIsMobile } from "@/lib/useMediaQuery";
+import { cardLayout, MOBILE_MAX_TILE_PX } from "@/lib/layout";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { useQueue, type QueueItem } from "@/lib/queue";
 import {
@@ -62,6 +63,8 @@ type MediaItemsResponse = {
   page: number;
   pageSize: number;
   hasMore?: boolean;
+  /** How many rows match in total. Sent on the first page only. */
+  total?: number;
 };
 
 async function fetchMediaItems(
@@ -146,6 +149,7 @@ export function MediaGrid({
   }) => void;
 }) {
   const { tileSizePercent, tileInfo, viewMode, tileShape, density } = useAppearance();
+  const isMobile = useIsMobile();
   const setTileShape = useTileShape();
   const { add, addNext, clear } = useQueue();
   // Every length the grid needs comes from here, so the mode and density can
@@ -158,7 +162,9 @@ export function MediaGrid({
     tileInfo,
     tileShape,
   );
-  const tileWidth = layout.widthPx;
+  const tileWidth = isMobile
+    ? Math.min(layout.widthPx, MOBILE_MAX_TILE_PX)
+    : layout.widthPx;
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   // Which card the keyboard is pointing at, hover or focus. Owned by the
@@ -245,6 +251,9 @@ export function MediaGrid({
       .filter((pin) => pin.type === "folder")
       .map((pin) => pin.folderId),
   );
+  // The first page carries it; later pages leave it undefined rather than
+  // recounting, so read it from where it is sent.
+  const totalCount = data?.pages[0]?.total;
   const items = (data?.pages.flatMap((p) => p.items) ?? []).sort(
     (a, b) =>
       Number(b.itemType === "folder" && pinnedFolderIds.has(b.id)) -
@@ -800,7 +809,13 @@ export function MediaGrid({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
+      <div
+        // Not justified apart on a phone: the right-hand group wrapped as one
+        // block, which left "Select" stranded alone on the line above it.
+        // Below `md` the group dissolves into this row so everything wraps
+        // together as a single run of controls.
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 md:justify-between"
+      >
         <button
           type="button"
           onClick={() =>
@@ -813,7 +828,7 @@ export function MediaGrid({
 
         {/* A collection has its own order; offering to re-sort it would
             imply the choice sticks, which it wouldn't. */}
-        <div className="flex items-center gap-3">
+        <div className="contents md:flex md:flex-wrap md:items-center md:gap-x-3 md:gap-y-2">
           <button
             type="button"
             onClick={() => void queueResults(false)}
@@ -828,6 +843,16 @@ export function MediaGrid({
           >
             <Dices className="size-3.5" /> Shuffle
           </button>
+          {/* Counted by the server on the first page, so it is the size of
+              the whole filtered set rather than however much has been scrolled
+              into view. Absent inside a collection, which the endpoint does
+              not count. */}
+          {totalCount !== undefined && (
+            <span className="text-xs text-muted-foreground tabular-nums md:mr-auto">
+              {totalCount} {totalCount === 1 ? "item" : "items"}
+            </span>
+          )}
+
           {source.type === "library" && (
             <>
               {onFiltersChange && (

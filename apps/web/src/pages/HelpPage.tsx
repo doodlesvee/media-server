@@ -51,7 +51,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 export function HelpPage() {
   return (
     <AppShell title="Keyboard shortcuts" subtitle="Everything the keyboard does in this app.">
-      <div className="max-w-2xl space-y-8 px-6 py-6">
+      <div className="max-w-2xl space-y-8 px-4 py-6 md:px-6">
         <Group title="Anywhere">
           <Row keys={[DISCREET_SHORTCUT]}>
             Discreet mode on or off — blurs every image immediately. Turning it on is instant;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/lib/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -52,7 +53,7 @@ import {
   writeVolume,
 } from "@/lib/playerPrefs";
 import { framingStyle, thumbnailUrl } from "@/lib/mediaItemApi";
-import { cardChrome } from "@/lib/layout";
+import { cardChrome, TILE_SHAPES } from "@/lib/layout";
 import { cn, formatDuration } from "@/lib/utils";
 import { useUndoable } from "@/lib/undo";
 import { QueuePanel } from "./QueuePanel";
@@ -62,6 +63,23 @@ import { SeriesAssignment } from "./SeriesAssignment";
 // Only offer "Continue Watching" for meaningful progress: not basically the
 // start (nothing to resume) or basically the end (same as starting over).
 const MIN_RESUMABLE_SECONDS = 15;
+
+/**
+ * The hero banner's shape, so reframing can preview it alongside the tiles.
+ *
+ * Derived from the viewport rather than a constant: the hero spans the full
+ * width and a chosen fraction of the viewport height, so its ratio is a
+ * property of the window and the setting, not of the card system. Falls back
+ * to a typical wide banner when there is no window to measure, which keeps
+ * this usable under test.
+ */
+function heroAspect(heroHeightPercent: number): string {
+  if (typeof window === "undefined") return "16 / 5";
+  const height = (window.innerHeight * heroHeightPercent) / 100;
+  return height > 0 && window.innerWidth > 0
+    ? `${window.innerWidth} / ${height}`
+    : "16 / 5";
+}
 
 function FieldLabel({
   children,
@@ -135,7 +153,8 @@ export function MediaDetailModal({
     queryFn: () => fetchItem(viewingId),
   });
 
-  const { discreet, modalPreview, autoplayNext, tileShape, density } = useAppearance();
+  const { discreet, modalPreview, autoplayNext, density, heroHeight } =
+    useAppearance();
   const runUndoable = useUndoable();
   const [mode, setMode] = useState<"preview" | "playing">("preview");
   // Opened, but holding the still with nothing running. Only ever true before
@@ -147,6 +166,7 @@ export function MediaDetailModal({
   const [seeked, setSeeked] = useState(false);
   const queryClient = useQueryClient();
   const [muted, setMuted] = useState(true);
+  const isMobile = useIsMobile();
   // Read once on mount rather than on every render — these are re-applied to
   // the element imperatively, so React never needs to re-render for them.
   const [rate, setRate] = useState(readRate);
@@ -156,7 +176,11 @@ export function MediaDetailModal({
   // Metadata is read-only until you ask to edit it. Showing every editor by
   // default filled the panel with empty "Add tag…" style inputs, which read
   // as unfinished rather than as a record of the video.
-  const [editing, setEditing] = useState(false);
+  const [editingRequested, setEditing] = useState(false);
+  // Read-only on a phone. Derived rather than just hiding the button, so a
+  // sheet left in edit mode on a desktop cannot stay that way when the window
+  // narrows — every editor below is gated on this one flag.
+  const editing = editingRequested && !isMobile;
   const { add, addNext, items: queueItems, remove } = useQueue();
   const autoPlayNext = useRef(false);
   const [miniPosition, setMiniPosition] = useState(() => {
@@ -907,36 +931,56 @@ export function MediaDetailModal({
             )}
 
             {/* Gradient + overlaid title/actions, hidden once real playback
-              starts so they don't sit on top of the video controls. */}
-            {mode === "preview" && !mini && (
+              starts so they don't sit on top of the video controls.
+
+              Only on a wide screen. On a phone the picture is small enough
+              that a title, six controls and a scrim left nothing of it to
+              see, so there the frame carries a single play button and
+              everything else moves below it. */}
+            {mode === "preview" && !mini && !isMobile && (
               <>
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
 
-                <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-4 p-6">
-                  <h2 className="sensitive max-w-2xl text-2xl font-bold tracking-tight drop-shadow-md sm:text-3xl">
+                <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-2 p-3 sm:gap-4 sm:p-6">
+                  <h2 className="sensitive line-clamp-2 max-w-2xl pr-12 text-base font-bold tracking-tight drop-shadow-md sm:pr-0 sm:text-2xl md:text-3xl">
                     {item?.title ?? "Loading…"}
                   </h2>
 
                   {item?.itemType === "video" && (
-                    <div className="flex items-center gap-3">
+                    <div
+                      // Wraps, and every control keeps its size: unwrapped,
+                      // six of them in a phone's width squeezed the round
+                      // buttons into each other. The right padding is the
+                      // lane the mute button sits in, further down.
+                      className="flex flex-wrap items-center gap-1.5 sm:gap-3"
+                    >
                       <button
                         type="button"
                         onClick={() => startPlaying(0)}
-                        className="flex items-center gap-2 rounded-md bg-white px-5 py-2 font-semibold text-black transition-transform hover:scale-[1.03]"
+                        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black transition-transform hover:scale-[1.03] sm:gap-2 sm:px-5 sm:py-2 sm:text-base"
                       >
-                        <RotateCcw className="size-5" />
+                        <RotateCcw className="size-4 sm:size-5" />
                         Start Over
                       </button>
                       {canResume && (
                         <button
                           type="button"
                           onClick={() => startPlaying(item.lastPositionSeconds)}
-                          className="flex items-center gap-2 rounded-md bg-white/20 px-5 py-2 font-semibold backdrop-blur-sm transition-colors hover:bg-white/30"
+                          className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold backdrop-blur-sm transition-colors hover:bg-white/30 sm:gap-2 sm:px-5 sm:py-2 sm:text-base"
                         >
-                          <Play className="size-5 fill-current" />
-                          Continue Watching
+                          <Play className="size-4 fill-current sm:size-5" />
+                          {/* Shortened on a phone so it shares a line with
+                              "Start Over" instead of stacking under it. */}
+                          <span className="sm:hidden">Resume</span>
+                          <span className="hidden sm:inline">
+                            Continue Watching
+                          </span>
                         </button>
                       )}
+                      {/* Its own line on a phone, so the two labelled
+                          buttons keep theirs. The right padding is the lane
+                          the mute button sits in, at the corner below. */}
+                      <div className="flex w-full items-center gap-1.5 pr-10 sm:w-auto sm:gap-3 sm:pr-0">
                       <button
                         type="button"
                         onClick={() => toggleFavorite(!item.isFavorite)}
@@ -949,11 +993,11 @@ export function MediaDetailModal({
                         title={
                           item.isFavorite ? "Favourited" : "Mark as favourite"
                         }
-                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50 sm:size-10"
                       >
                         <Heart
                           className={cn(
-                            "size-5 transition-colors",
+                            "size-4 transition-colors sm:size-5",
                             item.isFavorite && "fill-red-500 text-red-500",
                           )}
                         />
@@ -971,12 +1015,12 @@ export function MediaDetailModal({
                             ? "Watched — click to unmark"
                             : "Mark as watched"
                         }
-                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white disabled:opacity-50 sm:size-10"
                       >
                         {item.watched ? (
-                          <Eye className="size-5 text-emerald-400" />
+                          <Eye className="size-4 text-emerald-400 sm:size-5" />
                         ) : (
-                          <EyeOff className="size-5" />
+                          <EyeOff className="size-4 sm:size-5" />
                         )}
                       </button>
                       <button
@@ -984,19 +1028,20 @@ export function MediaDetailModal({
                         onClick={() => queueCurrent(false)}
                         aria-label="Add to queue"
                         title="Add to queue"
-                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white sm:size-10"
                       >
-                        <ListPlus className="size-5" />
+                        <ListPlus className="size-4 sm:size-5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => queueCurrent(true)}
                         aria-label="Play next"
                         title="Play next"
-                        className="flex size-10 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/40 backdrop-blur-sm transition-colors hover:border-white sm:size-10"
                       >
-                        <ListPlus className="size-5" />
+                        <ListPlus className="size-4 sm:size-5" />
                       </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1006,7 +1051,7 @@ export function MediaDetailModal({
                     type="button"
                     onClick={toggleMuted}
                     aria-label={muted ? "Unmute" : "Mute"}
-                    className="absolute bottom-6 right-6 flex size-10 items-center justify-center rounded-full border border-white/40 bg-black/40 backdrop-blur-sm hover:bg-black/60"
+                    className="absolute bottom-3 right-3 flex size-8 items-center justify-center rounded-full border border-white/40 bg-black/40 backdrop-blur-sm hover:bg-black/60 sm:bottom-6 sm:right-6 sm:size-10"
                   >
                     {muted ? (
                       <VolumeX className="size-4" />
@@ -1016,6 +1061,20 @@ export function MediaDetailModal({
                   </button>
                 )}
               </>
+            )}
+
+            {mode === "preview" && !mini && isMobile && item?.itemType === "video" && (
+              <button
+                type="button"
+                onClick={() => startPlaying(canResume ? item.lastPositionSeconds : 0)}
+                aria-label={canResume ? "Resume" : "Play"}
+                title={canResume ? "Resume" : "Play"}
+                className="absolute inset-0 z-20 flex items-center justify-center"
+              >
+                <span className="flex size-16 items-center justify-center rounded-full bg-black/45 text-white ring-1 ring-white/60 backdrop-blur-sm transition-transform active:scale-95">
+                  <Play className="size-7 translate-x-0.5 fill-current" />
+                </span>
+              </button>
             )}
 
             {/* Sits above the native control bar rather than replacing it —
@@ -1170,7 +1229,7 @@ export function MediaDetailModal({
                 trade — but it is open because you are choosing what is next,
                 not because you are watching this one. */}
             {queueBeside && (
-              <aside className="absolute inset-y-0 right-0 z-30 w-80 border-l border-white/10 bg-black/70 backdrop-blur-md">
+              <aside className="absolute inset-y-0 right-0 z-30 w-[min(20rem,85vw)] border-l border-white/10 bg-black/70 backdrop-blur-md">
                 <QueuePanel onPlay={openRelated} variant="side" />
               </aside>
             )}
@@ -1179,7 +1238,7 @@ export function MediaDetailModal({
 
           {/* Details */}
           {item && !mini && (
-            <div className="grid gap-6 p-6 sm:grid-cols-[1.6fr_1fr]">
+            <div className="grid gap-6 p-4 sm:grid-cols-[1.6fr_1fr] sm:p-6">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <span>{new Date(item.createdAt).getFullYear()}</span>
@@ -1189,28 +1248,32 @@ export function MediaDetailModal({
                       <span>{formatDuration(item.durationSeconds)}</span>
                     </>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setEditing((e) => !e)}
-                    aria-pressed={editing}
-                    aria-label={
-                      editing ? "Finish editing details" : "Edit details"
-                    }
-                    title={editing ? "Done editing" : "Edit details"}
-                    className={cn(
-                      "ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-                      editing
-                        ? "bg-white text-black hover:bg-white/90"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                  >
-                    {editing ? (
-                      <Check className="size-3.5" />
-                    ) : (
-                      <Pencil className="size-3.5" />
-                    )}
-                    {editing ? "Done" : "Edit"}
-                  </button>
+                  {/* Nothing to toggle on a phone — the sheet is read-only
+                      there, so the control that turns editing on goes too. */}
+                  {!isMobile && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing((e) => !e)}
+                      aria-pressed={editing}
+                      aria-label={
+                        editing ? "Finish editing details" : "Edit details"
+                      }
+                      title={editing ? "Done editing" : "Edit details"}
+                      className={cn(
+                        "ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
+                        editing
+                          ? "bg-white text-black hover:bg-white/90"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
+                    >
+                      {editing ? (
+                        <Check className="size-3.5" />
+                      ) : (
+                        <Pencil className="size-3.5" />
+                      )}
+                      {editing ? "Done" : "Edit"}
+                    </button>
+                  )}
                 </div>
 
                 {editing ? (
@@ -1304,32 +1367,29 @@ export function MediaDetailModal({
                           y: item.thumbnailPositionY,
                           scale: item.thumbnailScale,
                         }}
-                        // Previewed at the shape this tile is actually drawn
-                        // at: frame against 16:9 while the tile crops tall and
-                        // you would choose a band that gets cut on every tile
-                        // in the library.
-                        //
-                        // Taken from cardChrome rather than written out as a
-                        // class, so tuning the portrait ratio moves this
-                        // preview with it. It used to be a literal
-                        // `aspect-[5/7]`, which was correct only until the
-                        // first time that number changed.
                         aspectClass="aspect-video"
-                        aspectRatio={
-                          cardChrome(
-                            density,
-                            "none",
-                            item.tileShape ?? tileShape,
-                          ).aspectRatio
-                        }
+                        // Every shape this one value has to satisfy, rather
+                        // than the one tile shape that happens to be selected.
+                        // Previewing a single frame was what made the other
+                        // shapes unreachable: whichever axis that frame does
+                        // not crop cannot be dragged, so the hero's vertical
+                        // framing could never be set from either tile.
+                        //
+                        // Ratios come from cardChrome rather than written out
+                        // as classes, so tuning the portrait shape moves these
+                        // previews with it.
+                        previews={[
+                          ...TILE_SHAPES.map((shape) => ({
+                            label: shape.label,
+                            aspectRatio: cardChrome(density, "none", shape.value)
+                              .aspectRatio,
+                          })),
+                          { label: "Hero", aspectRatio: heroAspect(heroHeight) },
+                        ]}
                         saving={saveFraming.isPending}
                         onSave={(next) => saveFraming.mutate(next)}
                         onCancel={() => setReframing(false)}
-                        note={
-                          tileShape === "portrait"
-                            ? "Used everywhere this image appears. The hover card and the hero banner crop it much wider than this."
-                            : "Used everywhere this image appears — tile, hover card and the hero banner, which crops it much wider."
-                        }
+                        note="Used everywhere this image appears — tile, hover card, search row and the hero banner."
                       />
                     ) : (
                       <button

@@ -22,7 +22,7 @@ export function SeriesPage() {
   });
 
   if (isError) {
-    return <AppShell title="Series not found"><p className="px-6 text-sm text-muted-foreground">That series could not be found.</p></AppShell>;
+    return <AppShell title="Series not found"><p className="px-4 text-sm text-muted-foreground md:px-6">That series could not be found.</p></AppShell>;
   }
   if (isLoading || !data) return <AppShell><div className="skeleton mx-6 my-8 h-64 rounded-lg" /></AppShell>;
 
@@ -33,7 +33,7 @@ export function SeriesPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 px-6 py-8">
+      <div className="space-y-6 px-4 py-6 md:px-6 md:py-8">
         <Breadcrumbs items={[{ label: "Series", to: "/series" }, { label: data.name }]} />
         <div className="relative overflow-hidden rounded-xl bg-secondary">
           {allEpisodes[0] && <img src={thumbnailUrl(allEpisodes[0])} alt="" className="h-48 w-full object-cover opacity-55" />}
