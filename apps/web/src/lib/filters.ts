@@ -27,6 +27,8 @@ export type Filters = {
   format?: string;
   /** Days. "Recently added" as a number, so the chip can say how recent. */
   addedWithin?: number;
+  /** 1–5: "at least this many stars". Unrated items never match. */
+  minRating?: number;
 };
 
 export const EMPTY_FILTERS: Filters = { tags: [], performers: [] };
@@ -75,6 +77,7 @@ export const SORT_OPTIONS = [
   { value: "shortest", label: "Shortest" },
   { value: "watched", label: "Recently watched" },
   { value: "played", label: "Most played" },
+  { value: "rating", label: "Highest rated" },
   { value: "largest", label: "Largest file" },
   { value: "smallest", label: "Smallest file" },
   { value: "random", label: "Random" },
@@ -149,6 +152,11 @@ export function activeFilterChips(filters: Filters): FilterChip[] {
       label: "Favourites",
       without: { ...filters, favorite: undefined },
     });
+  if (filters.minRating !== undefined)
+    chips.push({
+      label: filters.minRating === 5 ? "5 stars" : `${filters.minRating}+ stars`,
+      without: { ...filters, minRating: undefined },
+    });
   if (filters.resolution) {
     const option = RESOLUTION_OPTIONS.find(
       (entry) => entry.value === filters.resolution,
@@ -222,6 +230,8 @@ export function filterParams(filters: Filters): URLSearchParams {
   if (filters.format) params.set("format", filters.format);
   if (filters.addedWithin !== undefined)
     params.set("addedWithin", String(filters.addedWithin));
+  if (filters.minRating !== undefined)
+    params.set("minRating", String(filters.minRating));
   return params;
 }
 
@@ -239,6 +249,14 @@ function readNumber(value: unknown): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** A star floor from the URL; anything outside 1–5 is dropped, not clamped. */
+function readRating(value: unknown): number | undefined {
+  const parsed = readNumber(value);
+  return parsed !== undefined && Number.isInteger(parsed) && parsed >= 1 && parsed <= 5
+    ? parsed
+    : undefined;
 }
 
 /**
@@ -269,6 +287,7 @@ export function filtersFromSearch(search: Record<string, unknown>): Filters {
       typeof search.resolution === "string" ? search.resolution : undefined,
     format: typeof search.format === "string" ? search.format : undefined,
     addedWithin: readNumber(search.addedWithin),
+    minRating: readRating(search.minRating),
   };
 }
 
@@ -295,5 +314,6 @@ export function filtersToSearch(filters: Filters): Record<string, unknown> {
     resolution: filters.resolution,
     format: filters.format,
     addedWithin: filters.addedWithin,
+    minRating: filters.minRating,
   };
 }

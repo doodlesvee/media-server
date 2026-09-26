@@ -253,6 +253,13 @@
       "when": 1790036616152,
       "tag": "0035_heavy_sunset_bain",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790405491867,
+      "tag": "0036_flashy_ultimates",
+      "breakpoints": true
     }
   ]
 }

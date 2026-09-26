@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { appSettings } from "../db/schema.js";
 import { restartScanSchedule } from "../scanner/schedule.js";
-import { forgetLanExposure, inContainer, lanAddresses } from "../net/lan.js";
+import { forgetLanExposure, inContainer, lanAddresses, lanPort } from "../net/lan.js";
 
 export type HeroSource = "recent" | "favorites" | "manual";
 
@@ -135,9 +135,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     network: {
       ...(await getNetworkSettings()),
       addresses: lanAddresses(),
-      // The dev server's port, which is what a phone connects to. The API
-      // port is not useful on its own — it serves no page to open.
-      port: Number(process.env.LAN_PORT ?? 5173),
+      // The port a phone connects to: Vite's in development, the server's
+      // own in production. See lanPort().
+      port: lanPort(),
       // Lets the settings screen explain why it has no address to show
       // rather than leaving an empty space.
       containerised: inContainer(),
@@ -162,7 +162,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           network: {
             ...network,
             addresses: lanAddresses(),
-            port: Number(process.env.LAN_PORT ?? 5173),
+            port: lanPort(),
             containerised: inContainer(),
           },
         };

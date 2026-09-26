@@ -66,7 +66,7 @@ export const DENSITIES: { value: Density; label: string }[] = [
 ];
 
 /** What a tile writes over its artwork. Mirrors the existing setting. */
-export type TileInfo = "full" | "title" | "none";
+export type TileInfo = "full" | "title" | "none" | "below";
 
 /**
  * Multiplies the chosen tile width. The mode says how big a card wants to be

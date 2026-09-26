@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { visibleItems } from "../library/visibility.js";
 import type { FastifyInstance } from "fastify";
-import { compileSmartRule, type SmartRule } from "../collections/ruleCompiler.js";
+import { compileSmartRule, smartRuleError, type SmartRule } from "../collections/ruleCompiler.js";
 import { db } from "../db/client.js";
 import { collectionItems, collections, mediaItemTypes, mediaItems } from "../db/schema.js";
 import { playbackWarningFor } from "../media/compatibility.js";
@@ -42,6 +42,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     if (type === "smart" && !smartRule) {
       reply.code(400);
       return { error: "smartRule is required for a smart collection" };
+    }
+    const ruleError = type === "smart" ? smartRuleError(smartRule) : null;
+    if (ruleError) {
+      reply.code(400);
+      return { error: ruleError };
     }
 
     const [collection] = await db

@@ -414,3 +414,16 @@
   user-select: none;
   transition: filter 150ms ease-out;
 }
+
+/*
+  The player draws its own seek bar (SeekStrip) for the previews and
+  bookmark ticks the native one cannot show. Two bars stacked one above the
+  other read as a glitch, so the native timeline goes while the custom one is
+  there — only the timeline: play, volume and fullscreen stay native.
+
+  Chrome and Safari only. Firefox has no selector for its timeline, so there
+  both bars remain, which is untidy but loses nothing.
+*/
+video.custom-seek::-webkit-media-controls-timeline {
+  display: none;
+}

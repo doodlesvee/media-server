@@ -198,6 +198,23 @@ export function FilterMenu({
                 </Choice>
               </Group>
 
+              <Group label="Rating">
+                {[5, 4, 3, 2].map((stars) => (
+                  <Choice
+                    key={stars}
+                    active={filters.minRating === stars}
+                    onClick={() =>
+                      onChange({
+                        ...filters,
+                        minRating: filters.minRating === stars ? undefined : stars,
+                      })
+                    }
+                  >
+                    {stars === 5 ? "★ 5" : `★ ${stars}+`}
+                  </Choice>
+                ))}
+              </Group>
+
               <Group label="Duration">
                 {DURATION_OPTIONS.map((option) => {
                   const active =

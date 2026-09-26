@@ -9,8 +9,8 @@
     "dev:web": "npm run dev --workspace apps/web",
     "build:server": "npm run build --workspace apps/server",
     "build:web": "npm run build --workspace apps/web",
-    "dev:docker": "docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d",
-    "start:docker": "docker compose -f docker/docker-compose.yml up -d" ,
+    "dev:docker": "sh docker/with-lan-host.sh docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d",
+    "start:docker": "sh docker/with-lan-host.sh docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down --remove-orphans",
     "test": "npm run test --workspaces --if-present",
     "coverage": "npm run coverage --workspaces --if-present"

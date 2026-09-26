@@ -20,6 +20,7 @@ type CacheUsage = {
 const LABELS: Record<string, string> = {
   posters: "Posters",
   previews: "Hover previews",
+  "scrub-sprites": "Seek-bar previews",
   thumbnails: "Thumbnails",
   "performer-images": "Performer images",
   "item-thumbnails": "Custom thumbnails",

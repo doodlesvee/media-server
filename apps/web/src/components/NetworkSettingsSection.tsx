@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Check, Copy, Loader2, QrCode as QrIcon, Wifi, WifiOff } from "lucide-react";
 import { fetchSettings, saveNetworkExposure } from "@/lib/settingsApi";
 import { SettingsFeedback, SettingsSection } from "./SettingsSection";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/lib/useMediaQuery";
+import { QrCodeDialog } from "./QrCodeDialog";
 
 /**
  * Whether other devices on the wifi can use this server.
@@ -46,6 +48,9 @@ export function NetworkSettingsSection() {
   });
 
   const exposed = network?.lanExposed ?? false;
+  // Already on the phone, a code pointing at this same page is no use.
+  const isMobile = useIsMobile();
+  const [showQr, setShowQr] = useState(false);
   const url = network?.addresses[0]
     ? `http://${network.addresses[0]}:${network.port}`
     : null;
@@ -128,8 +133,21 @@ export function NetworkSettingsSection() {
                       <Copy className="size-4" />
                     )}
                   </button>
+                  {!isMobile && (
+                    <button
+                      type="button"
+                      onClick={() => setShowQr(true)}
+                      title="Show a QR code to scan with your phone"
+                      className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <QrIcon className="size-4" />
+                      Show QR
+                    </button>
+                  )}
                 </div>
-              ) : (
+              ) : null}
+              {url && showQr && <QrCodeDialog url={url} onClose={() => setShowQr(false)} />}
+              {!url && (
                 // Inside a container the interfaces belong to the container,
                 // so the only address to be found is its own on the Docker
                 // bridge — no use to a phone. Better to say so than to show a
@@ -141,9 +159,10 @@ export function NetworkSettingsSection() {
                   <code className="text-foreground/80">ipconfig getifaddr en0</code>
                   {network?.containerised ? (
                     <>
-                      {" "}and set <code className="text-foreground/80">LAN_HOST</code> in{" "}
-                      <code className="text-foreground/80">docker/.env</code> to show it here.
-                      Port <code className="text-foreground/80">{network.port}</code>.
+                      , or start the server with{" "}
+                      <code className="text-foreground/80">npm run dev:docker</code> (or{" "}
+                      <code className="text-foreground/80">start:docker</code>), which looks it up and
+                      shows it here. Port <code className="text-foreground/80">{network.port}</code>.
                     </>
                   ) : (
                     "."

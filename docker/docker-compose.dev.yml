@@ -30,8 +30,8 @@ services:
       CHOKIDAR_INTERVAL: "300"
       # This machine's address on the wifi, for the local-network switch in
       # Settings to show. A container can only see its own address on the
-      # Docker bridge, which is no use to a phone, so it has to be told.
-      #   LAN_HOST=$(ipconfig getifaddr en0)   # macOS
+      # Docker bridge, which is no use to a phone, so it has to be told —
+      # docker/with-lan-host.sh does that when started via `npm run dev:docker`.
       LAN_HOST: ${LAN_HOST:-}
       # The port a phone actually opens: Vite in dev, not the API.
       LAN_PORT: "5173"

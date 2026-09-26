@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Eye, EyeOff, Heart, HeartOff, Tag, X } from "lucide-react";
+import { Building2, Check, Eye, EyeOff, Heart, HeartOff, Star, Tag, User, X } from "lucide-react";
 import { useToast } from "@/lib/toast";
 import { summariseBulk, type BulkResult } from "@/lib/bulkSummary";
 import {
   addItemsToCollection,
   removeItemsFromCollection,
   setFavoriteOnItems,
+  setPerformerOnItems,
+  setRatingOnItems,
+  setStudioOnItems,
   setTagOnItems,
   setWatchedOnItems,
 } from "@/lib/bulkActions";
@@ -42,6 +45,8 @@ export function BulkActionBar({
   collectionId?: number;
 }) {
   const [tagInput, setTagInput] = useState("");
+  const [performerInput, setPerformerInput] = useState("");
+  const [studioInput, setStudioInput] = useState("");
   const queryClient = useQueryClient();
   const { toast, update } = useToast();
   const { data } = useQuery({
@@ -145,6 +150,44 @@ export function BulkActionBar({
     onSuccess: refreshEverything,
   });
 
+  const ratingMutation = useMutation({
+    mutationFn: (rating: number | null) =>
+      runBulk(
+        rating ? "Rating" : "Clearing ratings",
+        rating ? `Rated ${rating}★` : "Cleared",
+        (onProgress) => setRatingOnItems(selectedIds, rating, onProgress),
+      ),
+    onSuccess: refreshEverything,
+  });
+
+  const performerMutation = useMutation({
+    mutationFn: ({ name, present }: { name: string; present: boolean }) =>
+      runBulk(
+        present ? "Adding performer" : "Removing performer",
+        present ? "Added" : "Removed",
+        (onProgress) => setPerformerOnItems(selectedIds, name, present, onProgress),
+      ),
+    onSuccess: () => {
+      refreshEverything();
+      queryClient.invalidateQueries({ queryKey: ["performers"] });
+      setPerformerInput("");
+    },
+  });
+
+  const studioMutation = useMutation({
+    mutationFn: (studio: string | null) =>
+      runBulk(
+        studio ? "Setting studio" : "Clearing studio",
+        studio ? "Set" : "Cleared",
+        (onProgress) => setStudioOnItems(selectedIds, studio, onProgress),
+      ),
+    onSuccess: () => {
+      refreshEverything();
+      queryClient.invalidateQueries({ queryKey: ["studios"] });
+      setStudioInput("");
+    },
+  });
+
   const collectionMutation = useMutation({
     mutationFn: ({ id, add }: { id: number; add: boolean }) =>
       runBulk(
@@ -164,6 +207,9 @@ export function BulkActionBar({
     tagMutation.isPending ||
     favoriteMutation.isPending ||
     watchedMutation.isPending ||
+    ratingMutation.isPending ||
+    performerMutation.isPending ||
+    studioMutation.isPending ||
     collectionMutation.isPending;
 
   return (
@@ -260,6 +306,110 @@ export function BulkActionBar({
           title="Remove this tag from every selected item"
         >
           <X className="size-3.5" /> Remove
+        </button>
+      </form>
+
+      <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+
+      <label className="flex items-center gap-1">
+        <Star className="size-3.5 text-muted-foreground" />
+        <span className="sr-only">Rate the selection</span>
+        <select
+          value=""
+          disabled={isPending}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value) ratingMutation.mutate(value === "clear" ? null : Number(value));
+            e.target.value = "";
+          }}
+          className="rounded border border-border bg-transparent px-2 py-1 text-xs"
+        >
+          <option value="" disabled>
+            Rate…
+          </option>
+          {[5, 4, 3, 2, 1].map((stars) => (
+            <option key={stars} value={stars}>
+              {"★".repeat(stars)}
+            </option>
+          ))}
+          <option value="clear">Clear rating</option>
+        </select>
+      </label>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (performerInput.trim())
+            performerMutation.mutate({ name: performerInput.trim(), present: true });
+        }}
+        className="flex items-center gap-1"
+      >
+        <label className="sr-only" htmlFor="bulk-performer">
+          Performer name
+        </label>
+        <User className="size-3.5 text-muted-foreground" />
+        <input
+          id="bulk-performer"
+          value={performerInput}
+          onChange={(e) => setPerformerInput(e.target.value)}
+          placeholder="Performer…"
+          className="w-28 rounded border border-border bg-transparent px-2 py-1 text-xs"
+        />
+        <button
+          type="submit"
+          disabled={isPending || !performerInput.trim()}
+          className={actionButtonClass}
+          title="Add this performer to every selected item"
+        >
+          <Check className="size-3.5" /> Add
+        </button>
+        <button
+          type="button"
+          disabled={isPending || !performerInput.trim()}
+          onClick={() =>
+            performerMutation.mutate({ name: performerInput.trim(), present: false })
+          }
+          className={actionButtonClass}
+          title="Remove this performer from every selected item"
+        >
+          <X className="size-3.5" /> Remove
+        </button>
+      </form>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (studioInput.trim()) studioMutation.mutate(studioInput.trim());
+        }}
+        className="flex items-center gap-1"
+      >
+        <label className="sr-only" htmlFor="bulk-studio">
+          Studio name
+        </label>
+        <Building2 className="size-3.5 text-muted-foreground" />
+        <input
+          id="bulk-studio"
+          value={studioInput}
+          onChange={(e) => setStudioInput(e.target.value)}
+          placeholder="Studio…"
+          className="w-28 rounded border border-border bg-transparent px-2 py-1 text-xs"
+        />
+        <button
+          type="submit"
+          disabled={isPending || !studioInput.trim()}
+          className={actionButtonClass}
+          title="Set this as the studio of every selected item"
+        >
+          <Check className="size-3.5" /> Set
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => studioMutation.mutate(null)}
+          className={actionButtonClass}
+          title="Clear the studio on every selected item"
+        >
+          <X className="size-3.5" /> Clear
         </button>
       </form>
 

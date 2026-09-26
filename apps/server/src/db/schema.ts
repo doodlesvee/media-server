@@ -103,6 +103,10 @@ export const mediaItems = pgTable("media_items", {
   // Display only, like the thumbnail framing above it: no file is touched and
   // no poster is regenerated, so flipping it back costs nothing.
   tileShape: text("tile_shape"),
+  // 1–5 stars, or null for "not rated". Null rather than 0 so an unrated
+  // item is never read as a one you rated badly — the sort puts it last and
+  // a "rating at least" rule simply leaves it out.
+  rating: integer("rating"),
   // False when the item's file sits in a folder you've removed from the scan
   // list. Distinct from missingSince, which means the file vanished from a
   // folder still being watched — different causes, different fixes. Rows are
@@ -417,4 +421,21 @@ export const playbackStates = pgTable("playback_states", {
   // the app would have for a "most played" view.
   playCount: integer("play_count").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/**
+ * Moments marked inside a video.
+ *
+ * Keyed to the item rather than the file, so a bookmark survives the file
+ * being moved or renamed — the scanner re-matches it to the same item by
+ * content hash, and everything hanging off the item comes along.
+ */
+export const bookmarks = pgTable("bookmarks", {
+  id: serial("id").primaryKey(),
+  mediaItemId: integer("media_item_id")
+    .notNull()
+    .references(() => mediaItems.id),
+  positionSeconds: integer("position_seconds").notNull(),
+  label: text("label"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   albums,
+  bookmarks,
   collectionItems,
   mediaFiles,
   mediaItemPerformers,
@@ -13,6 +14,7 @@ import {
 import { deleteItemThumbnail } from "../media/itemThumbnails.js";
 import { posterPathFor } from "../media/poster.js";
 import { previewPathFor } from "../media/preview.js";
+import { deleteScrubSprite } from "../media/scrubSprite.js";
 import { unlink } from "node:fs/promises";
 
 /**
@@ -146,6 +148,7 @@ export async function deleteItems(targets: number[]): Promise<number> {
     await tx
       .delete(playbackStates)
       .where(inArray(playbackStates.mediaItemId, targets));
+    await tx.delete(bookmarks).where(inArray(bookmarks.mediaItemId, targets));
     await tx
       .delete(collectionItems)
       .where(inArray(collectionItems.mediaItemId, targets));
@@ -180,6 +183,7 @@ export async function deleteItems(targets: number[]): Promise<number> {
     ...files.map(async ({ mediaItemId, contentHash }) => {
       await unlink(posterPathFor(mediaItemId, contentHash)).catch(() => {});
       await unlink(previewPathFor(mediaItemId, contentHash)).catch(() => {});
+      await deleteScrubSprite(mediaItemId, contentHash);
     }),
     ...thumbnails.map(({ thumbnailFile }) =>
       deleteItemThumbnail(thumbnailFile).catch(() => {}),

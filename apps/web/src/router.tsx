@@ -64,6 +64,7 @@ const browseRoute = createRoute({
     resolution?: string;
     format?: string;
     addedWithin?: number;
+    minRating?: number;
     month?: number;
   } => ({
     tag: typeof search.tag === "string" ? search.tag : undefined,
@@ -91,6 +92,8 @@ const browseRoute = createRoute({
     format: typeof search.format === "string" ? search.format : undefined,
     addedWithin:
       search.addedWithin != null ? Number(search.addedWithin) : undefined,
+    minRating:
+      search.minRating != null ? Number(search.minRating) : undefined,
     month: search.month != null ? Number(search.month) : undefined,
   }),
   component: BrowsePage,

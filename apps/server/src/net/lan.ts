@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import type { FastifyInstance } from "fastify";
 import { getNetworkSettings } from "../api/settings.js";
+import { isAuthorisedCastStream } from "../auth/castTokens.js";
 
 /**
  * Local-network exposure, decided from the address the client asked for.
@@ -52,6 +53,19 @@ export function isLocalHost(header: string | undefined): boolean {
   if (hostname === null) return false;
   if (LOCAL_HOSTNAMES.has(hostname)) return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+}
+
+/**
+ * The port another device should open.
+ *
+ * In development that is Vite's, which serves the page and proxies the API;
+ * the production image has no Vite and serves both from the API's own port.
+ * Defaulting to 5173 everywhere showed a production install's phone a URL
+ * that went nowhere.
+ */
+export function lanPort(): number {
+  if (process.env.LAN_PORT) return Number(process.env.LAN_PORT);
+  return process.env.NODE_ENV === "production" ? Number(process.env.PORT ?? 3000) : 5173;
 }
 
 /** Docker gives every container this file; nothing else does. */
@@ -107,6 +121,9 @@ export function registerLanGuard(app: FastifyInstance): void {
   app.addHook("onRequest", async (request, reply) => {
     if (isLocalHost(request.headers.host)) return;
     if (await isLanExposed()) return;
+    // A TV fetching a video it was cast. The token is the owner's say-so for
+    // that one stream, which is the permission this switch exists to ask for.
+    if (isAuthorisedCastStream(request.method, request.url)) return;
 
     reply.code(403).send({
       error: "Local network access is turned off for this server.",

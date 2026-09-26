@@ -31,11 +31,15 @@ does differently:
   filenames — see [Naming](#naming) below
 - **Streams** with HTTP range support, so seeking works
 - **Generates** poster frames and multi-segment hover previews with ffmpeg
-- **Organises** with tags, favourites, categories, manual and rule-based
-  collections, and saved searches
+- **Organises** with tags, favourites, 1–5 star ratings, categories, manual
+  and rule-based collections, and saved searches
+- **Edits in bulk**: select any number of tiles to favourite, rate, tag, set
+  a studio, add or remove a performer, or file them into a collection
 - **Groups** by performer, studio, album and series, each with its own
   browsable page
 - **Tracks** watch progress, play counts and a watched state
+- **Previews the seek bar**: hover or drag along it to see the frame you're
+  about to jump to, and bookmark moments inside a video to come back to
 - **Sorts** by date added, release date, title (A–Z or Z–A) and more, and
   remembers the choice per page
 - **Works on a phone** over your wifi — a drawer sidebar, swipeable hero and
@@ -43,6 +47,12 @@ does differently:
 - **Hides itself** on a keypress — see [Discreet mode](#discreet-mode)
 - **Adapts** to how you like it drawn, without a rebuild — see
   [Appearance](#appearance)
+- **Casts** to a Chromecast or smart TV from Chrome, or AirPlay from Safari —
+  see [Casting to a TV](#casting-to-a-tv)
+- **Shows where the space goes** — Site settings → Storage: the library's
+  total and what it is made of, a studio donut, performers ranked by space,
+  the largest files, space by release year, resolution, and scenes kept at
+  more than one quality
 - **Backs up** the database and your uploaded artwork to a single archive
 - **Survives reorganisation**: files are matched by content hash, so moving or
   renaming one keeps its tags, framing and watch history
@@ -195,8 +205,8 @@ on the host.
 | `BACKUP_DIR` | The one writable mount. Backups are written here, and anything you drop in is offered for restore | `../backups` |
 | `COMPOSE_FILE` | Which compose files a bare `docker compose` picks up | — |
 | `WEBAUTHN_ORIGIN` | Where the browser thinks it is, for Touch ID | `http://localhost:5173` |
-| `LAN_HOST` | This machine's address on the wifi, so Settings can show the URL to open on a phone. See below | — |
-| `LAN_PORT` | The port that URL uses — the one a phone actually opens. Set it to `3000` when running the production image | `5173` |
+| `LAN_HOST` | This machine's address on the wifi, so Settings can show the URL to open on a phone. Detected automatically by the npm scripts; set it to override | detected |
+| `LAN_PORT` | The port that URL uses — the one a phone actually opens | `5173` in dev, `3000` in production |
 
 `.env.example` also has `DATABASE_URL`, `PORT` and `APP_DATA_DIR` — those only
 matter if you're running the server directly on the host (`npm run
@@ -224,15 +234,22 @@ it genuinely sealed off, publish the port to loopback only — `127.0.0.1:5173:5
 in the compose file — and nothing from the network reaches the container at all.
 
 A container can only see its own address on the Docker bridge, which is no use
-to a phone, so tell it where it lives:
+to a phone, so `npm run dev:docker` and `npm run start:docker` look up this
+machine's wifi address as they start (`docker/with-lan-host.sh`) and pass it
+in. Settings then shows the URL for the phone, with a **Show QR** button that
+opens it as a code to scan with the phone's camera. If you move to another
+network, starting again picks up the new address.
+
+To pin it instead — or if you start the containers with `docker compose`
+directly — set it yourself; an explicit value always wins:
 
 ```sh
-echo "LAN_HOST=$(ipconfig getifaddr en0)" >> docker/.env   # macOS
-docker compose up -d                                        # picks up the new env
+echo "LAN_HOST=192.168.1.18" >> docker/.env
 ```
 
-Without it the switch still works — Settings just shows you how to find the
-address rather than printing it.
+In the player, double-tap the left or right third of the video to skip back or
+forward 10 seconds; keep tapping to skip further. The fullscreen button locks a
+wide video to landscape where the browser allows it (Chrome on Android).
 
 **Set `COMPOSE_FILE` if you develop against this.** Without it a plain
 `docker compose up -d` in `docker/` reads the base file alone, which has no
@@ -247,6 +264,21 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
 
 Everything else — which folders to scan, scan interval, categories, hero
 picks — is configured in the app under **Site settings**, not in env vars.
+
+### Casting to a TV
+
+A **Cast** button appears on the player once the browser finds a Chromecast,
+smart TV or Apple TV on the network — never before, so it is absent in a house
+without one.
+
+From desktop Chrome, the browser streams the video to the TV itself, so it
+works with no setup. From an Android phone, and with AirPlay, the TV is handed
+a link and fetches the video on its own. That link carries a signed token for
+that one video, valid for six hours, so the TV needs no login — but it has to
+be able to reach this machine, which the npm start scripts arrange by passing
+in `LAN_HOST` (see above).
+The token also lets the stream through when Local network access is off; every
+other request from the network is still refused.
 
 ### Development
 
@@ -385,6 +417,18 @@ instead of flashing the defaults.
 Which sections the homepage has, and in what order, lives under Site settings →
 Homepage — it's a layout decision made once, not a slider.
 
+## Smart collections
+
+A smart collection is a saved rule rather than a list, so it keeps itself up
+to date. Conditions can be combined with *all* or *any*: tag, type, title,
+added within N days, rated at least N stars, favourite, watched, played at
+least N times, longer or shorter than N minutes, and not watched in N days.
+
+The last one only matches things you *have* played, so "favourite and not
+watched in 90 days" finds forgotten favourites rather than everything you've
+never opened. The new-collection dialog has that and a few other presets to
+start from.
+
 ## Keyboard
 
 | | |
@@ -392,10 +436,13 @@ Homepage — it's a layout decision made once, not a slider.
 | `Ctrl/Cmd + K` | Search anywhere — performers, studios, titles, as you type |
 | `Ctrl/Cmd + Shift + H` | Discreet mode on, or off with proof |
 | `Ctrl/Cmd + Shift + ,` | Appearance panel |
+| `1`–`5` / `0` | On a tile: rate it, or clear the rating |
 | `Space` / `K` | Play or pause |
 | `←` `→` | Skip 10 seconds |
+| `0`–`9` | Jump to that tenth of the video — `5` is halfway, `0` the start |
 | `↑` `↓` | Volume |
 | `F` / `M` | Fullscreen / mute |
+| `B` | Bookmark the current moment |
 | `Esc` | Close the innermost thing that's open |
 
 The full list, including search and editing, is at `/help` in the app. Single-

@@ -180,6 +180,31 @@ export function CardShortcutProvider({
     [runUndoable],
   );
 
+  /**
+   * 1–5 sets the stars, 0 clears them. Undoable like the flags above, and
+   * read first for the same reason: the undo needs the rating that was
+   * really there, not a guess from the tile.
+   */
+  const rate = useCallback(
+    (card: EngagedCard, stars: number | null) => {
+      void runUndoable({
+        message: () => (stars ? `Rated ${stars} star${stars === 1 ? "" : "s"}` : "Rating cleared"),
+        description: card.title,
+        apply: async () => {
+          const res = await fetch(`/api/media-items/${card.id}`);
+          if (!res.ok) throw new Error("Could not read that item");
+          const { rating } = (await res.json()) as MediaItemDetail;
+          await updateItem(card.id, { rating: stars });
+          return rating;
+        },
+        revert: (was) => updateItem(card.id, { rating: was }),
+        onSettled: () => refresh(card.id),
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runUndoable],
+  );
+
   const peek = useCallback((card: EngagedCard) => {
     if (card.itemType === "folder") return;
     recordRecent("browsed", card);
@@ -253,6 +278,16 @@ export function CardShortcutProvider({
           event.preventDefault();
           openSearch();
           break;
+        case "0":
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+          if (isFolder) return;
+          event.preventDefault();
+          rate(card, event.key === "0" ? null : Number(event.key));
+          break;
         default:
           break;
       }
@@ -260,7 +295,7 @@ export function CardShortcutProvider({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [add, peek, toast, toggleFavourite, toggleWatched]);
+  }, [add, peek, rate, toast, toggleFavourite, toggleWatched]);
 
   const store = useMemo<CardShortcutStore>(
     () => ({

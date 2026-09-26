@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "@/lib/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Bookmark as BookmarkIcon,
+  Cast,
   Check,
   ChevronRight,
   Eye,
@@ -58,6 +60,18 @@ import { cn, formatDuration } from "@/lib/utils";
 import { useUndoable } from "@/lib/undo";
 import { QueuePanel } from "./QueuePanel";
 import { useQueue } from "@/lib/queue";
+import { StarRating } from "./StarRating";
+import { SeekStrip } from "./SeekStrip";
+import { BookmarkList } from "./BookmarkList";
+import { PlayerGestures } from "./PlayerGestures";
+import {
+  formatTimestamp,
+  useBookmarkMutations,
+  useBookmarks,
+  useScrubSprite,
+} from "@/lib/bookmarkApi";
+import { useToast } from "@/lib/toast";
+import { useCast } from "@/lib/useCast";
 import { SeriesAssignment } from "./SeriesAssignment";
 
 // Only offer "Continue Watching" for meaningful progress: not basically the
@@ -112,6 +126,11 @@ const SKIP_SECONDS = 10;
  * without this, typing a space into any of them would pause the video
  * instead of typing a space.
  */
+/** The bare 0–9 row keys. Numpad digits report the same `key`, so they count too. */
+function isDigitKey(key: string): boolean {
+  return key.length === 1 && key >= "0" && key <= "9";
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.matches(
@@ -183,6 +202,16 @@ export function MediaDetailModal({
   const editing = editingRequested && !isMobile;
   const { add, addNext, items: queueItems, remove } = useQueue();
   const autoPlayNext = useRef(false);
+  const { toast } = useToast();
+  const isVideo = item?.itemType === "video";
+  const { data: bookmarks = [] } = useBookmarks(viewingId, isVideo);
+  const bookmarkMutations = useBookmarkMutations(viewingId);
+  // Asked for as soon as real playback starts, not on hover: the first build
+  // takes a few seconds, and by the time you reach for the bar it is there.
+  const { data: scrubSprite } = useScrubSprite(
+    viewingId,
+    isVideo && mode === "playing" && !mini,
+  );
   const [miniPosition, setMiniPosition] = useState(() => {
     const width = 384;
     return {
@@ -284,6 +313,12 @@ export function MediaDetailModal({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const playerAreaRef = useRef<HTMLDivElement>(null);
+  const cast = useCast(videoRef, viewingId, isVideo && mode === "playing", `${mode}-${viewingId}`);
+  // The stream this item is playing from while it is being cast, when the TV
+  // needed a different URL from the ordinary one. Keyed by item so opening
+  // another video goes back to the ordinary stream without a reset.
+  const [castSrc, setCastSrc] = useState<{ id: number; url: string } | null>(null);
 
   /**
    * The queue column, beside the player so the video stays visible while you
@@ -344,6 +379,56 @@ export function MediaDetailModal({
     );
   }
 
+  function seekTo(seconds: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = seconds;
+    setCurrentTime(seconds);
+    revealPlayerControls();
+  }
+
+  /** Marks the current moment. Named later, from the list under the video. */
+  function addBookmark() {
+    const video = videoRef.current;
+    if (!video || mode !== "playing") return;
+    const at = video.currentTime;
+    bookmarkMutations.add.mutate(
+      { positionSeconds: at },
+      {
+        onSuccess: () =>
+          toast({ title: "Bookmarked", description: formatTimestamp(at), variant: "success" }),
+      },
+    );
+  }
+
+  /** From the bookmark list: seek if already playing, otherwise start there. */
+  function jumpTo(seconds: number) {
+    if (mode === "playing") {
+      seekTo(seconds);
+      void videoRef.current?.play().catch(() => {});
+    } else {
+      startPlaying(seconds);
+    }
+  }
+
+  /**
+   * Hands the video to a TV. Everything here stays synchronous up to the
+   * picker, which only opens from inside the click itself.
+   */
+  function startCasting() {
+    const video = videoRef.current;
+    if (!video || !item) return;
+    const url = cast.castSource();
+    if (url && castSrc?.url !== url) {
+      // Carried across the swap by handleLoadedMetadata, like a resume.
+      startPosition.current = video.currentTime;
+      video.src = url;
+      setCastSrc({ id: item.id, url });
+      void video.play().catch(() => {});
+    }
+    void cast.openPicker();
+  }
+
   function togglePlay() {
     const video = videoRef.current;
     if (!video) return;
@@ -400,13 +485,56 @@ export function MediaDetailModal({
     }
   }
 
+  /**
+   * Fullscreen for the player area rather than the bare <video>.
+   *
+   * Fullscreening the element itself hides everything drawn over it — the
+   * seek preview, bookmarks, skip buttons, the double-tap zones — so the
+   * moment you went fullscreen they all stopped existing. The browser's own
+   * fullscreen button still takes the video alone, for anyone who wants that.
+   *
+   * iPhone Safari has no element fullscreen at all, only the video's own
+   * native player, so that is the fallback there.
+   *
+   * On a phone a wide video is also locked to landscape, so it fills the
+   * screen without you having to turn it first. Only where the browser
+   * allows it (Android, while fullscreen); elsewhere the call just fails.
+   */
   function toggleFullscreen() {
     const video = videoRef.current;
+    const area = playerAreaRef.current;
     if (!video) return;
-    if (document.fullscreenElement)
+    if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
-    else void video.requestFullscreen?.().catch(() => {});
+      return;
+    }
+    const target = area?.requestFullscreen ? area : video;
+    if (target.requestFullscreen) {
+      void target
+        .requestFullscreen()
+        .then(() => {
+          if (isMobile && video.videoWidth > video.videoHeight) {
+            const orientation = screen.orientation as ScreenOrientation & {
+              lock?: (orientation: string) => Promise<void>;
+            };
+            return orientation.lock?.("landscape");
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+    (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
   }
+
+  // Leaving fullscreen by any route — Escape, the system back gesture, the
+  // native button — hands orientation back to the phone.
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) screen.orientation?.unlock?.();
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -441,14 +569,16 @@ export function MediaDetailModal({
       // video itself has focus. Handling them again here would seek twice
       // per press.
       // The browser's own controls handle arrows and space once the video has
-      // focus; these four have no native binding, so they still have to reach
+      // focus; these keys have no native binding, so they still have to reach
       // this handler from there.
       if (
         e.target === videoRef.current &&
         e.key !== "f" &&
         e.key !== "m" &&
         e.key !== "c" &&
-        e.key !== "i"
+        e.key !== "i" &&
+        e.key !== "b" &&
+        !isDigitKey(e.key)
       )
         return;
 
@@ -489,7 +619,21 @@ export function MediaDetailModal({
         case "i":
           void togglePictureInPicture();
           break;
+        case "b":
+          addBookmark();
+          break;
         default:
+          // 0–9 jump to that tenth of the video, as on YouTube: 5 is
+          // halfway, 0 is the start. Read from the element rather than the
+          // item, since the element's duration is what a seek is bounded by.
+          if (isDigitKey(e.key)) {
+            const video = videoRef.current;
+            const duration = video?.duration;
+            if (video && duration && Number.isFinite(duration)) {
+              e.preventDefault();
+              seekTo((Number(e.key) / 10) * duration);
+            }
+          }
           break;
       }
     };
@@ -821,6 +965,7 @@ export function MediaDetailModal({
               moved because of a list. */}
           {/* Backdrop / player area */}
           <div
+            ref={playerAreaRef}
             className={cn(
               "relative w-full overflow-hidden bg-black",
               cinema ? "h-screen" : "aspect-video",
@@ -860,7 +1005,9 @@ export function MediaDetailModal({
                 // appearance panel's "Play preview when opened" turned off.
                 src={
                   mode === "playing"
-                    ? `/api/stream/${item.id}`
+                    ? castSrc?.id === item.id
+                      ? castSrc.url
+                      : `/api/stream/${item.id}`
                     : stillOnly
                       ? undefined
                       : `/api/media-items/${item.id}/preview`
@@ -895,6 +1042,8 @@ export function MediaDetailModal({
                   // blurring something you deliberately pressed play on would
                   // just be broken.
                   mode === "playing" && "discreet-exempt",
+                  // SeekStrip replaces the native timeline; see index.css.
+                  mode === "playing" && !mini && "custom-seek",
                 )}
               />
             ) : item ? (
@@ -905,8 +1054,29 @@ export function MediaDetailModal({
               />
             ) : null}
 
+            {mode === "playing" && isVideo && !mini && (
+              <>
+                <PlayerGestures
+                  onSkip={(seconds) => {
+                    skip(seconds);
+                    revealPlayerControls();
+                  }}
+                  onTap={revealPlayerControls}
+                />
+                <SeekStrip
+                  duration={item.durationSeconds ?? videoRef.current?.duration ?? 0}
+                  currentTime={currentTime}
+                  sprite={scrubSprite}
+                  bookmarks={bookmarks}
+                  visible={showPlayerControls}
+                  onSeek={seekTo}
+                  besidePanel={queueBeside}
+                />
+              </>
+            )}
+
             {showUpNext && nextQueuedItem && (
-              <div className="absolute bottom-14 right-4 z-20 flex w-[min(20rem,calc(100%-2rem))] items-center gap-3 rounded-lg bg-black/85 p-2.5 text-white shadow-xl ring-1 ring-white/15 backdrop-blur-md">
+              <div className="absolute bottom-24 right-4 z-20 flex w-[min(20rem,calc(100%-2rem))] items-center gap-3 rounded-lg bg-black/85 p-2.5 text-white shadow-xl ring-1 ring-white/15 backdrop-blur-md">
                 <img
                   src={thumbnailUrl(nextQueuedItem)}
                   alt=""
@@ -1083,10 +1253,14 @@ export function MediaDetailModal({
             {mode === "playing" && item?.itemType === "video" && (
               <div
                 className={cn(
-                  "absolute left-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 transition-opacity duration-300",
+                  // The wrapper never takes a tap itself, only its buttons
+                  // do: wrapped onto two rows on a phone, its box covers the
+                  // top half of the frame, and the gaps between buttons are
+                  // where the double-tap-to-skip zones have to be reachable.
+                  "pointer-events-none absolute left-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 transition-opacity duration-300",
                   showPlayerControls
-                    ? "opacity-100"
-                    : "pointer-events-none opacity-0",
+                    ? "opacity-100 [&>*]:pointer-events-auto"
+                    : "opacity-0",
                 )}
               >
                 <button
@@ -1139,6 +1313,34 @@ export function MediaDetailModal({
                   )}
                 </div>
 
+                <button
+                  type="button"
+                  onClick={addBookmark}
+                  aria-label="Bookmark this moment"
+                  title="Bookmark this moment (b)"
+                  className="flex size-9 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm transition-colors hover:bg-black/80"
+                >
+                  <BookmarkIcon className="size-4" />
+                </button>
+                {/* Only once the browser has found a device to cast to, so a
+                    house with no TV on the network never sees it. */}
+                {cast.available && (
+                  <button
+                    type="button"
+                    onClick={startCasting}
+                    aria-label={cast.casting ? "Casting — choose a device" : "Cast to a TV"}
+                    title={cast.casting ? "Casting" : "Cast to a TV"}
+                    className={cn(
+                      "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs backdrop-blur-sm transition-colors",
+                      cast.casting
+                        ? "bg-white text-black hover:bg-white/90"
+                        : "bg-black/60 hover:bg-black/80",
+                    )}
+                  >
+                    <Cast className="size-4" />
+                    {cast.casting ? "Casting" : "Cast"}
+                  </button>
+                )}
                 {pipSupported && (
                   <button
                     type="button"
@@ -1248,6 +1450,8 @@ export function MediaDetailModal({
                       <span>{formatDuration(item.durationSeconds)}</span>
                     </>
                   )}
+                  <span>·</span>
+                  <StarRating itemId={item.id} rating={item.rating} />
                   {/* Nothing to toggle on a phone — the sheet is read-only
                       there, so the control that turns editing on goes too. */}
                   {!isMobile && (
@@ -1309,6 +1513,15 @@ export function MediaDetailModal({
                     readOnly={!editing}
                   />
                 </div>
+
+                {item.itemType === "video" && (
+                  <div className="space-y-1.5 pt-1">
+                    <FieldLabel accent={accent}>
+                      Bookmarks{bookmarks.length > 0 && ` · ${bookmarks.length}`}
+                    </FieldLabel>
+                    <BookmarkList itemId={item.id} bookmarks={bookmarks} onJump={jumpTo} />
+                  </div>
+                )}
 
                 {item.playbackWarning && (
                   <p className="rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-500">

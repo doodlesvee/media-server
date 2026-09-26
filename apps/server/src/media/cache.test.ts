@@ -52,6 +52,7 @@ describe("app data directories", () => {
     expect(DERIVED_DIRS.map((entry) => entry.name).sort()).toEqual([
       "posters",
       "previews",
+      "scrub-sprites",
       "thumbnails",
     ]);
   });

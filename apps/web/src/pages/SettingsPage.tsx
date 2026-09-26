@@ -12,6 +12,7 @@ import { CacheSettingsSection } from "@/components/CacheSettingsSection";
 import { NetworkSettingsSection } from "@/components/NetworkSettingsSection";
 import { PrivacySettingsSection } from "@/components/PrivacySettingsSection";
 import { ActivityLogSection } from "@/components/ActivityLogSection";
+import { StorageInsightsSection } from "@/components/StorageInsightsSection";
 import { cn } from "@/lib/utils";
 
 const routeApi = getRouteApi("/settings");
@@ -26,6 +27,7 @@ const TABS = [
   { id: "library", label: "Library" },
   { id: "homepage", label: "Homepage" },
   { id: "privacy", label: "Privacy" },
+  { id: "storage", label: "Storage" },
   { id: "backup", label: "Backup" },
   { id: "activity", label: "Activity" },
 ] as const;
@@ -106,6 +108,7 @@ export function SettingsPage() {
               <CacheSettingsSection />
             </>
           )}
+          {active === "storage" && <StorageInsightsSection />}
           {active === "activity" && <ActivityLogSection />}
         </div>
       </div>

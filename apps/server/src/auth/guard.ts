@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { isAuthorisedCastStream } from "./castTokens.js";
 import { resolveSession, SESSION_COOKIE, type SessionUser } from "./sessions.js";
 
 declare module "fastify" {
@@ -35,7 +36,7 @@ export function registerAuthGuard(app: FastifyInstance): void {
     const path = request.url.split("?")[0];
     if (PUBLIC_API_PATHS.has(path)) return;
 
-    if (!request.user) {
+    if (!request.user && !isAuthorisedCastStream(request.method, request.url)) {
       reply.code(401).send({ error: "Authentication required" });
     }
   });

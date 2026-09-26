@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   gt,
+  gte,
   ilike,
   inArray,
   isNotNull,
@@ -70,6 +71,7 @@ export const SORTS = [
   "shortest",
   "watched",
   "played",
+  "rating",
   "largest",
   "smallest",
   "random",
@@ -172,6 +174,10 @@ function orderFor(sort: string | undefined, randomSeed: number): SQL[] {
       ];
     case "played":
       return [sql`${playbackStates.playCount} desc nulls last`, desc(mediaItems.id)];
+    // Unrated is unknown, not bad — it goes after every star count, the same
+    // reasoning as undated items under the release sorts.
+    case "rating":
+      return [sql`${mediaItems.rating} desc nulls last`, desc(mediaItems.id)];
     case "largest":
       return [sql`${fileSizeExpr} desc nulls last`, desc(mediaItems.id)];
     case "smallest":
@@ -247,6 +253,7 @@ const itemColumns = {
   thumbnailPositionY: mediaItems.thumbnailPositionY,
   thumbnailScale: mediaItems.thumbnailScale,
   tileShape: mediaItems.tileShape,
+  rating: mediaItems.rating,
   durationSeconds: mediaItems.durationSeconds,
   takenAt: mediaItems.takenAt,
   releaseDate: mediaItems.releaseDate,
@@ -502,6 +509,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       addedWithin?: string;
       month?: string;
       seed?: string;
+      minRating?: string;
     };
   }>("/api/media-items", async (request) => {
     const {
@@ -658,6 +666,13 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
             and ps.completed_at is null
         )`
       );
+    }
+    // "At least this many stars". Unrated items fail the comparison (NULL >=
+    // n is not true), which is the point: asking for 4+ is asking for things
+    // you rated, not things you haven't got round to.
+    const ratingFloor = Number(request.query.minRating);
+    if (Number.isInteger(ratingFloor) && ratingFloor >= 1 && ratingFloor <= 5) {
+      conditions.push(gte(mediaItems.rating, ratingFloor));
     }
     const favoritesOnly = favorite === "true";
     if (favoritesOnly) {
@@ -1385,6 +1400,8 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailScale?: number;
       /** 'landscape' | 'portrait', or null to follow the Appearance setting. */
       tileShape?: string | null;
+      /** 1–5 stars, or null to clear. */
+      rating?: number | null;
       seriesId?: number | null;
       seasonNumber?: number | null;
       episodeNumber?: number | null;
@@ -1403,6 +1420,7 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
       thumbnailPositionY,
       thumbnailScale,
       tileShape,
+      rating,
       seriesId,
       seasonNumber,
       episodeNumber,
@@ -1466,6 +1484,15 @@ export async function mediaItemRoutes(app: FastifyInstance): Promise<void> {
         return { error: "tileShape must be 'landscape', 'portrait', or null" };
       }
       patch.tileShape = tileShape;
+    }
+    // Rejected rather than clamped, for the same reason as tileShape: stars
+    // come from five buttons, so 0 or 3.5 is a bug worth surfacing.
+    if (rating !== undefined) {
+      if (rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) {
+        reply.code(400);
+        return { error: "rating must be a whole number from 1 to 5, or null" };
+      }
+      patch.rating = rating;
     }
     if (studio !== undefined) {
       const name = studio?.trim();

@@ -37,6 +37,8 @@ export type MediaItemDetail = {
    * hand.
    */
   tileShape: "landscape" | "portrait" | null;
+  /** 1–5 stars, or null when not rated. */
+  rating: number | null;
   studio: string | null;
   studioSource: "scanner" | "user";
   performersSource: "scanner" | "user";
@@ -154,6 +156,7 @@ export async function updateItem(
     thumbnailPositionY?: number;
     thumbnailScale?: number;
     tileShape?: "landscape" | "portrait" | null;
+    rating?: number | null;
     seriesId?: number | null;
     seasonNumber?: number | null;
     episodeNumber?: number | null;

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { mediaItems, mediaItemTypes } from "../db/schema.js";
+import { mediaItems, mediaItemTypes, playbackStates } from "../db/schema.js";
 import { resetDatabase, testApp } from "../test/harness.js";
 import { makeItem, makeLibrary, makePhoto } from "../test/fixtures.js";
-import { compileSmartRule, type SmartRule } from "./ruleCompiler.js";
+import { compileSmartRule, smartRuleError, type SmartRule } from "./ruleCompiler.js";
 
 let libraryId: number;
 
@@ -90,5 +90,126 @@ describe("compileSmartRule", () => {
     ).toEqual([]);
     // The table is still there.
     expect(await db.select().from(mediaItems)).toHaveLength(1);
+  });
+
+  describe("rating, favourite and playback conditions", () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const play = (mediaItemId: number, state: Partial<typeof playbackStates.$inferInsert>) =>
+      db.insert(playbackStates).values({ mediaItemId, ...state });
+
+    it("matches a rating floor and leaves unrated items out", async () => {
+      await makeItem(libraryId, { title: "Five", rating: 5 });
+      await makeItem(libraryId, { title: "Three", rating: 3 });
+      await makeItem(libraryId, { title: "Unrated" });
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "rating", op: "gte", value: 4 }] })
+      ).toEqual(["Five"]);
+    });
+
+    it("matches favourites", async () => {
+      await makeItem(libraryId, { title: "Loved", isFavorite: true });
+      await makeItem(libraryId, { title: "Plain" });
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "favorite", op: "eq", value: true }] })
+      ).toEqual(["Loved"]);
+    });
+
+    it("splits watched from never-watched, counting items with no playback row", async () => {
+      const done = await makeItem(libraryId, { title: "Done" });
+      const started = await makeItem(libraryId, { title: "Started" });
+      await makeItem(libraryId, { title: "Untouched" });
+      await play(done, { completedAt: new Date(), playCount: 1 });
+      await play(started, { positionSeconds: 120 });
+
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "watched", op: "eq", value: true }] })
+      ).toEqual(["Done"]);
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "watched", op: "eq", value: false }] })
+      ).toEqual(["Started", "Untouched"]);
+    });
+
+    it("matches a play count, treating no playback row as zero", async () => {
+      const often = await makeItem(libraryId, { title: "Often" });
+      const once = await makeItem(libraryId, { title: "Once" });
+      await makeItem(libraryId, { title: "Never" });
+      await play(often, { playCount: 4, completedAt: new Date() });
+      await play(once, { playCount: 1, completedAt: new Date() });
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "playCount", op: "gte", value: 2 }] })
+      ).toEqual(["Often"]);
+    });
+
+    it("matches duration bounds in minutes", async () => {
+      await makeItem(libraryId, { title: "Long", durationSeconds: 45 * 60 });
+      await makeItem(libraryId, { title: "Short", durationSeconds: 5 * 60 });
+      await makeItem(libraryId, { title: "Unknown" });
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "durationMinutes", op: "gte", value: 30 }] })
+      ).toEqual(["Long"]);
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "durationMinutes", op: "lte", value: 10 }] })
+      ).toEqual(["Short"]);
+    });
+
+    it("finds things played before but not lately, and not things never played", async () => {
+      const old = await makeItem(libraryId, { title: "Forgotten" });
+      const recent = await makeItem(libraryId, { title: "Recent" });
+      await makeItem(libraryId, { title: "Never" });
+      await play(old, { playCount: 3, completedAt: new Date(Date.now() - 200 * DAY), updatedAt: new Date(Date.now() - 200 * DAY) });
+      await play(recent, { playCount: 1, completedAt: new Date(), updatedAt: new Date() });
+      expect(
+        await matching({ op: "AND", conditions: [{ field: "lastWatched", op: "older_than_days", value: 90 }] })
+      ).toEqual(["Forgotten"]);
+    });
+
+    it("combines them — the forgotten favourite", async () => {
+      const a = await makeItem(libraryId, { title: "Old favourite", isFavorite: true });
+      const b = await makeItem(libraryId, { title: "Old other" });
+      for (const id of [a, b]) {
+        await play(id, { playCount: 2, updatedAt: new Date(Date.now() - 120 * DAY) });
+      }
+      expect(
+        await matching({
+          op: "AND",
+          conditions: [
+            { field: "favorite", op: "eq", value: true },
+            { field: "lastWatched", op: "older_than_days", value: 90 },
+          ],
+        })
+      ).toEqual(["Old favourite"]);
+    });
+  });
+});
+
+describe("smartRuleError", () => {
+  it("accepts every supported condition", () => {
+    expect(
+      smartRuleError({
+        op: "AND",
+        conditions: [
+          { field: "tags", op: "contains", value: "x" },
+          { field: "rating", op: "gte", value: 4 },
+          { field: "favorite", op: "eq", value: false },
+          { field: "watched", op: "eq", value: true },
+          { field: "playCount", op: "gte", value: 2 },
+          { field: "durationMinutes", op: "lte", value: 20 },
+          { field: "lastWatched", op: "older_than_days", value: 90 },
+        ],
+      })
+    ).toBeNull();
+  });
+
+  it("rejects an unknown field, which would otherwise widen the rule", () => {
+    expect(
+      smartRuleError({ op: "AND", conditions: [{ field: "passwordHash", op: "contains", value: "x" }] })
+    ).toMatch(/condition 1/);
+  });
+
+  it("rejects out-of-range and wrongly-typed values", () => {
+    expect(smartRuleError({ op: "AND", conditions: [{ field: "rating", op: "gte", value: 6 }] })).not.toBeNull();
+    expect(smartRuleError({ op: "AND", conditions: [{ field: "rating", op: "gte", value: 2.5 }] })).not.toBeNull();
+    expect(smartRuleError({ op: "AND", conditions: [{ field: "watched", op: "eq", value: "yes" }] })).not.toBeNull();
+    expect(smartRuleError({ op: "XOR", conditions: [] })).not.toBeNull();
   });
 });

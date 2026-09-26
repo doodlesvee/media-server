@@ -3,29 +3,118 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { Portal } from "./Portal";
 
-type ConditionField = "tags" | "itemType" | "title" | "createdAt";
+type Option = { value: string; label: string };
+
+/**
+ * Every condition the builder offers, and how each becomes the server's
+ * shape. One table rather than a switch per concern, so adding a field is
+ * one entry here instead of edits to the labels, the input and the encoder.
+ *
+ * Values are held as strings while editing — they come out of inputs and
+ * selects — and only turned into numbers and booleans on the way out.
+ */
+type FieldSpec = {
+  label: string;
+  input: "text" | "number" | Option[];
+  /** Shown after a number input, where the label reads as a sentence. */
+  unit?: string;
+  toApi: (value: string) => unknown;
+};
+
+const YES_NO: Option[] = [
+  { value: "true", label: "yes" },
+  { value: "false", label: "no" },
+];
+
+const FIELDS = {
+  tags: {
+    label: "tagged",
+    input: "text",
+    toApi: (value) => ({ field: "tags", op: "contains", value }),
+  },
+  itemType: {
+    label: "type is",
+    input: [
+      { value: "video", label: "video" },
+      { value: "photo", label: "photo" },
+    ],
+    toApi: (value) => ({ field: "itemType", op: "eq", value }),
+  },
+  title: {
+    label: "title contains",
+    input: "text",
+    toApi: (value) => ({ field: "title", op: "contains", value }),
+  },
+  createdAt: {
+    label: "added in the last",
+    input: "number",
+    unit: "days",
+    toApi: (value) => ({ field: "createdAt", op: "within_last_days", value: Number(value) }),
+  },
+  rating: {
+    label: "rated at least",
+    input: [5, 4, 3, 2, 1].map((n) => ({ value: String(n), label: `${n} star${n === 1 ? "" : "s"}` })),
+    toApi: (value) => ({ field: "rating", op: "gte", value: Number(value) }),
+  },
+  favorite: {
+    label: "favourite",
+    input: YES_NO,
+    toApi: (value) => ({ field: "favorite", op: "eq", value: value === "true" }),
+  },
+  watched: {
+    label: "watched",
+    input: YES_NO,
+    toApi: (value) => ({ field: "watched", op: "eq", value: value === "true" }),
+  },
+  playCount: {
+    label: "played at least",
+    input: "number",
+    unit: "times",
+    toApi: (value) => ({ field: "playCount", op: "gte", value: Number(value) }),
+  },
+  longerThan: {
+    label: "longer than",
+    input: "number",
+    unit: "min",
+    toApi: (value) => ({ field: "durationMinutes", op: "gte", value: Number(value) }),
+  },
+  shorterThan: {
+    label: "shorter than",
+    input: "number",
+    unit: "min",
+    toApi: (value) => ({ field: "durationMinutes", op: "lte", value: Number(value) }),
+  },
+  lastWatched: {
+    label: "not watched in",
+    input: "number",
+    unit: "days",
+    toApi: (value) => ({ field: "lastWatched", op: "older_than_days", value: Number(value) }),
+  },
+} satisfies Record<string, FieldSpec>;
+
+type ConditionField = keyof typeof FIELDS;
 
 type ConditionRow = { field: ConditionField; value: string };
 
-const FIELD_LABELS: Record<ConditionField, string> = {
-  tags: "tagged",
-  itemType: "type is",
-  title: "title contains",
-  createdAt: "added in the last (days)",
-};
-
-function conditionToApiShape(row: ConditionRow) {
-  switch (row.field) {
-    case "tags":
-      return { field: "tags", op: "contains", value: row.value };
-    case "itemType":
-      return { field: "itemType", op: "eq", value: row.value };
-    case "title":
-      return { field: "title", op: "contains", value: row.value };
-    case "createdAt":
-      return { field: "createdAt", op: "within_last_days", value: Number(row.value) };
-  }
-}
+/**
+ * Starting points for the lists people actually want, since a blank rule
+ * builder makes you work out that "forgotten favourite" is favourite AND
+ * played-but-not-lately. Each one only fills the form in; it can be edited
+ * before saving like any other rule.
+ */
+const PRESETS: { name: string; op: "AND" | "OR"; conditions: ConditionRow[] }[] = [
+  { name: "Top rated", op: "AND", conditions: [{ field: "rating", value: "4" }] },
+  {
+    name: "Forgotten favourites",
+    op: "AND",
+    conditions: [
+      { field: "favorite", value: "true" },
+      { field: "lastWatched", value: "90" },
+    ],
+  },
+  { name: "Never watched", op: "AND", conditions: [{ field: "watched", value: "false" }] },
+  { name: "Most replayed", op: "AND", conditions: [{ field: "playCount", value: "3" }] },
+];
 
 async function createCollection(body: unknown) {
   const res = await fetch("/api/collections", {
@@ -33,7 +122,12 @@ async function createCollection(body: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to create collection: ${res.status}`);
+  if (!res.ok) {
+    // The server names which condition it refused; say so rather than a
+    // bare status code.
+    const detail = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(detail?.error ?? `Failed to create collection: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -62,7 +156,10 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
     mutation.mutate({
       name,
       type: "smart",
-      smartRule: { op: ruleOp, conditions: validConditions.map(conditionToApiShape) },
+      smartRule: {
+        op: ruleOp,
+        conditions: validConditions.map((c) => FIELDS[c.field].toApi(c.value.trim())),
+      },
     });
   }
 
@@ -109,6 +206,22 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
 
         {type === "smart" && (
           <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => {
+                    setRuleOp(preset.op);
+                    setConditions(preset.conditions);
+                    if (!name.trim()) setName(preset.name);
+                  }}
+                  className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               Match
               <select
@@ -132,38 +245,19 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
                   }}
                   className="rounded border border-border bg-transparent px-1 py-1 text-xs"
                 >
-                  {Object.entries(FIELD_LABELS).map(([field, label]) => (
+                  {Object.entries(FIELDS).map(([field, spec]) => (
                     <option key={field} value={field}>
-                      {label}
+                      {spec.label}
                     </option>
                   ))}
                 </select>
-                {row.field === "itemType" ? (
-                  <select
-                    value={row.value}
-                    onChange={(e) =>
-                      setConditions(
-                        conditions.map((c, j) => (j === i ? { ...c, value: e.target.value } : c))
-                      )
-                    }
-                    className="flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs"
-                  >
-                    <option value="">select…</option>
-                    <option value="video">video</option>
-                    <option value="photo">photo</option>
-                  </select>
-                ) : (
-                  <input
-                    value={row.value}
-                    type={row.field === "createdAt" ? "number" : "text"}
-                    onChange={(e) =>
-                      setConditions(
-                        conditions.map((c, j) => (j === i ? { ...c, value: e.target.value } : c))
-                      )
-                    }
-                    className="flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs"
-                  />
-                )}
+                <ConditionValue
+                  spec={FIELDS[row.field]}
+                  value={row.value}
+                  onChange={(value) =>
+                    setConditions(conditions.map((c, j) => (j === i ? { ...c, value } : c)))
+                  }
+                />
                 <button
                   type="button"
                   onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
@@ -184,6 +278,10 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {mutation.error && (
+          <p className="text-xs text-destructive">{mutation.error.message}</p>
+        )}
+
         <button
           type="button"
           onClick={submit}
@@ -195,5 +293,44 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Portal>
+  );
+}
+
+function ConditionValue({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: FieldSpec;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (Array.isArray(spec.input)) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs"
+      >
+        <option value="">select…</option>
+        {spec.input.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <span className="flex flex-1 items-center gap-1.5">
+      <input
+        value={value}
+        type={spec.input}
+        min={spec.input === "number" ? 1 : undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs"
+      />
+      {spec.unit && <span className="text-xs text-muted-foreground">{spec.unit}</span>}
+    </span>
   );
 }

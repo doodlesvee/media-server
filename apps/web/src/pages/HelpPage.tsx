@@ -82,6 +82,7 @@ export function HelpPage() {
           </Row>
           <Row keys={["P"]}>Play it.</Row>
           <Row keys={["F"]}>Favourite or unfavourite. The toast offers an undo.</Row>
+          <Row keys={["1–5"]}>Rate it that many stars. <Kbd>0</Kbd> clears the rating.</Row>
           <Row keys={["W"]}>Mark watched or unwatched.</Row>
           <Row keys={["E"]}>Edit — opens the full details.</Row>
           <Row keys={["Q"]}>Add it to the queue.</Row>
@@ -105,6 +106,7 @@ export function HelpPage() {
         <Group title="Playing a video">
           <Row keys={["Space", "K"]}>Play or pause.</Row>
           <Row keys={["←", "→"]}>Skip back or forward 10 seconds.</Row>
+          <Row keys={["0–9"]}>Jump to that tenth of the video: 5 is halfway, 0 is the start.</Row>
           <Row keys={["↑", "↓"]}>Volume up or down. It's remembered for next time.</Row>
           <Row keys={["M"]}>Mute or unmute.</Row>
           <Row keys={["F"]}>Fullscreen.</Row>

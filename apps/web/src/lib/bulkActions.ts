@@ -41,8 +41,11 @@ export async function runPerItem(
 
 async function readItem(id: number): Promise<{
   tags: { name: string }[];
+  performers: { name: string }[];
   isFavorite: boolean;
   watched: boolean;
+  rating: number | null;
+  studio: string | null;
 }> {
   const res = await fetch(`/api/media-items/${id}`);
   if (!res.ok) throw new Error(`Failed to read item ${id}`);
@@ -173,6 +176,90 @@ export function removeItemsFromCollection(
       // item that was never in the collection costs one request rather than
       // two and ends in the state the user asked for regardless.
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return "ok";
+    },
+    onProgress,
+  );
+}
+
+async function patchItem(id: number, body: unknown): Promise<void> {
+  const res = await fetch(`/api/media-items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+}
+
+/** Sets (or, with null, clears) the stars on every selected item. */
+export function setRatingOnItems(
+  itemIds: number[],
+  rating: number | null,
+  onProgress: (done: number) => void,
+): Promise<BulkResult> {
+  return runPerItem(
+    itemIds,
+    async (id) => {
+      const item = await readItem(id);
+      if (item.rating === rating) return "skipped";
+      await patchItem(id, { rating });
+      return "ok";
+    },
+    onProgress,
+  );
+}
+
+/**
+ * Sets one studio across a selection, or clears it with null.
+ *
+ * Like editing it in the sheet, this marks the studio as yours, so a rescan
+ * will not put back whatever the filename brackets said.
+ */
+export function setStudioOnItems(
+  itemIds: number[],
+  studio: string | null,
+  onProgress: (done: number) => void,
+): Promise<BulkResult> {
+  return runPerItem(
+    itemIds,
+    async (id) => {
+      const item = await readItem(id);
+      if ((item.studio ?? null) === studio) return "skipped";
+      await patchItem(id, { studio });
+      return "ok";
+    },
+    onProgress,
+  );
+}
+
+/**
+ * Adds or removes one performer across a selection.
+ *
+ * PUT /performers replaces an item's whole cast, so this merges with what
+ * each item already has — the same read-then-write as tags, for the same
+ * reason. Names compare case-insensitively, since the server matches
+ * performers that way and "jane doe" would otherwise be added beside "Jane
+ * Doe" as if she were missing.
+ */
+export function setPerformerOnItems(
+  itemIds: number[],
+  performerName: string,
+  present: boolean,
+  onProgress: (done: number) => void,
+): Promise<BulkResult> {
+  const wanted = performerName.toLowerCase();
+  return runPerItem(
+    itemIds,
+    async (id) => {
+      const item = await readItem(id);
+      const names = item.performers.map((performer) => performer.name);
+      const has = names.some((name) => name.toLowerCase() === wanted);
+      if (has === present) return "skipped";
+
+      const next = present
+        ? [...names, performerName]
+        : names.filter((name) => name.toLowerCase() !== wanted);
+      await putJson(`/api/media-items/${id}/performers`, { performerNames: next });
       return "ok";
     },
     onProgress,

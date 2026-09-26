@@ -10,6 +10,7 @@ import {
 } from "../media/itemThumbnails.js";
 import { streamFile } from "../media/streamer.js";
 import { previewPathFor } from "../media/preview.js";
+import { ensureScrubSprite, spritePathFor } from "../media/scrubSprite.js";
 import { getOrCreatePhotoThumbnail, getPosterPath } from "../media/thumbnails.js";
 
 type ResolvedFile = {
@@ -117,6 +118,52 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
         request.headers.range,
         false
       );
+    }
+  );
+
+  /**
+   * The seek-bar preview layout, building the sprite on first request.
+   *
+   * The first call for a video can take several seconds; the player asks as
+   * playback starts, so it is ready by the time you reach for the bar, and
+   * the bar works as a plain seek bar until then.
+   */
+  app.get<{ Params: { id: string } }>(
+    "/api/media-items/:id/scrub",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const file = await resolveItemFile(id);
+      const [item] = await db
+        .select({ durationSeconds: mediaItems.durationSeconds })
+        .from(mediaItems)
+        .where(eq(mediaItems.id, id));
+      if (!file || file.itemType !== "video" || !item?.durationSeconds) {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+
+      const info = await ensureScrubSprite(file.filePath, id, file.contentHash, item.durationSeconds);
+      if (!info) {
+        reply.code(404);
+        return { error: "No preview frames could be read from this video" };
+      }
+      // The hash is in the URL so a re-encoded file gets a new image rather
+      // than a year-cached one from before.
+      return { ...info, url: `/api/media-items/${id}/scrub.jpg?v=${file.contentHash ?? "nohash"}` };
+    }
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/media-items/:id/scrub.jpg",
+    async (request, reply) => {
+      const id = Number(request.params.id);
+      const file = await resolveItemFile(id);
+      if (!file || file.itemType !== "video") {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+      reply.header("Cache-Control", "private, max-age=31536000, immutable");
+      await streamFile(reply, spritePathFor(id, file.contentHash), "image/jpeg", request.headers.range, false);
     }
   );
 

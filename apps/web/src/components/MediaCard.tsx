@@ -39,6 +39,7 @@ export type MediaCardItem = {
    * that never selects the column keeps working.
    */
   tileShape?: "landscape" | "portrait" | null;
+  rating?: number | null;
   description?: string | null;
   /**
    * State the tile shows, and which the list endpoint has always returned —
