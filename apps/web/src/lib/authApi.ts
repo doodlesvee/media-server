@@ -12,8 +12,26 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+/**
+ * Thrown when the server is refusing this device outright.
+ *
+ * Distinct from any other failure because the answer is different: nothing is
+ * broken and signing in will not help — the switch is off, and it can only be
+ * turned back on from the machine the server runs on.
+ */
+export class LanBlockedError extends Error {
+  constructor() {
+    super("Local network access is turned off for this server.");
+    this.name = "LanBlockedError";
+  }
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch("/api/auth/status");
+  if (res.status === 403) {
+    const body = (await res.json().catch(() => null)) as { code?: string } | null;
+    if (body?.code === "lan_disabled") throw new LanBlockedError();
+  }
   if (!res.ok) throw new Error(`Failed to load auth status: ${res.status}`);
   return res.json();
 }

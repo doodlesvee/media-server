@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { db } from "../db/client.js";
 import { appSettings } from "../db/schema.js";
 import { restartScanSchedule } from "../scanner/schedule.js";
+import { forgetLanExposure, inContainer, lanAddresses } from "../net/lan.js";
 
 export type HeroSource = "recent" | "favorites" | "manual";
 
@@ -15,6 +16,7 @@ export type HeroSettings = {
 const HERO_KEY = "hero";
 const KIND_COVERS_KEY = "kindCovers";
 const SCAN_KEY = "scan";
+const NETWORK_KEY = "network";
 
 // Minutes between automatic scans. 0 means off. Kept as an allow-list rather
 // than a free number so a hand-edited row can't set a 10-second interval and
@@ -45,6 +47,35 @@ export async function setScanSettings(intervalMinutes: number): Promise<ScanSett
   await db
     .insert(appSettings)
     .values({ key: SCAN_KEY, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+  return value;
+}
+
+/**
+ * Whether the app answers requests that arrived at a LAN address.
+ *
+ * Defaults to on, so adding this feature does not silently cut off a phone
+ * that was working five minutes ago. Turning it off is a deliberate act.
+ */
+export type NetworkSettings = { lanExposed: boolean };
+
+const DEFAULT_NETWORK: NetworkSettings = { lanExposed: true };
+
+export async function getNetworkSettings(): Promise<NetworkSettings> {
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.key, NETWORK_KEY));
+  const value = row?.value as Partial<NetworkSettings> | null;
+  // Re-validated on read, same discipline as the scan settings: a hand-edited
+  // row that is not a boolean must not decide whether the door is open.
+  return typeof value?.lanExposed === "boolean"
+    ? { lanExposed: value.lanExposed }
+    : DEFAULT_NETWORK;
+}
+
+export async function setNetworkSettings(lanExposed: boolean): Promise<NetworkSettings> {
+  const value: NetworkSettings = { lanExposed: Boolean(lanExposed) };
+  await db
+    .insert(appSettings)
+    .values({ key: NETWORK_KEY, value })
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
   return value;
 }
@@ -101,11 +132,42 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     hero: await getHeroSettings(),
     scan: await getScanSettings(),
     scanIntervals: SCAN_INTERVALS,
+    network: {
+      ...(await getNetworkSettings()),
+      addresses: lanAddresses(),
+      // The dev server's port, which is what a phone connects to. The API
+      // port is not useful on its own — it serves no page to open.
+      port: Number(process.env.LAN_PORT ?? 5173),
+      // Lets the settings screen explain why it has no address to show
+      // rather than leaving an empty space.
+      containerised: inContainer(),
+    },
   }));
 
-  app.patch<{ Body: { hero?: Partial<HeroSettings>; scan?: Partial<ScanSettings> } }>(
+  app.patch<{
+    Body: {
+      hero?: Partial<HeroSettings>;
+      scan?: Partial<ScanSettings>;
+      network?: Partial<NetworkSettings>;
+    };
+  }>(
     "/api/settings",
     async (request, reply) => {
+      if (request.body.network?.lanExposed !== undefined) {
+        const network = await setNetworkSettings(request.body.network.lanExposed);
+        // Pushed into the guard's cache rather than just clearing it, so the
+        // very next request is judged by the new value with no extra query.
+        forgetLanExposure(network.lanExposed);
+        return {
+          network: {
+            ...network,
+            addresses: lanAddresses(),
+            port: Number(process.env.LAN_PORT ?? 5173),
+            containerised: inContainer(),
+          },
+        };
+      }
+
       if (request.body.scan?.intervalMinutes !== undefined) {
         const scan = await setScanSettings(request.body.scan.intervalMinutes);
         // Applied immediately rather than at next boot — changing the interval

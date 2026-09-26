@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clapperboard, Loader2 } from "lucide-react";
-import { fetchAuthStatus, login, setupAccount } from "@/lib/authApi";
+import { Clapperboard, Loader2, WifiOff } from "lucide-react";
+import { LanBlockedError, fetchAuthStatus, login, setupAccount } from "@/lib/authApi";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -13,12 +13,14 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, error } = useQuery({
     queryKey: ["auth-status"],
     queryFn: fetchAuthStatus,
     // A 401 from anywhere else means the session died; re-checking on focus
     // moves you to the login screen rather than leaving a broken page.
     refetchOnWindowFocus: true,
+    // Retrying a refusal just delays the explanation by a few seconds.
+    retry: (count, cause) => !(cause instanceof LanBlockedError) && count < 3,
   });
 
   if (isLoading) {
@@ -29,6 +31,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // The page itself is served by the dev server, which knows nothing about
+  // this — so without saying so, a blocked phone would sit on a login form
+  // that refuses every attempt for reasons it never explains.
+  if (error instanceof LanBlockedError) return <LanBlocked />;
+
   if (status?.user) return <>{children}</>;
 
   return (
@@ -36,6 +43,21 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       mode={status?.needsSetup ? "setup" : "login"}
       onSuccess={() => queryClient.invalidateQueries({ queryKey: ["auth-status"] })}
     />
+  );
+}
+
+function LanBlocked() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-6">
+      <div className="w-full max-w-sm space-y-3 text-center">
+        <WifiOff className="mx-auto size-8 text-muted-foreground" />
+        <h1 className="text-lg font-semibold tracking-tight">Not available here</h1>
+        <p className="text-sm text-muted-foreground">
+          This server is set to answer only on the machine it runs on. Turn on
+          local network access in Settings → Privacy there, and reload this page.
+        </p>
+      </div>
+    </div>
   );
 }
 

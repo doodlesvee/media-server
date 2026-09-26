@@ -36,6 +36,10 @@ does differently:
 - **Groups** by performer, studio, album and series, each with its own
   browsable page
 - **Tracks** watch progress, play counts and a watched state
+- **Sorts** by date added, release date, title (A–Z or Z–A) and more, and
+  remembers the choice per page
+- **Works on a phone** over your wifi — a drawer sidebar, swipeable hero and
+  touch-sized controls; see [Using it from a phone](#using-it-from-a-phone)
 - **Hides itself** on a keypress — see [Discreet mode](#discreet-mode)
 - **Adapts** to how you like it drawn, without a rebuild — see
   [Appearance](#appearance)
@@ -191,11 +195,44 @@ on the host.
 | `BACKUP_DIR` | The one writable mount. Backups are written here, and anything you drop in is offered for restore | `../backups` |
 | `COMPOSE_FILE` | Which compose files a bare `docker compose` picks up | — |
 | `WEBAUTHN_ORIGIN` | Where the browser thinks it is, for Touch ID | `http://localhost:5173` |
+| `LAN_HOST` | This machine's address on the wifi, so Settings can show the URL to open on a phone. See below | — |
+| `LAN_PORT` | The port that URL uses — the one a phone actually opens. Set it to `3000` when running the production image | `5173` |
 
 `.env.example` also has `DATABASE_URL`, `PORT` and `APP_DATA_DIR` — those only
 matter if you're running the server directly on the host (`npm run
 dev:server`) rather than through Docker; the Docker path hardcodes its own
 values for these inside the compose file.
+
+### Using it from a phone
+
+**Settings → Privacy → Local network access** decides whether other devices on
+the wifi can open the server. Turning it on shows the address to type on the
+phone; turning it off makes every other device get a short "not available
+here" page instead. It applies immediately — nothing restarts.
+
+The switch reads the address the request asked for, not where it came from.
+Under Docker there is no choice: every request reaches the container through
+the bridge gateway, so a browser on this machine and a phone on the wifi both
+arrive as `172.18.0.1` and the connection itself cannot tell them apart. The
+Host header can — this machine says `localhost`, anything else has to name the
+host by its LAN address.
+
+Which makes it a convenience switch and not a lock. It stops the app being
+*usable* from other devices; someone who thought to forge a Host header would
+reach the login screen, and the password is what stops them there. If you want
+it genuinely sealed off, publish the port to loopback only — `127.0.0.1:5173:5173` in dev, `127.0.0.1:3000:3000` in production,
+in the compose file — and nothing from the network reaches the container at all.
+
+A container can only see its own address on the Docker bridge, which is no use
+to a phone, so tell it where it lives:
+
+```sh
+echo "LAN_HOST=$(ipconfig getifaddr en0)" >> docker/.env   # macOS
+docker compose up -d                                        # picks up the new env
+```
+
+Without it the switch still works — Settings just shows you how to find the
+address rather than printing it.
 
 **Set `COMPOSE_FILE` if you develop against this.** Without it a plain
 `docker compose up -d` in `docker/` reads the base file alone, which has no
@@ -222,10 +259,10 @@ npm run dev:docker
 The web app is then on <http://localhost:5173>, proxying `/api` to the server.
 
 > **On macOS, bind-mounted file changes do not raise inotify events inside the
-> container.** `tsx watch` and Vite HMR will not see your edits. Restart the
-> affected container after changing server code:
-> `docker compose -f docker/docker-compose.yml restart app`.
-> This is also why scanning is interval-based rather than using a file watcher.
+> container**, so the dev override sets `CHOKIDAR_USEPOLLING` for both
+> `tsx watch` and Vite. Edits show up live, at the cost of a little background
+> CPU while dev mode is running. The same limitation is why library scanning
+> is interval-based rather than using a file watcher.
 
 `npm run docker:down` tears everything down regardless of which mode you
 started — it always references both compose files plus `--remove-orphans`,
@@ -444,5 +481,6 @@ needs a full re-encode.
 ## Status
 
 Built for one person's library and used daily against it. There is no
-multi-user support, no transcoding, and no mobile app. The API is stable enough
+multi-user support, no transcoding, and no native mobile app — the web app
+is laid out for phones instead. The API is stable enough
 to build against but not versioned.

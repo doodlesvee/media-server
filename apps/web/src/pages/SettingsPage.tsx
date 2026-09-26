@@ -9,6 +9,7 @@ import { LibrarySettingsSection } from "@/components/LibrarySettingsSection";
 import { LibraryHealthSection } from "@/components/LibraryHealthSection";
 import { DuplicatesSection } from "@/components/DuplicatesSection";
 import { CacheSettingsSection } from "@/components/CacheSettingsSection";
+import { NetworkSettingsSection } from "@/components/NetworkSettingsSection";
 import { PrivacySettingsSection } from "@/components/PrivacySettingsSection";
 import { ActivityLogSection } from "@/components/ActivityLogSection";
 import { cn } from "@/lib/utils";
@@ -93,7 +94,12 @@ export function SettingsPage() {
               <AppearanceSettingsSection />
             </>
           )}
-          {active === "privacy" && <PrivacySettingsSection />}
+          {active === "privacy" && (
+            <>
+              <PrivacySettingsSection />
+              <NetworkSettingsSection />
+            </>
+          )}
           {active === "backup" && (
             <>
               <BackupSettingsSection />

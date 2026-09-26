@@ -41,7 +41,22 @@ export default defineConfig({
       // PROXY_TARGET lets docker-compose.dev.yml point this at the app
       // service by container name (http://app:3000) instead of localhost,
       // since "localhost" inside a container means the container itself.
-      '/api': process.env.PROXY_TARGET ?? 'http://localhost:3000',
+      '/api': {
+        target: process.env.PROXY_TARGET ?? 'http://localhost:3000',
+        /**
+         * Forward the browser's own Host rather than rewriting it to the
+         * target.
+         *
+         * The local-network switch decides what to answer from the address
+         * the client asked for, because under Docker every request arrives
+         * from the same bridge address and the IP says nothing. Vite's
+         * default rewrites Host to `app:3000`, which erases exactly that
+         * distinction: every request then looks identical to the server, and
+         * turning the switch off locked this machine out along with the
+         * phone it was meant to stop.
+         */
+        changeOrigin: false,
+      },
     },
   },
 })

@@ -29,6 +29,7 @@ import { tagRoutes } from "./api/tags.js";
 import { webauthnRoutes } from "./api/webauthn.js";
 import { authRoutes } from "./api/auth.js";
 import { registerAuthGuard } from "./auth/guard.js";
+import { registerLanGuard } from "./net/lan.js";
 import { isRestoring } from "./backup/restoreState.js";
 import { checkDbConnection } from "./db/client.js";
 import { MAX_UPLOAD_BYTES } from "./media/performerImages.js";
@@ -66,6 +67,9 @@ export async function buildApp({
 
   // Registered before any route so the guard sees every /api request. Routes
   // added later are protected automatically — deny-by-default.
+  // Before the auth guard: a device that is not allowed to reach this server
+  // at all should not get as far as being told its password is wrong.
+  registerLanGuard(app);
   registerAuthGuard(app);
 
   // Performer artwork uploads. The size cap is enforced here rather than in
